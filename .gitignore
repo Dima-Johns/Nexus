@@ -1,0 +1,36 @@
+# Maxfiy sozlamalar
+.env
+.env.*
+!.env.example
+
+# Ma'lumotlar va zaxiralar
+backups/
+uploads/
+*.db
+*.sqlite3
+*.dump
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Android build
+android-driver/.gradle/
+android-driver/build/
+android-driver/app/build/
+android-driver/local.properties
+android-driver/*.jks
+android-driver/*.keystore
+*.apk
+*.aab
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store

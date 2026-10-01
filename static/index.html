@@ -1,0 +1,277 @@
+﻿<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nexus Logistika</title>
+  <script>
+    // Windows'da localhost avval IPv6 (::1) ga uriniladi, server esa IPv4'da — har ulanishga kechikish qo‘shiladi
+    if (location.hostname === "localhost") {
+      location.replace(location.href.replace("//localhost", "//127.0.0.1"));
+    }
+    document.documentElement.dataset.theme = localStorage.getItem("nx_theme") === "light" ? "light" : "dark";
+  </script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css?v=53" />
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+  <div class="bg-orb orb-c"></div>
+
+  <div id="login-view" class="login-wrap hidden"></div>
+  <div id="app-view" class="app hidden">
+    <header class="app-header glass">
+      <div class="header-tabs" data-perm="orders.view,map.view">
+        <button class="htab active" data-filter="incoming">Kiruvchi <span class="count-badge" id="cnt-incoming">0</span></button>
+        <button class="htab" data-filter="active">Faol <span class="count-badge" id="cnt-active">0</span></button>
+        <button class="htab" data-filter="done">Yakunlangan <span class="count-badge" id="cnt-done">0</span></button>
+      </div>
+      <div class="header-right">
+        <span class="ver">v1.0.0</span>
+        <button class="icon-btn nav-ico" type="button" id="theme-toggle" data-theme-toggle title="Kun rejimi"></button>
+        <a class="icon-btn nav-ico" href="/dashboard" data-link data-perm="map.view,orders.view" title="Xarita">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3.6 6.2a1 1 0 0 0-.6.9V19a.6.6 0 0 0 .8.6L9 17.4l6 2.2 5.4-2.2a1 1 0 0 0 .6-.9V4.6a.6.6 0 0 0-.8-.6L15 6.2 9 4Z" /><path d="M9 4v13.4" /><path d="M15 6.2v13.4" /></svg>
+        </a>
+        <a class="icon-btn nav-ico" href="/warehouses" data-link data-perm="warehouses.view,warehouses.manage" title="Sklad">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20V9l9-5 9 5v11" /><path d="M7 20v-8h10v8" /><path d="M7 16h10" /></svg>
+        </a>
+        <a class="icon-btn nav-ico" href="/drivers" data-link data-perm="drivers.view" title="Haydovchilar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h11v10H2z" /><path d="M13 9h4l4 4v3h-8" /><circle cx="6.5" cy="17.5" r="1.8" /><circle cx="17" cy="17.5" r="1.8" /></svg>
+        </a>
+        <a class="icon-btn nav-ico" href="/agents" data-link data-perm="agents.view" title="Agentlar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8" /><path d="M18.5 14.2A6.5 6.5 0 0 1 21.5 20" /></svg>
+        </a>
+        <a class="icon-btn nav-ico" href="/settings" data-link title="Sozlamalar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10" /><path d="M18 7h2" /><circle cx="16" cy="7" r="2" /><path d="M4 17h2" /><path d="M10 17h10" /><circle cx="8" cy="17" r="2" /></svg>
+        </a>
+        <a class="icon-btn nav-ico" href="/admin" data-link data-perm="admin.panel,perms.manage" title="Admin">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6L12 3Z" /><path d="m9 12 2 2 4-4" /></svg>
+        </a>
+        <div id="who" class="who"></div>
+        <button class="btn ghost logout-btn" id="logout">Chiqish</button>
+        <div class="brand">
+          <span class="logo-dot"></span>
+          <strong>Nexus</strong>
+        </div>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <aside class="rail glass" id="rail" data-perm="orders.view">
+        <div class="rail-tools">
+          <div class="rail-search-row">
+            <input id="order-search" placeholder="Qidiruv" />
+            <button class="date-chip" id="date-summary" type="button" title="Sana filtri">Sana</button>
+            <button class="icon-btn" id="btn-filter" title="Filtrlar">☰</button>
+            <button class="icon-btn" id="order-sort" title="Saralash">↕</button>
+          </div>
+          <div class="rail-actions" id="incoming-actions">
+            <button class="rail-btn" id="btn-create" data-perm="orders.create">Yaratish</button>
+            <button class="rail-btn" id="btn-import" data-perm="orders.import">Import</button>
+            <button class="rail-btn" id="btn-plan" type="button" data-perm="orders.plan">Planlashtirish</button>
+          </div>
+          <div class="bulk-bar">
+            <label class="chk glass-chk"><input type="checkbox" id="select-all" /> Hammasi</label>
+            <button class="rail-btn" id="btn-to-active" data-perm="orders.assign">Faolga o‘tkazish</button>
+            <button class="rail-btn hidden" id="btn-to-incoming" data-perm="orders.assign">Kiruvchiga qaytarish</button>
+            <button class="rail-btn hidden" id="btn-routes" type="button" data-perm="orders.routes">Yo‘nalish</button>
+            <span id="sel-count" class="muted"></span>
+            <button class="rail-btn danger" id="btn-delete-orders" type="button" data-perm="orders.delete">O‘chirish</button>
+          </div>
+          <div class="assign-bar" id="assign-bar" data-perm="orders.assign">
+            <button class="rail-btn assign-trigger" id="btn-assign" type="button" title="Haydovchini tanlab biriktirish">
+              <svg class="ico-car" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 13.5V16a1 1 0 0 0 1 1h1" />
+                <path d="M19 17h1a1 1 0 0 0 1-1v-2.5a2 2 0 0 0-1.4-1.9L17 11l-1.8-3.2A2 2 0 0 0 13.5 7H8.6a2 2 0 0 0-1.7 1L5 11l-1.6.5A2 2 0 0 0 3 13.5" />
+                <path d="M5 11h12" />
+                <circle cx="7.5" cy="17" r="1.8" />
+                <circle cx="16.5" cy="17" r="1.8" />
+                <path d="M9.3 17h5.4" />
+              </svg>
+              <span id="assign-label">Biriktirish</span>
+            </button>
+            <button class="rail-btn assign-date-btn" id="btn-edit-date" type="button" title="Yetkazish sanasini o‘zgartirish" data-perm="orders.assign">
+              <svg class="ico-clock" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+            </button>
+            <input type="hidden" id="assign-driver" value="" />
+            <div class="driver-picker glass hidden" id="driver-picker">
+              <div class="driver-picker-head">
+                <input type="search" id="driver-picker-search" placeholder="Haydovchi qidirish…" autocomplete="off" />
+              </div>
+              <div class="driver-picker-list" id="driver-picker-list"></div>
+            </div>
+          </div>
+          <div class="routes-panel glass hidden" id="routes-panel" data-perm="orders.routes">
+            <div class="routes-panel-head">
+              <div>
+                <b>Yo‘nalish</b>
+                <div class="muted" id="routes-summary">Umumiy reja</div>
+              </div>
+              <button type="button" class="icon-btn" id="routes-close" title="Yopish">✕</button>
+            </div>
+            <div class="routes-list" id="routes-list"></div>
+          </div>
+          <form id="order-form" class="rail-form hidden">
+            <select name="client_id" id="order-client"></select>
+            <select name="driver_id" id="order-driver"></select>
+            <input name="pickup_address" placeholder="Olish manzili" required />
+            <input name="dropoff_address" placeholder="Yetkazish manzili" required />
+            <input name="cargo" placeholder="Yuk" />
+            <input name="weight_kg" type="number" placeholder="Og‘irlik (kg)" />
+            <button class="btn primary" type="submit">Saqlash</button>
+          </form>
+          <select id="approved-templates" class="hidden"></select>
+          <input type="file" id="import-file" class="hidden" accept=".xlsx,.xlsm,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" />
+          <p id="import-msg" class="muted hidden"></p>
+        </div>
+        <div id="order-list" class="rail-list"></div>
+      </aside>
+      <div class="rail-resizer" id="rail-resizer" data-perm="orders.view" title="Kenglikni o‘zgartirish"></div>
+      <section id="page-root" class="page"></section>
+    </div>
+
+    <div id="filter-panel" class="filter-panel hidden">
+      <div class="filter-head">
+        <h3>Filtrlar</h3>
+        <button class="icon-btn" id="filter-close" type="button">×</button>
+      </div>
+      <div class="filter-date">
+        <div class="filter-label">YETKAZISH SANASI</div>
+        <label class="filter-range-wrap" title="Kalendardan sana tanlash">
+          <div id="filter-range-label" class="filter-range">—</div>
+          <input type="date" id="filter-date-pick" class="filter-date-input" />
+        </label>
+        <div class="filter-presets">
+          <button type="button" data-dpreset="today">Bugun</button>
+          <button type="button" data-dpreset="yesterday">Kecha</button>
+          <button type="button" data-dpreset="tomorrow">Ertaga</button>
+          <button type="button" data-dpreset="last7">Oxirgi 7 kun</button>
+          <button type="button" data-dpreset="last30">Oxirgi 30 kun</button>
+          <button type="button" data-dpreset="this_month">Shu oy</button>
+          <button type="button" data-dpreset="last_month">O‘tgan oy</button>
+          <button type="button" data-dpreset="all">Barchasi</button>
+        </div>
+      </div>
+      <div class="filter-split">
+        <div class="filter-cats">
+          <button type="button" class="fcat active" data-fcat="drivers">Haydovchilar</button>
+          <button type="button" class="fcat" data-fcat="statuses">Holatlar</button>
+          <button type="button" class="fcat" data-fcat="orders">Zayavkalar</button>
+        </div>
+        <div class="filter-cat-body">
+          <div id="fcat-drivers">
+            <div class="filter-label">HAYDOVCHILAR</div>
+            <label class="chk"><input type="checkbox" id="drv-all" checked /> Hammasini belgilash</label>
+            <div id="drv-list" class="filter-check-list"></div>
+          </div>
+          <div id="fcat-statuses" class="hidden">
+            <label class="chk"><input type="checkbox" data-st="new" checked /> Yangi</label>
+            <label class="chk"><input type="checkbox" data-st="assigned" checked /> Tayinlangan</label>
+            <label class="chk"><input type="checkbox" data-st="in_transit" checked /> Yo‘lda</label>
+            <label class="chk"><input type="checkbox" data-st="delivered" checked /> Yetkazilgan</label>
+            <label class="chk"><input type="checkbox" data-st="returned" checked /> Qaytarilgan</label>
+          </div>
+          <div id="fcat-orders" class="hidden">
+            <div class="filter-label">YUKLAMA / ЗАГРУЗКА №</div>
+            <label class="chk"><input type="checkbox" id="route-all" checked /> Hammasini belgilash</label>
+            <div id="route-list" class="filter-check-list"></div>
+          </div>
+        </div>
+      </div>
+      <div class="filter-foot">
+        <button type="button" id="filter-reset">Filtrni tozalash</button>
+        <button type="button" class="btn primary" id="filter-apply">Qo‘llash</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="drv-access-modal" class="modal-overlay hidden">
+    <div class="glass panel modal-card">
+      <div class="panel-head">
+        <h3>Ilova kirishi</h3>
+        <button class="icon-btn" id="drv-access-close" type="button">×</button>
+      </div>
+      <p id="drv-access-name" class="muted"></p>
+      <div class="access-row"><span>Login</span><b id="drv-access-user"></b></div>
+      <div class="access-row"><span>Parol</span><b id="drv-access-pass"></b></div>
+      <div id="drv-access-qr" class="qr-box"></div>
+      <p class="muted">Haydovchi ilovaga login/parol yoki shu QR kod bilan kiradi. Manzil: <b id="drv-access-url"></b></p>
+      <div class="row-actions">
+        <button class="btn" id="drv-access-reset-pass" type="button">Yangi parol</button>
+        <button class="btn" id="drv-access-reset-qr" type="button">QR yangilash</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="plan-modal" class="modal-overlay hidden">
+    <div class="glass panel modal-card plan-card">
+      <div class="panel-head">
+        <h3>Planlashtirish</h3>
+        <button class="icon-btn" id="plan-close" type="button">×</button>
+      </div>
+      <p id="plan-hint" class="muted">Fayldagi «Код торгового» tizimdagi agent kodiga mos tushishi kerak. Mos kelmasa zayavka Kiruvchida qoladi.</p>
+      <label class="plan-field">Yetkazish kuni
+        <input type="date" id="plan-date" />
+      </label>
+      <div class="plan-times">
+        <label class="plan-field">Dan
+          <select id="plan-from"></select>
+        </label>
+        <label class="plan-field">Gacha
+          <select id="plan-to"></select>
+        </label>
+      </div>
+      <div class="plan-drivers-head">
+        <span>Haydovchilar</span>
+        <label class="chk"><input type="checkbox" id="plan-drv-all" checked /> Hammasi</label>
+      </div>
+      <div id="plan-drivers" class="plan-drivers"></div>
+      <p id="plan-err" class="error hidden"></p>
+      <div class="confirm-actions">
+        <button type="button" id="plan-cancel">Bekor qilish</button>
+        <button type="button" class="btn primary" id="plan-run">Taqsimlash</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="date-edit-modal" class="modal-overlay hidden">
+    <div class="glass panel modal-card plan-card">
+      <div class="panel-head">
+        <h3>Yetkazish sanasi</h3>
+        <button class="icon-btn" id="date-edit-close" type="button">×</button>
+      </div>
+      <p id="date-edit-hint" class="muted">Kiruvchi zayavkalar sanasini o‘zgartirish. Orqa sana tanlab bo‘lmaydi.</p>
+      <label class="plan-field">Yangi sana
+        <input type="date" id="date-edit-input" />
+      </label>
+      <p id="date-edit-err" class="error hidden"></p>
+      <div class="confirm-actions">
+        <button type="button" id="date-edit-cancel">Bekor qilish</button>
+        <button type="button" class="btn primary" id="date-edit-save">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="app-confirm" class="modal-overlay hidden">
+    <div class="glass panel modal-card confirm-card">
+      <h3 id="app-confirm-title">Tasdiqlash</h3>
+      <p id="app-confirm-text" class="muted"></p>
+      <div class="confirm-actions">
+        <button type="button" id="app-confirm-cancel">Bekor qilish</button>
+        <button type="button" class="btn primary" id="app-confirm-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script type="module" src="/static/js/app.js?v=63"></script>
+</body>
+</html>

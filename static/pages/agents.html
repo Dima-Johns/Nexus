@@ -1,0 +1,36 @@
+<div class="glass panel">
+  <div class="panel-head">
+    <h3>Agentlar</h3>
+    <button class="btn primary" data-open="agent-form">Qo‘shish</button>
+  </div>
+  <p class="muted" id="agent-hint">Qalamcha bilan barcha ma’lumotlarni tahrirlang, axlat qutisi bilan o‘chiring.</p>
+  <p class="error hidden" id="agent-err"></p>
+  <div id="agents-table"></div>
+</div>
+
+<div id="agent-edit-modal" class="modal-overlay hidden">
+  <div class="glass panel modal-card agent-edit-card">
+    <div class="panel-head">
+      <h3 id="agent-edit-title">Yangi agent</h3>
+      <button class="icon-btn" type="button" id="agent-edit-close" title="Yopish">×</button>
+    </div>
+    <p class="muted" id="agent-edit-hint">Kod majburiy (01–99). Excel «Код торгового» ustuni shu kodga mos tushadi.</p>
+    <p class="error hidden" id="agent-edit-err"></p>
+    <form id="agent-form" class="form-grid agent-edit-form">
+      <input type="hidden" name="id" />
+      <input name="code" placeholder="Kod torгового (01)" maxlength="2" pattern="\d{1,2}" title="Ikki xonali kod" required />
+      <input name="name" placeholder="Ism" required />
+      <input name="phone" placeholder="+998 90 123 45 67" maxlength="17" />
+      <input name="region" placeholder="Hudud" />
+      <input name="commission_pct" type="number" step="0.1" placeholder="Komissiya %" />
+      <label class="check">
+        <input type="checkbox" name="is_active" checked />
+        Faol
+      </label>
+      <div class="row-actions form-span">
+        <button class="btn" type="button" id="agent-edit-cancel">Bekor qilish</button>
+        <button class="btn primary" type="submit">Saqlash</button>
+      </div>
+    </form>
+  </div>
+</div>

@@ -1,0 +1,28 @@
+<div class="glass panel fill-panel">
+  <div class="panel-head">
+    <h3>Haydovchilar</h3>
+    <div class="row-actions">
+      <button class="btn primary admin-only" data-open="driver-form">Qo‘shish</button>
+      <button class="btn admin-only" id="page-drv-excel">Excel shablon</button>
+      <button class="btn admin-only" id="page-drv-import-btn">Excel import</button>
+    </div>
+    <input type="file" id="page-drv-import-file" class="file-input" accept=".xlsx,.xlsm,.xls,.csv" />
+  </div>
+  <p class="muted" id="driver-hint">Haydovchilarni faqat administrator qo‘shadi.</p>
+  <div class="drv-live-bar" id="drv-live"></div>
+  <p class="error hidden" id="driver-err"></p>
+  <form id="driver-form" class="form-grid hidden">
+    <input name="name" placeholder="Ism" required />
+    <input name="phone" placeholder="+998 90 123 45 67" maxlength="17" />
+    <input name="vehicle_plate" placeholder="Davlat raqami" />
+    <input name="vehicle_type" placeholder="Transport turi" value="furgon" />
+    <select name="status">
+      <option value="idle">Bo‘sh</option>
+      <option value="on_route">Yo‘lda</option>
+      <option value="assigned">Tayinlangan</option>
+    </select>
+    <select name="agent_id" id="driver-agent"></select>
+    <button class="btn primary" type="submit">Saqlash</button>
+  </form>
+  <div id="drivers-table"></div>
+</div>

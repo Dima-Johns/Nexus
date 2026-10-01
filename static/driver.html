@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c101c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Nexus Haydovchi</title>
+  <link rel="manifest" href="/static/driver-manifest.json" />
+  <link rel="icon" href="/static/driver-icon.svg" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=12" />
+</head>
+<body>
+  <section id="view-login" class="view login">
+    <div class="brand"><span class="logo"></span><span>Nexus Logistika</span></div>
+    <h1>Haydovchi kirishi</h1>
+    <p class="sub">Login/parol yoki QR kod bilan kiring. Marshrut internet bo‘lganida yuklanadi, keyin offline ham ochiladi.</p>
+    <form id="login-form">
+      <input id="login-user" name="username" autocomplete="username" placeholder="Login" required />
+      <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Parol" required />
+      <p class="err" id="login-err"></p>
+      <button class="btn primary full" type="submit">Kirish</button>
+      <button class="btn full" id="btn-qr" type="button">QR kodni skanerlash</button>
+    </form>
+  </section>
+
+  <section id="view-scan" class="view login hidden">
+    <h1>QR skaner</h1>
+    <p class="sub">Haydovchi QR kodini kameraga tuting.</p>
+    <div id="reader"></div>
+    <p class="err" id="scan-err"></p>
+    <button class="btn full" id="scan-cancel" type="button">Bekor qilish</button>
+  </section>
+
+  <section id="view-app" class="view hidden">
+    <header class="app-head">
+      <div>
+        <b id="drv-name">Haydovchi</b>
+        <div class="muted" id="drv-plate"></div>
+      </div>
+      <button class="btn" id="btn-out" type="button">Chiqish</button>
+    </header>
+    <div class="status-bar">
+      <span class="pill" id="net-pill">Tarmoq</span>
+      <span class="pill" id="gps-pill">GPS</span>
+      <span class="pill" id="sync-pill">Kesh</span>
+    </div>
+    <div class="tabs">
+      <button class="btn active" data-tab="map" type="button">Yo‘nalish</button>
+      <button class="btn" data-tab="list" type="button">Zayavkalar</button>
+    </div>
+    <div class="filter-bar">
+      <div class="date-group">
+      <button type="button" class="date-step" id="date-prev" aria-label="Oldingi kun">‹</button>
+      <label class="date-chip" id="btn-date" title="Sanani tanlash">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="16" rx="3" />
+          <path d="M8 3v4M16 3v4M3 10h18" />
+        </svg>
+        <span id="date-label">Bugun</span>
+        <input type="date" id="date-pick" class="date-chip-input" />
+      </label>
+      <button type="button" class="date-step" id="date-next" aria-label="Keyingi kun">›</button>
+      </div>
+      <div class="reys-scroll" id="reys-chips"></div>
+      <span class="muted filter-count" id="reys-count"></span>
+    </div>
+    <div id="map"></div>
+    <div class="start-overlay hidden" id="start-overlay">
+      <p id="start-hint">Boshlash — reysdagi 1-do‘konga telefon joylashuvidan yo‘l ochiladi.</p>
+    </div>
+    <div id="list" class="list hidden"></div>
+    <div class="dock">
+      <button class="btn primary" id="btn-start" type="button">Boshlash</button>
+      <button class="btn" id="btn-sync" type="button">Yangilash</button>
+    </div>
+  </section>
+
+  <div id="proof-sheet" class="sheet-overlay hidden">
+    <div class="sheet-card proof-card">
+      <div class="sheet-head">
+        <b id="proof-title">Yetkazildi</b>
+        <button type="button" class="icon-x" id="proof-close" aria-label="Yopish">×</button>
+      </div>
+      <p class="muted sheet-sub" id="proof-sub"></p>
+
+      <div id="proof-reasons" class="proof-reasons">
+        <p class="proof-ask">Do‘konda nima bor? Tanlang — keyin rasm tushirasiz.</p>
+        <button type="button" class="proof-opt ok" data-reason="fridge_yes">
+          <span class="proof-ico">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 10h14M9 5v2M9 13v3"/></svg>
+          </span>
+          <span class="proof-txt">Muzlatgich bor</span>
+          <span class="proof-go">›</span>
+        </button>
+        <button type="button" class="proof-opt warn" data-reason="foreign_goods">
+          <span class="proof-ico">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/><path d="M16 5.5 7.5 10.5"/></svg>
+          </span>
+          <span class="proof-txt">Begona mahsulot bor</span>
+          <span class="proof-go">›</span>
+        </button>
+        <button type="button" class="proof-opt bad" data-reason="fridge_no">
+          <span class="proof-ico">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 10h14"/><path d="M3 3l18 18"/></svg>
+          </span>
+          <span class="proof-txt">Muzlatgich yo‘q</span>
+          <span class="proof-go">›</span>
+        </button>
+      </div>
+
+      <div id="proof-shoot" class="proof-shoot hidden">
+        <p class="proof-ask">Qaytarilgan mahsulotni rasmga tushiring.</p>
+        <button type="button" class="btn primary full proof-camera" id="proof-camera">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>
+          Rasm tushirish
+        </button>
+      </div>
+
+      <div id="proof-preview" class="proof-preview hidden">
+        <div class="proof-photo">
+          <img id="proof-img" alt="Rasm" />
+          <span class="proof-tag" id="proof-tag"></span>
+        </div>
+        <div class="proof-actions">
+          <button type="button" class="btn" id="proof-retake">Qayta tushirish</button>
+          <button type="button" class="btn primary" id="proof-send">Yuborish</button>
+        </div>
+      </div>
+      <p class="err" id="proof-err"></p>
+    </div>
+  </div>
+  <input type="file" id="proof-file" accept="image/*" capture="environment" hidden />
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/js/driver-app.js?v=12"></script>
+</body>
+</html>

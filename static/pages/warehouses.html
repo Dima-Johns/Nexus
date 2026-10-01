@@ -1,0 +1,40 @@
+<div class="glass panel">
+  <div class="panel-head">
+    <h3>Skladlar</h3>
+    <button class="btn primary" data-open="warehouse-form">Qo‘shish</button>
+  </div>
+  <p class="muted" id="wh-hint">Sklad nomi va lokatsiyasi road plan uchun. Har kuni zayavkalar shu nuqtadan, yaqinidan uzoqiga qarab tuziladi.</p>
+  <p class="error hidden" id="wh-err"></p>
+  <div id="wh-table"></div>
+</div>
+
+<div id="wh-edit-modal" class="modal-overlay hidden">
+  <div class="glass panel modal-card agent-edit-card">
+    <div class="panel-head">
+      <h3 id="wh-edit-title">Yangi sklad</h3>
+      <button class="icon-btn" type="button" id="wh-edit-close" title="Yopish">×</button>
+    </div>
+    <p class="muted" id="wh-edit-hint">Masalan: Benchmark. Xaritadan nuqtani bosing yoki kenglik/uzunlikni yozing.</p>
+    <p class="error hidden" id="wh-edit-err"></p>
+    <form id="wh-form" class="form-grid agent-edit-form">
+      <input type="hidden" name="id" />
+      <input name="name" placeholder="Sklad nomi (Benchmark)" required class="form-span" />
+      <input name="address" placeholder="Manzil" class="form-span" />
+      <input name="lat" type="number" step="0.000001" placeholder="Kenglik (lat)" required />
+      <input name="lng" type="number" step="0.000001" placeholder="Uzunlik (lng)" required />
+      <label class="check">
+        <input type="checkbox" name="is_default" checked />
+        Asosiy sklad
+      </label>
+      <label class="check">
+        <input type="checkbox" name="is_active" checked />
+        Faol
+      </label>
+      <div id="wh-pick-map" class="wh-pick-map form-span"></div>
+      <div class="row-actions form-span">
+        <button class="btn" type="button" id="wh-edit-cancel">Bekor qilish</button>
+        <button class="btn primary" type="submit">Saqlash</button>
+      </div>
+    </form>
+  </div>
+</div>

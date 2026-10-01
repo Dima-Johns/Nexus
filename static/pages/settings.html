@@ -1,0 +1,55 @@
+<div class="glass panel" id="profile-panel">
+  <div class="panel-head">
+    <h3>Mening akkauntim</h3>
+  </div>
+  <p class="muted">Login va parolni o‘zgartirish uchun avval joriy parolni kiriting.</p>
+  <p class="error hidden" id="profile-err"></p>
+  <p class="muted hidden" id="profile-ok"></p>
+  <form id="profile-form" class="form-grid">
+    <input name="username" id="profile-user" placeholder="Login" required minlength="3" autocomplete="username" />
+    <input name="full_name" id="profile-name" placeholder="To‘liq ism" required autocomplete="name" />
+    <input name="current_password" type="password" placeholder="Joriy parol" required autocomplete="current-password" />
+    <input name="password" type="password" placeholder="Yangi parol (ixtiyoriy)" minlength="6" autocomplete="new-password" />
+    <input name="password2" type="password" placeholder="Yangi parolni takrorlang" minlength="6" autocomplete="new-password" />
+    <button class="btn primary" type="submit">Saqlash</button>
+  </form>
+</div>
+<div class="glass panel" id="idle-panel">
+  <div class="panel-head">
+    <h3>Harakatsizlik</h3>
+  </div>
+  <p class="muted" id="idle-hint">Belgilangan vaqt davomida hech narsa qilmasangiz, tizim avtomatik chiqaradi. 0 — o‘chmasin.</p>
+  <p class="muted" id="org-line"></p>
+  <p class="error hidden" id="idle-err"></p>
+  <form id="idle-form" class="form-grid">
+    <select name="idle_timeout_minutes" id="idle-mins">
+      <option value="5">5 daqiqa</option>
+      <option value="10">10 daqiqa</option>
+      <option value="15">15 daqiqa</option>
+      <option value="30">30 daqiqa</option>
+      <option value="60">1 soat</option>
+      <option value="120">2 soat</option>
+      <option value="0">Hech qachon</option>
+    </select>
+    <button class="btn primary" type="submit">Saqlash</button>
+  </form>
+</div>
+<div class="glass panel" id="accounts-panel">
+  <div class="panel-head">
+    <h3>Akkauntlar</h3>
+    <button class="btn primary" id="user-open">Yangi akkaunt</button>
+  </div>
+  <p class="muted">Yangi akkaunt joriy tashkilotga qo‘shiladi. Dostuplar admin panelda beriladi.</p>
+  <p class="error hidden" id="user-err"></p>
+  <form id="user-form" class="form-grid hidden">
+    <input name="username" placeholder="Login" required minlength="3" autocomplete="off" />
+    <input name="full_name" placeholder="To‘liq ism" required />
+    <input name="password" type="password" placeholder="Parol (kamida 6)" required minlength="6" autocomplete="new-password" />
+    <select name="role">
+      <option value="dispatcher">Dispetcher</option>
+      <option value="admin">Admin</option>
+    </select>
+    <button class="btn primary" type="submit">Yaratish</button>
+  </form>
+  <div id="users-table"></div>
+</div>

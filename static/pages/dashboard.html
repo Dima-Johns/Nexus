@@ -1,0 +1,35 @@
+<div class="map-stage">
+  <div id="map"></div>
+  <button type="button" class="fleet-fab hidden" id="fleet-fab" title="Haydovchilar">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 13.5V16a1 1 0 0 0 1 1h1" />
+      <path d="M19 17h1a1 1 0 0 0 1-1v-2.5a2 2 0 0 0-1.4-1.9L17 11l-1.8-3.2A2 2 0 0 0 13.5 7H8.6a2 2 0 0 0-1.7 1L5 11l-1.6.5A2 2 0 0 0 3 13.5" />
+      <path d="M5 11h12" />
+      <circle cx="7.5" cy="17" r="1.8" />
+      <circle cx="16.5" cy="17" r="1.8" />
+    </svg>
+    <span class="fleet-fab-badge" id="fleet-fab-badge">0</span>
+  </button>
+  <div class="fleet-panel hidden" id="fleet-panel">
+    <div class="fleet-head">
+      <span class="fleet-title-wrap">
+        <span class="fleet-title">Haydovchilar</span>
+        <span class="fleet-updated" id="fleet-updated"></span>
+      </span>
+      <span class="fleet-counts" id="fleet-counts">—</span>
+      <button type="button" class="fleet-close fleet-refresh" id="fleet-refresh" title="Yangilash">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+          <path d="M20 4v7h-7" />
+        </svg>
+      </button>
+      <button type="button" class="fleet-close" id="fleet-close" title="Yopish">×</button>
+    </div>
+    <div class="fleet-list" id="fleet-list"></div>
+  </div>
+  <div class="fleet-toast hidden" id="fleet-toast"></div>
+  <div class="map-legend hidden" id="map-legend"></div>
+  <div class="map-float">
+    <div class="icon-btn" id="map-fit" title="Moslash">⌖</div>
+  </div>
+</div>

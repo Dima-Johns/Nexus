@@ -1,0 +1,112 @@
+<div class="admin-wrap">
+  <div class="admin-tabs" id="admin-tabs">
+    <button type="button" class="admin-tab" data-admin-tab="perms" data-perm="perms.manage">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6L12 3Z" /><path d="m9 12 2 2 4-4" /></svg>
+      Dostuplar
+      <span class="admin-tab-count" id="cnt-perms"></span>
+    </button>
+    <button type="button" class="admin-tab" data-admin-tab="drivers" data-perm="drivers.manage,drivers.view">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h11v10H2z" /><path d="M13 9h4l4 4v3h-8" /><circle cx="6.5" cy="17.5" r="1.8" /><circle cx="17" cy="17.5" r="1.8" /></svg>
+      Haydovchilar
+      <span class="admin-tab-count" id="cnt-drivers"></span>
+    </button>
+    <button type="button" class="admin-tab" data-admin-tab="templates" data-perm="admin.panel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" /><path d="M14 3v5h5" /><path d="M9 13h6" /><path d="M9 17h6" /></svg>
+      Import shablonlari
+      <span class="admin-tab-count" id="cnt-templates"></span>
+    </button>
+  </div>
+
+  <section class="glass panel admin-sec" data-admin-sec="perms" data-perm="perms.manage">
+    <div class="panel-head">
+      <div>
+        <h3>Dostuplar</h3>
+        <p class="muted adm-sub">Har bir akkaunt qaysi bo‘limlarni ko‘rishi va qaysi amallarni bajarishini belgilang. Tizim administratori barcha amallarga ega.</p>
+      </div>
+    </div>
+    <p class="error hidden" id="perm-err"></p>
+    <div id="perm-list"></div>
+  </section>
+
+  <section class="glass panel admin-sec" data-admin-sec="drivers" data-perm="drivers.manage,drivers.view">
+    <div class="panel-head">
+      <div>
+        <h3>Haydovchilar</h3>
+        <p class="muted adm-sub">Haydovchini qo‘lda yoki Excel orqali qo‘shing, agentini jadvalning o‘zida tanlang.</p>
+      </div>
+      <div class="row-actions">
+        <button class="btn tiny" type="button" id="drv-excel">Excel shablon</button>
+        <button class="btn tiny" type="button" id="drv-import-btn">Excel import</button>
+        <button class="btn tiny primary" type="button" id="drv-add-toggle">+ Yangi haydovchi</button>
+        <input type="file" id="drv-import-file" class="file-input" accept=".xlsx,.xlsm,.csv" />
+      </div>
+    </div>
+    <p class="error hidden" id="admin-drv-err"></p>
+    <form id="admin-driver-form" class="adm-card adm-form hidden">
+      <div class="adm-card-title">Yangi haydovchi</div>
+      <div class="form-grid">
+        <label class="map-row"><span>Ism *</span><input name="name" placeholder="Masalan: Akbar Karimov" required /></label>
+        <label class="map-row"><span>Telefon</span><input name="phone" placeholder="+998 90 123 45 67" maxlength="17" /></label>
+        <label class="map-row"><span>Davlat raqami</span><input name="vehicle_plate" placeholder="01 A 123 AA" /></label>
+        <label class="map-row"><span>Transport turi</span><input name="vehicle_type" placeholder="Transport turi" value="furgon" /></label>
+        <label class="map-row"><span>Holat</span>
+          <select name="status">
+            <option value="idle">Bo‘sh</option>
+            <option value="on_route">Yo‘lda</option>
+            <option value="assigned">Tayinlangan</option>
+          </select>
+        </label>
+        <label class="map-row"><span>Agent</span><select name="agent_id" id="admin-driver-agent"></select></label>
+      </div>
+      <div class="row-actions adm-form-actions">
+        <button class="btn" type="button" id="drv-add-cancel">Bekor qilish</button>
+        <button class="btn primary" type="submit">Haydovchi qo‘shish</button>
+      </div>
+    </form>
+    <div class="adm-toolbar">
+      <input type="search" id="drv-search" class="adm-search" placeholder="Qidirish: ism, login, telefon, raqam" />
+      <div class="adm-summary" id="drv-summary"></div>
+    </div>
+    <div id="admin-drivers-table"></div>
+  </section>
+
+  <section class="glass panel admin-sec" data-admin-sec="templates" data-perm="admin.panel">
+    <div class="panel-head">
+      <div>
+        <h3>Import shablonlari</h3>
+        <p class="muted adm-sub">Excel fayl ustunlari tizimdagi qaysi maydonga tushishini belgilaydi.</p>
+      </div>
+    </div>
+    <div class="adm-card">
+      <div class="adm-card-title">Yangi shablon</div>
+      <p class="muted adm-sub">Namuna Excel yoki CSV yuklang — ustunlar avtomatik chiqadi. Haydovchilar uchun tayyor shablonni ham yaratishingiz mumkin.</p>
+      <div class="import-row">
+        <select id="tpl-entity">
+          <option value="orders">Buyurtmalar</option>
+          <option value="drivers">Haydovchilar</option>
+        </select>
+        <input type="file" id="sample-file" accept=".xlsx,.xlsm,.csv" />
+        <button class="btn tiny" type="button" id="read-sample">Ustunlarni o‘qish</button>
+        <button class="btn tiny" type="button" id="make-driver-tpl">Haydovchilar Excel</button>
+      </div>
+      <p id="sample-msg" class="muted adm-sub"></p>
+      <form id="tpl-form" class="tpl-form hidden">
+        <input id="tpl-id" type="hidden" />
+        <div class="form-grid adm-grid-4">
+          <label class="map-row"><span>Shablon nomi *</span><input id="tpl-name" placeholder="Shablon nomi" required /></label>
+          <label class="map-row"><span>Izoh</span><input id="tpl-desc" placeholder="Izoh" /></label>
+          <label class="map-row"><span>Varaq</span><select id="tpl-sheet"></select></label>
+          <label class="map-row"><span>Sarlavha qatori</span><input id="tpl-header-row" type="number" min="1" value="1" /></label>
+        </div>
+        <div class="adm-card-title">Ustunlar moslamasi</div>
+        <div id="map-grid" class="map-grid"></div>
+        <div class="row-actions adm-form-actions">
+          <button class="btn" type="button" id="tpl-reset">Tozalash</button>
+          <button class="btn primary" type="submit">Saqlash va tasdiqlash</button>
+        </div>
+      </form>
+    </div>
+    <div class="adm-list-title">Mavjud shablonlar</div>
+    <div id="admin-templates"></div>
+  </section>
+</div>

@@ -1,0 +1,18 @@
+{
+  "name": "Nexus Haydovchi",
+  "short_name": "Nexus",
+  "start_url": "/driver/",
+  "scope": "/driver/",
+  "display": "standalone",
+  "background_color": "#07080c",
+  "theme_color": "#0c101c",
+  "lang": "uz",
+  "icons": [
+    {
+      "src": "/static/driver-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

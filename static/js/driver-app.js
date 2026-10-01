@@ -1,0 +1,1234 @@
+const API = "/api";
+const L = window.L;
+const TOKEN_KEY = "nx_drv_token";
+
+let token = localStorage.getItem(TOKEN_KEY) || "";
+let driver = null;
+let route = { orders: [], geometry: [], downloaded_at: null };
+let map = null;
+let line = null;
+let markers = [];
+let meMarker = null;
+let watchId = null;
+let scanStream = null;
+let lastGpsAt = 0;
+let gpsQueue = [];
+let lastGps = null;
+let reysFilter = localStorage.getItem("nx_drv_reys") || "";
+let dateFilter = localStorage.getItem("nx_drv_date") || "";
+let qrBusy = false;
+const RUN_KEY = "nx_drv_run";
+let run = { active: false, currentId: null, arrived: false };
+try {
+  const savedRun = JSON.parse(localStorage.getItem(RUN_KEY) || "null");
+  if (savedRun && typeof savedRun === "object") run = { ...run, ...savedRun, arrived: false };
+} catch {
+  /* fresh run */
+}
+
+function saveRun() {
+  localStorage.setItem(RUN_KEY, JSON.stringify({ active: run.active, currentId: run.currentId }));
+  localStorage.setItem("nx_drv_reys", reysFilter || "");
+  localStorage.setItem("nx_drv_date", dateFilter || "");
+}
+let lastQrText = "";
+let lastQrAt = 0;
+let starting = false;
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+function show(id) {
+  ["view-login", "view-scan", "view-app"].forEach((name) => $(name).classList.toggle("hidden", name !== id));
+}
+
+function nativeApp() {
+  try {
+    return Boolean(window.NexusNative);
+  } catch {
+    return false;
+  }
+}
+
+function nativeCall(name, arg) {
+  if (!nativeApp()) return false;
+  try {
+    if (name === "scanQr") {
+      window.NexusNative.scanQr();
+      return true;
+    }
+    if (name === "openRoute") {
+      window.NexusNative.openRoute(arg);
+      return true;
+    }
+    if (name === "navigate") {
+      if (typeof window.NexusNative.navigate !== "function") return false;
+      window.NexusNative.navigate(arg);
+      return true;
+    }
+    if (name === "retry") {
+      window.NexusNative.retry();
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("nexus-driver", 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv");
+      if (!db.objectStoreNames.contains("gps")) db.createObjectStore("gps", { autoIncrement: true });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function kvSet(key, value) {
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("kv", "readwrite");
+    tx.objectStore("kv").put(value, key);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function kvGet(key) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("kv", "readonly");
+    const req = tx.objectStore("kv").get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function gpsAdd(point) {
+  gpsQueue.push(point);
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("gps", "readwrite");
+    tx.objectStore("gps").add(point);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function gpsDump() {
+  const db = await openDb();
+  const queued = await new Promise((resolve, reject) => {
+    const tx = db.transaction("gps", "readonly");
+    const req = tx.objectStore("gps").getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+  return queued.length ? queued : gpsQueue.slice();
+}
+
+async function gpsClear() {
+  gpsQueue = [];
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("gps", "readwrite");
+    tx.objectStore("gps").clear();
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function api(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let body = opts.body;
+  if (body && typeof body === "object" && !(body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(body);
+  }
+  const res = await fetch(API + path, { ...opts, headers, body });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    token = "";
+    localStorage.removeItem(TOKEN_KEY);
+    throw new Error(typeof data.detail === "string" ? data.detail : "Sessiya yaroqsiz");
+  }
+  if (!res.ok) {
+    const d = data.detail;
+    throw new Error(typeof d === "string" ? d : "Xatolik");
+  }
+  return data;
+}
+
+function setNet() {
+  const on = navigator.onLine;
+  const pill = $("net-pill");
+  if (!pill) return;
+  pill.textContent = on ? "Online" : "Offline";
+  pill.classList.toggle("live", on);
+  pill.classList.toggle("off", !on);
+}
+
+function setGps(text, live) {
+  const pill = $("gps-pill");
+  if (!pill) return;
+  pill.textContent = text;
+  pill.classList.toggle("live", !!live);
+  pill.classList.toggle("off", !live);
+}
+
+function setSync(text, warn) {
+  const pill = $("sync-pill");
+  if (!pill) return;
+  pill.textContent = text;
+  pill.classList.toggle("off", !!warn);
+  pill.classList.toggle("live", !warn);
+}
+
+function saveSession() {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  kvSet("token", token).catch(() => {});
+  kvSet("driver", driver).catch(() => {});
+  kvSet("route", route).catch(() => {});
+}
+
+function gpsOk(lat, lng) {
+  lat = Number(lat);
+  lng = Number(lng);
+  return lat > 37 && lat < 46 && lng > 55 && lng < 76;
+}
+
+function isPlaceholder(lat, lng) {
+  lat = Number(lat);
+  lng = Number(lng);
+  return (
+    (Math.abs(lat - 41.3111) < 0.003 && Math.abs(lng - 69.2797) < 0.003) ||
+    (Math.abs(lat - 41.31) < 0.003 && Math.abs(lng - 69.28) < 0.003)
+  );
+}
+
+function reysKey(o) {
+  const d = String(o.delivery_date || "").slice(0, 10);
+  const r = String(o.route_code || "").trim();
+  return `${d}|${r}`;
+}
+
+function orderDay(o) {
+  return String(o.delivery_date || "").slice(0, 10);
+}
+
+function isoDay(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function todayIso() {
+  return isoDay(new Date());
+}
+
+function tomorrowIso() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return isoDay(d);
+}
+
+function formatDayShort(iso) {
+  const raw = String(iso || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "Sana";
+  const today = todayIso();
+  if (raw === today) return "Bugun";
+  if (raw === tomorrowIso()) return "Ertaga";
+  const [, m, d] = raw.split("-");
+  return `${d}.${m}`;
+}
+
+function formatDayLong(iso) {
+  const raw = String(iso || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "—";
+  const today = todayIso();
+  if (raw === today) return `Bugun · ${raw.slice(8)}.${raw.slice(5, 7)}`;
+  if (raw === tomorrowIso()) return `Ertaga · ${raw.slice(8)}.${raw.slice(5, 7)}`;
+  return `${raw.slice(8)}.${raw.slice(5, 7)}.${raw.slice(0, 4)}`;
+}
+
+function reysLabel(o) {
+  const r = String(o.route_code || "").trim();
+  if (r) return r;
+  return "Reys";
+}
+
+function parseReys(key) {
+  let raw = String(key || "");
+  try {
+    raw = decodeURIComponent(raw);
+  } catch {
+    /* keep */
+  }
+  const i = raw.indexOf("|");
+  if (i < 0) return { delivery_date: dateFilter || "", route_code: raw };
+  return { delivery_date: raw.slice(0, i).trim(), route_code: raw.slice(i + 1).trim() };
+}
+
+function startFilterBody() {
+  if (reysFilter) return parseReys(reysFilter);
+  return { delivery_date: dateFilter || todayIso(), route_code: "" };
+}
+
+function allOrders() {
+  return route.orders || [];
+}
+
+function availableDates() {
+  const set = new Set();
+  allOrders().forEach((o) => {
+    const d = orderDay(o);
+    if (d) set.add(d);
+  });
+  return [...set].sort();
+}
+
+let dateChosen = false;
+
+function ensureDateFilter() {
+  const today = todayIso();
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(dateFilter || "");
+  // Haydovchi o‘zi tanlagan sana — zayavka bo‘lmasa ham saqlanadi
+  if (dateChosen && valid && dateFilter >= today) return;
+  if (valid && dateFilter >= today) return;
+  const dates = availableDates();
+  if (dates.includes(today)) {
+    dateFilter = today;
+    return;
+  }
+  const future = dates.find((d) => d >= today);
+  dateFilter = future || today;
+}
+
+function shiftDay(iso, delta) {
+  const [y, m, d] = String(iso || todayIso()).split("-").map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  dt.setDate(dt.getDate() + delta);
+  return isoDay(dt);
+}
+
+function ordersForDate() {
+  ensureDateFilter();
+  const day = dateFilter;
+  return allOrders().filter((o) => {
+    const d = orderDay(o);
+    if (d) return d === day;
+    return day === todayIso();
+  });
+}
+
+function visibleOrders() {
+  const rows = ordersForDate();
+  if (!reysFilter) return rows;
+  return rows.filter((o) => reysKey(o) === reysFilter);
+}
+
+function orderedStops() {
+  return visibleOrders()
+    .slice()
+    .sort((a, b) => Number(a.stop_no || 0) - Number(b.stop_no || 0) || a.id - b.id);
+}
+
+function pendingStops() {
+  return orderedStops().filter((o) => !["delivered", "returned", "cancelled"].includes(o.status));
+}
+
+function currentStop() {
+  const pending = pendingStops();
+  if (!pending.length) return null;
+  if (run.currentId != null) {
+    const picked = pending.find((o) => Number(o.id) === Number(run.currentId));
+    if (picked) return picked;
+  }
+  return pending[0];
+}
+
+function stopIndex(o) {
+  if (!o) return 0;
+  return orderedStops().findIndex((x) => x.id === o.id) + 1;
+}
+
+function distanceM(a, b) {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const la1 = (a.lat * Math.PI) / 180;
+  const la2 = (b.lat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function phonePoint() {
+  if (lastGps && gpsOk(lastGps.lat, lastGps.lng) && !isPlaceholder(lastGps.lat, lastGps.lng)) {
+    return { lat: Number(lastGps.lat), lng: Number(lastGps.lng), name: "Telefon" };
+  }
+  return null;
+}
+
+function navigateTo(o) {
+  if (!o || !gpsOk(o.dropoff_lat, o.dropoff_lng)) {
+    setSync("Bu do‘konda lokatsiya yo‘q", true);
+    return false;
+  }
+  const dest = { lat: Number(o.dropoff_lat), lng: Number(o.dropoff_lng), name: o.client_name || o.code || "Do‘kon" };
+  if (nativeCall("navigate", JSON.stringify(dest))) return true;
+  const me = phonePoint();
+  if (nativeCall("openRoute", JSON.stringify(me ? [me, dest] : [dest]))) return true;
+  window.location.href = `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}&travelmode=driving&dir_action=navigate`;
+  return true;
+}
+
+function stopIcon(n, kind) {
+  const cls = kind === "current" ? "drv-stop current" : kind === "done" ? "drv-stop done" : "drv-stop";
+  const html = `<div class="${cls}">${n}</div>`;
+  return L.divIcon({ className: "drv-pin", html, iconSize: [28, 28], iconAnchor: [14, 14] });
+}
+
+function drawMap() {
+  if (!map) {
+    map = L.map("map", { zoomControl: false }).setView([41.3111, 69.2797], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+    map.on("popupopen", (e) => {
+      const btn = e.popup.getElement()?.querySelector("[data-go]");
+      if (btn) {
+        btn.addEventListener("click", () => {
+          const o = allOrders().find((x) => Number(x.id) === Number(btn.dataset.go));
+          if (o) goToStop(o);
+          map.closePopup();
+        });
+      }
+    });
+  }
+  if (line) {
+    map.removeLayer(line);
+    line = null;
+  }
+  markers.forEach((m) => map.removeLayer(m));
+  markers = [];
+  const cur = run.active ? currentStop() : null;
+  const latlngs = [];
+  orderedStops().forEach((o, i) => {
+    if (!gpsOk(o.dropoff_lat, o.dropoff_lng)) return;
+    const n = i + 1;
+    const kind = cur && cur.id === o.id ? "current" : o.status === "delivered" ? "done" : "";
+    const m = L.marker([o.dropoff_lat, o.dropoff_lng], { icon: stopIcon(n, kind), zIndexOffset: kind === "current" ? 1000 : 0 })
+      .addTo(map)
+      .bindPopup(
+        `<b>${n} · ${o.code || ""}</b><br>${o.client_name || ""}<br>${o.dropoff_address || ""}` +
+          `<br><button class="popup-go" data-go="${o.id}" type="button">Bu do‘konga borish</button>`
+      );
+    markers.push(m);
+    latlngs.push([o.dropoff_lat, o.dropoff_lng]);
+  });
+  const me = phonePoint();
+  if (me) {
+    const latlng = [me.lat, me.lng];
+    if (!meMarker) {
+      meMarker = L.circleMarker(latlng, { radius: 8, color: "#0f766e", fillColor: "#5eead4", fillOpacity: 1 }).addTo(map);
+    } else meMarker.setLatLng(latlng);
+    latlngs.push(latlng);
+  }
+  if (latlngs.length) map.fitBounds(L.latLngBounds(latlngs), { padding: [36, 36], maxZoom: 15 });
+  setTimeout(() => map && map.invalidateSize(), 80);
+}
+
+function fillReysFilter() {
+  ensureDateFilter();
+  const label = $("date-label");
+  if (label) label.textContent = formatDayShort(dateFilter);
+  const pick = $("date-pick");
+  if (pick) {
+    pick.min = todayIso();
+    pick.value = dateFilter || todayIso();
+  }
+  const prev = $("date-prev");
+  if (prev) prev.disabled = !dateFilter || dateFilter <= todayIso();
+  const box = $("reys-chips");
+  const count = $("reys-count");
+  const dayRows = ordersForDate();
+  const groups = new Map();
+  dayRows.forEach((o) => {
+    const key = reysKey(o);
+    if (!groups.has(key)) groups.set(key, { key, label: reysLabel(o), n: 0 });
+    groups.get(key).n += 1;
+  });
+  if (reysFilter && !groups.has(reysFilter)) reysFilter = "";
+  const total = dayRows.length;
+  const chips = [
+    `<button type="button" class="reys-chip${!reysFilter ? " active" : ""}" data-reys="">Barchasi <span class="n">${total}</span></button>`,
+  ];
+  [...groups.values()]
+    .sort((a, b) => a.label.localeCompare(b.label, "uz"))
+    .forEach((g) => {
+      const active = reysFilter === g.key ? " active" : "";
+      chips.push(
+        `<button type="button" class="reys-chip${active}" data-reys="${esc(g.key)}">${esc(g.label)} <span class="n">${g.n}</span></button>`
+      );
+    });
+  if (box) box.innerHTML = chips.join("");
+  if (count) count.textContent = `${visibleOrders().length}/${total || allOrders().length}`;
+  saveRun();
+}
+
+function setDateFilter(iso, resetReys = true) {
+  let next = String(iso || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) return;
+  if (next < todayIso()) next = todayIso();
+  dateChosen = true;
+  dateFilter = next;
+  if (resetReys) reysFilter = "";
+  run.currentId = null;
+  run.arrived = false;
+  saveRun();
+  fillReysFilter();
+  drawMap();
+  renderList();
+  syncStartUi();
+}
+
+function openDatePicker() {
+  ensureDateFilter();
+  const pick = $("date-pick");
+  if (!pick) return;
+  pick.min = todayIso();
+  pick.value = dateFilter || todayIso();
+  try {
+    if (typeof pick.showPicker === "function") pick.showPicker();
+  } catch {
+    /* Android WebView: transparent input + indicator opens calendar */
+  }
+}
+
+function onReysChange(key) {
+  reysFilter = key || "";
+  run.currentId = null;
+  run.arrived = false;
+  saveRun();
+  fillReysFilter();
+  drawMap();
+  renderList();
+  syncStartUi();
+}
+
+function esc(v) {
+  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}
+
+function syncStartUi() {
+  const overlay = $("start-overlay");
+  const btn = $("btn-start");
+  const pending = pendingStops();
+  const total = orderedStops().length;
+  const cur = run.active ? currentStop() : null;
+  if (run.active && !cur && total > 0 && !pending.length) {
+    run.active = false;
+    run.currentId = null;
+    saveRun();
+  }
+  if (btn) {
+    btn.disabled = !pending.length;
+    btn.textContent = run.active && cur ? "Navigator" : "Boshlash";
+  }
+  if (!overlay) return;
+  overlay.classList.toggle("hidden", total === 0);
+  if (!total) return;
+  if (run.active && cur) {
+    const n = stopIndex(cur);
+    const me = phonePoint();
+    const dist = me && gpsOk(cur.dropoff_lat, cur.dropoff_lng) ? distanceM(me, { lat: Number(cur.dropoff_lat), lng: Number(cur.dropoff_lng) }) : null;
+    const distText = dist == null ? "" : dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : `${Math.round(dist)} m`;
+    overlay.classList.toggle("arrived", !!run.arrived);
+    overlay.innerHTML = `
+      <div class="cur-head"><span class="stop">${n}</span><div style="flex:1"><b>${esc(cur.client_name || cur.code || "Do‘kon")}</b><div class="muted">${esc(cur.dropoff_address || "")}</div></div><span class="muted">${n}/${total}${distText ? ` · ${distText}` : ""}</span></div>
+      <p class="cur-hint">${run.arrived ? "Do‘konga yetib keldingiz. Yetkazildi ni bosing — keyingi do‘kon ochiladi." : "Do‘konga yetib borgach «Yetkazildi» ni bosing, shundan keyin keyingi do‘kon ko‘rsatiladi."}</p>
+      <div class="result-row">
+        <button class="btn ok ${run.arrived ? "pulse" : ""}" id="btn-delivered" type="button" data-done="${cur.id}">Yetkazildi</button>
+        <button class="btn warn" type="button" data-return="${cur.id}">Qaytarildi</button>
+      </div>`;
+    return;
+  }
+  overlay.classList.remove("arrived");
+  const delivered = total - pending.length;
+  overlay.innerHTML = `<p id="start-hint">${
+    pending.length
+      ? `Reysda ${pending.length} ta do‘kon${delivered ? ` (${delivered} ta yetkazildi)` : ""}. Boshlash — 1-do‘konga telefon joylashuvidan yo‘l ochadi.`
+      : "Bu reysdagi hamma do‘konlar yetkazildi."
+  }</p>`;
+}
+
+async function goToStop(o) {
+  if (!o) return;
+  run.active = true;
+  run.currentId = o.id;
+  run.arrived = false;
+  saveRun();
+  if (navigator.onLine && !(driver?.status === "on_route" || route.started)) {
+    api("/driver/start", { method: "POST", body: startFilterBody() })
+      .then((data) => applyRoute(data))
+      .catch(() => {});
+  }
+  drawMap();
+  renderList();
+  syncStartUi();
+  navigateTo(o);
+}
+
+async function afterStopDone(id) {
+  if (Number(run.currentId) === Number(id)) run.currentId = null;
+  run.arrived = false;
+  saveRun();
+  await pullRoute();
+  if (!run.active) return;
+  const next = currentStop();
+  if (next) {
+    run.currentId = next.id;
+    saveRun();
+    syncStartUi();
+    drawMap();
+    navigateTo(next);
+  } else {
+    run.active = false;
+    saveRun();
+    syncStartUi();
+    setSync("Reys yakunlandi", false);
+  }
+}
+
+const PROOF_REASONS = {
+  fridge_yes: "Muzlatgich bor",
+  foreign_goods: "Begona mahsulot bor",
+  fridge_no: "Muzlatgich yo‘q",
+};
+let proof = { id: null, result: "", reason: "", blob: null, url: "" };
+
+function proofStep(step) {
+  $("proof-reasons")?.classList.toggle("hidden", step !== "reason");
+  $("proof-shoot")?.classList.toggle("hidden", step !== "shoot");
+  $("proof-preview")?.classList.toggle("hidden", step !== "preview");
+}
+
+function proofErr(text) {
+  const el = $("proof-err");
+  if (el) el.textContent = text || "";
+}
+
+function openProof(id, result) {
+  if (!navigator.onLine) {
+    setSync("Offline: internet chiqqach belgilang", true);
+    return;
+  }
+  const o = allOrders().find((x) => Number(x.id) === Number(id));
+  if (proof.url) URL.revokeObjectURL(proof.url);
+  proof = { id: Number(id), result, reason: "", blob: null, url: "" };
+  $("proof-title").textContent = result === "delivered" ? "Yetkazildi" : "Qaytarildi";
+  $("proof-sheet").classList.toggle("returned", result === "returned");
+  $("proof-sub").textContent = o ? `${o.client_name || o.code || "Do‘kon"}${o.dropoff_address ? " · " + o.dropoff_address : ""}` : "";
+  $("proof-tag").textContent = result === "returned" ? "Qaytarildi" : "";
+  proofErr("");
+  proofStep(result === "delivered" ? "reason" : "shoot");
+  $("proof-sheet").classList.remove("hidden");
+}
+
+function closeProof() {
+  $("proof-sheet")?.classList.add("hidden");
+  if (proof.url) URL.revokeObjectURL(proof.url);
+  proof = { id: null, result: "", reason: "", blob: null, url: "" };
+}
+
+function takeProofPhoto() {
+  const input = $("proof-file");
+  if (!input) return;
+  input.value = "";
+  input.click();
+}
+
+function compressImage(file, maxSide = 1600, quality = 0.78) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Rasm o‘qilmadi"))), "image/jpeg", quality);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Rasm o‘qilmadi"));
+    };
+    img.src = url;
+  });
+}
+
+async function onProofFile() {
+  const file = $("proof-file")?.files?.[0];
+  if (!file || !proof.id) return;
+  proofErr("");
+  try {
+    const blob = await compressImage(file).catch(() => file);
+    if (proof.url) URL.revokeObjectURL(proof.url);
+    proof.blob = blob;
+    proof.url = URL.createObjectURL(blob);
+    $("proof-img").src = proof.url;
+    $("proof-tag").textContent = proof.result === "delivered" ? PROOF_REASONS[proof.reason] || "" : "Qaytarildi";
+    proofStep("preview");
+  } catch (err) {
+    proofErr(err.message || "Rasm o‘qilmadi");
+  }
+}
+
+async function sendProof() {
+  if (!proof.id || !proof.blob) return;
+  const btn = $("proof-send");
+  if (btn) btn.disabled = true;
+  proofErr("");
+  try {
+    const form = new FormData();
+    form.append("result", proof.result);
+    form.append("reason", proof.result === "delivered" ? proof.reason : "");
+    form.append("photo", proof.blob, `proof_${proof.id}.jpg`);
+    const id = proof.id;
+    const label = proof.result === "delivered" ? "Yetkazildi" : "Qaytarildi";
+    await api(`/driver/orders/${id}/proof`, { method: "POST", body: form });
+    closeProof();
+    setSync(`${label} ✓`, false);
+    await afterStopDone(id);
+  } catch (err) {
+    proofErr(err.message || "Yuborilmadi");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function renderList() {
+  const box = $("list");
+  const rows = orderedStops();
+  if (!rows.length) {
+    box.innerHTML = `<div class="empty">${navigator.onLine ? "Bu sana/reysda zayavka yo‘q. Sanani yoki reysni almashtiring." : "Keshda marshrut yo‘q. Internet chiqishi bilan yangilang."}</div>`;
+    return;
+  }
+  const cur = run.active ? currentStop() : null;
+  box.innerHTML = rows
+    .map((o, i) => {
+      const gps = gpsOk(o.dropoff_lat, o.dropoff_lng);
+      const isCur = cur && cur.id === o.id;
+      return `<article class="card ${isCur ? "current" : ""}" data-id="${o.id}">
+        <div class="top">
+          <span class="stop">${i + 1}</span>
+          <div style="flex:1">
+            <b>${esc(o.code || "")}</b>
+            <div>${esc(o.client_name || "Mijoz")}</div>
+          </div>
+          ${isCur ? `<span class="pill live">Hozirgi</span>` : ""}
+        </div>
+        <div class="muted">${esc(o.dropoff_address || "")}</div>
+        <div class="muted">${[o.route_code, o.delivery_date, o.window_start && o.window_end ? `${o.window_start}–${o.window_end}` : ""].filter(Boolean).map(esc).join(" · ")}</div>
+        ${gps ? "" : `<div class="muted">Lokatsiya yo‘q</div>`}
+        <div class="actions">
+          <button class="btn primary" data-nav="${o.id}" type="button" ${gps ? "" : "disabled"}>Borish</button>
+          <button class="btn ok" data-done="${o.id}" type="button">Yetkazildi</button>
+          <button class="btn warn" data-return="${o.id}" type="button">Qaytarildi</button>
+        </div>
+      </article>`;
+    })
+    .join("");
+}
+
+function applyRoute(data) {
+  const keepReys = reysFilter;
+  const keepDate = dateFilter;
+  driver = data.driver || driver;
+  route = {
+    orders: data.orders || [],
+    geometry: data.geometry || [],
+    warehouse: data.warehouse || null,
+    started: Boolean(data.started || driver?.status === "on_route"),
+    downloaded_at: data.downloaded_at || new Date().toISOString(),
+  };
+  reysFilter = keepReys;
+  dateFilter = keepDate;
+  $("drv-name").textContent = driver?.name || "Haydovchi";
+  $("drv-plate").textContent = driver?.vehicle_plate || "";
+  saveSession();
+  fillReysFilter();
+  drawMap();
+  renderList();
+  syncStartUi();
+  const when = route.downloaded_at ? new Date(route.downloaded_at) : null;
+  const label = when && !Number.isNaN(when.getTime()) ? `Yuklandi ${when.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}` : "Kesh";
+  setSync(label, !navigator.onLine);
+}
+
+async function startRun() {
+  if (starting) return;
+  const first = currentStop();
+  if (!first) {
+    setSync("Tanlangan reysda do‘kon yo‘q", true);
+    return;
+  }
+  starting = true;
+  const btn = $("btn-start");
+  if (btn) btn.disabled = true;
+  try {
+    if (navigator.onLine && !run.active) {
+      try {
+        const data = await api("/driver/start", {
+          method: "POST",
+          body: startFilterBody(),
+        });
+        applyRoute(data);
+      } catch (err) {
+        setSync(err.message || "Serverga yozilmadi", true);
+      }
+    }
+    const target = currentStop() || first;
+    run.active = true;
+    run.currentId = target.id;
+    run.arrived = false;
+    saveRun();
+    drawMap();
+    renderList();
+    navigateTo(target);
+  } finally {
+    starting = false;
+    syncStartUi();
+  }
+}
+
+async function flushGps() {
+  const points = await gpsDump();
+  if (!token || !navigator.onLine) {
+    if (points.length) setSync(`GPS kesh: ${points.length}`, true);
+    return 0;
+  }
+  try {
+    await api("/driver/location", { method: "POST", body: { points } });
+    if (points.length) await gpsClear();
+    return points.length;
+  } catch {
+    if (points.length) setSync(`GPS kesh: ${points.length}`, true);
+    return 0;
+  }
+}
+
+const BEAT_MS = 60000;
+let beatTimer = null;
+let lastQueuedAt = 0;
+
+function queuePoint(point) {
+  lastQueuedAt = Date.now();
+  return gpsAdd(point).catch(() => {});
+}
+
+async function heartbeat() {
+  if (!token) return;
+  if (lastGps && Date.now() - lastQueuedAt >= BEAT_MS - 5000) {
+    await queuePoint({
+      lat: lastGps.lat,
+      lng: lastGps.lng,
+      heading: lastGps.heading || 0,
+      accuracy: lastGps.accuracy || 0,
+      speed: lastGps.speed || 0,
+      recorded_at: new Date().toISOString(),
+      offline: !navigator.onLine,
+    });
+  }
+  await flushGps();
+}
+
+function startHeartbeat() {
+  if (beatTimer) return;
+  heartbeat().catch(() => {});
+  beatTimer = setInterval(() => heartbeat().catch(() => {}), BEAT_MS);
+}
+
+function stopHeartbeat() {
+  if (beatTimer) clearInterval(beatTimer);
+  beatTimer = null;
+}
+
+function nativeTracking(on) {
+  try {
+    if (!window.NexusNative) return;
+    if (on && typeof window.NexusNative.startTracking === "function") window.NexusNative.startTracking(token);
+    if (!on && typeof window.NexusNative.stopTracking === "function") window.NexusNative.stopTracking();
+  } catch {
+    /* eski APK */
+  }
+}
+
+async function pullRoute() {
+  if (!token) return;
+  if (!navigator.onLine) {
+    const cached = await kvGet("route");
+    if (cached) applyRoute(cached);
+    setSync("Offline kesh", true);
+    return;
+  }
+  const points = await gpsDump();
+  const data = await api("/driver/sync", { method: "POST", body: { points } });
+  await gpsClear();
+  applyRoute(data);
+}
+
+function onPos(pos) {
+  const point = {
+    lat: pos.coords.latitude,
+    lng: pos.coords.longitude,
+    heading: pos.coords.heading || 0,
+    accuracy: pos.coords.accuracy || 0,
+    speed: pos.coords.speed || 0,
+    recorded_at: new Date().toISOString(),
+    offline: !navigator.onLine,
+  };
+  const now = Date.now();
+  if (now - lastGpsAt < 8000) return;
+  lastGpsAt = now;
+  const firstFix = !lastGps;
+  lastGps = { lat: point.lat, lng: point.lng, heading: point.heading, accuracy: point.accuracy, speed: point.speed };
+  setGps(`GPS ±${Math.round(point.accuracy)}m`, true);
+  if (map) {
+    const latlng = [point.lat, point.lng];
+    if (!meMarker) {
+      meMarker = L.circleMarker(latlng, { radius: 8, color: "#0f766e", fillColor: "#5eead4", fillOpacity: 1 }).addTo(map);
+    } else meMarker.setLatLng(latlng);
+  }
+  if (run.active) {
+    const cur = currentStop();
+    if (cur && gpsOk(cur.dropoff_lat, cur.dropoff_lng)) {
+      const d = distanceM({ lat: point.lat, lng: point.lng }, { lat: Number(cur.dropoff_lat), lng: Number(cur.dropoff_lng) });
+      const near = d <= Math.max(120, Math.min(300, point.accuracy * 2 || 0));
+      if (near && !run.arrived && navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      run.arrived = near;
+    }
+    syncStartUi();
+  }
+  // Serverga daqiqada bir marta; birinchi nuqta darhol
+  if (firstFix || now - lastQueuedAt >= BEAT_MS) {
+    queuePoint(point).then(() => {
+      if (navigator.onLine) return flushGps();
+      return gpsDump().then((q) => setSync(`GPS kesh: ${q.length}`, true));
+    });
+  }
+}
+
+function startGps() {
+  if (!navigator.geolocation || watchId != null) return;
+  watchId = navigator.geolocation.watchPosition(onPos, () => setGps("GPS yo‘q", false), {
+    enableHighAccuracy: true,
+    maximumAge: 5000,
+    timeout: 20000,
+  });
+}
+
+async function enterApp(payload) {
+  token = payload.token;
+  driver = payload.driver;
+  localStorage.setItem(TOKEN_KEY, token);
+  saveSession();
+  show("view-app");
+  drawMap();
+  startGps();
+  startHeartbeat();
+  nativeTracking(true);
+  try {
+    await pullRoute();
+  } catch (err) {
+    const cached = await kvGet("route");
+    if (cached) applyRoute(cached);
+    else setSync(err.message || "Yuklanmadi", true);
+  }
+}
+
+async function login(ev) {
+  ev.preventDefault();
+  $("login-err").textContent = "";
+  try {
+    const data = await api("/auth/driver-login", {
+      method: "POST",
+      body: { username: $("login-user").value.trim(), password: $("login-pass").value },
+    });
+    await enterApp(data);
+  } catch (err) {
+    $("login-err").textContent = err.message || "Kirish xato";
+  }
+}
+
+function stopScan() {
+  if (scanStream) {
+    scanStream.getTracks().forEach((t) => t.stop());
+    scanStream = null;
+  }
+  const reader = $("reader");
+  if (reader) reader.innerHTML = "";
+}
+
+function qrTokenFromRaw(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  try {
+    const data = JSON.parse(text);
+    if (data && typeof data === "object") {
+      return String(data.token || data.qr_token || data.t || text);
+    }
+  } catch {
+    /* raw token */
+  }
+  return text;
+}
+
+async function loginQr(raw) {
+  const payload = String(raw || "").trim();
+  if (!payload) return;
+  const now = Date.now();
+  if (qrBusy || (payload === lastQrText && now - lastQrAt < 2500)) return;
+  lastQrText = payload;
+  lastQrAt = now;
+  qrBusy = true;
+  stopScan();
+  show("view-login");
+  $("login-err").textContent = "";
+  try {
+    const data = await api("/auth/driver-qr", {
+      method: "POST",
+      body: { token: payload },
+    });
+    await enterApp(data);
+  } catch (err) {
+    const extracted = qrTokenFromRaw(payload);
+    if (extracted && extracted !== payload) {
+      try {
+        const data = await api("/auth/driver-qr", { method: "POST", body: { token: extracted } });
+        await enterApp(data);
+        return;
+      } catch (err2) {
+        $("login-err").textContent = err2.message || "QR yaroqsiz";
+        return;
+      }
+    }
+    $("login-err").textContent = err.message || "QR yaroqsiz";
+  } finally {
+    qrBusy = false;
+  }
+}
+
+async function startScan() {
+  $("login-err").textContent = "";
+  $("scan-err").textContent = "";
+  if (nativeCall("scanQr")) return;
+  show("view-scan");
+  const box = $("reader");
+  box.innerHTML = "";
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+    const video = document.createElement("video");
+    video.setAttribute("playsinline", "true");
+    video.autoplay = true;
+    video.srcObject = scanStream;
+    box.appendChild(video);
+    await video.play();
+    if (window.BarcodeDetector) {
+      const det = new window.BarcodeDetector({ formats: ["qr_code"] });
+      const loop = async () => {
+        if (!scanStream) return;
+        try {
+          const codes = await det.detect(video);
+          if (codes && codes[0]?.rawValue) {
+            await loginQr(codes[0].rawValue);
+            return;
+          }
+        } catch {
+          /* keep scanning */
+        }
+        requestAnimationFrame(loop);
+      };
+      loop();
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    stopScan();
+    const qr = new window.Html5Qrcode("reader");
+    await qr.start(
+      { facingMode: "environment" },
+      { fps: 8, qrbox: 220 },
+      (text) => {
+        qr.stop().catch(() => {});
+        loginQr(text);
+      }
+    );
+  } catch (err) {
+    $("scan-err").textContent = nativeApp()
+      ? "Kamera ochilmadi. Ilovaga kamera ruxsatini bering."
+      : "Kamerani ilova orqali ochib bo‘lmadi. Login/parol bilan kiring.";
+  }
+}
+
+window.nexusQrResult = (raw) => {
+  if (!raw) return;
+  loginQr(String(raw));
+};
+
+function logout() {
+  nativeTracking(false);
+  stopHeartbeat();
+  token = "";
+  driver = null;
+  run = { active: false, currentId: null, arrived: false };
+  localStorage.removeItem(RUN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+  if (watchId != null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  show("view-login");
+}
+
+function bind() {
+  $("login-form").addEventListener("submit", login);
+  $("btn-qr").addEventListener("click", startScan);
+  $("scan-cancel").addEventListener("click", () => {
+    stopScan();
+    show("view-login");
+  });
+  $("btn-out").addEventListener("click", logout);
+  $("btn-sync").addEventListener("click", () => pullRoute().catch((e) => setSync(e.message, true)));
+  $("btn-start")?.addEventListener("click", startRun);
+  const onPick = () => {
+    const val = $("date-pick")?.value;
+    if (val && val !== dateFilter) setDateFilter(val);
+  };
+  $("date-pick")?.addEventListener("change", onPick);
+  $("date-pick")?.addEventListener("input", onPick);
+  $("date-pick")?.addEventListener("blur", onPick);
+  $("date-pick")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openDatePicker();
+  });
+  $("date-prev")?.addEventListener("click", () => setDateFilter(shiftDay(dateFilter, -1)));
+  $("date-next")?.addEventListener("click", () => setDateFilter(shiftDay(dateFilter, 1)));
+  $("reys-chips")?.addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-reys]");
+    if (!chip) return;
+    onReysChange(chip.dataset.reys || "");
+  });
+  document.querySelectorAll("[data-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("active", b === btn));
+      $("map").classList.toggle("hidden", tab !== "map");
+      $("list").classList.toggle("hidden", tab !== "list");
+      if (tab === "map") setTimeout(() => map && map.invalidateSize(), 40);
+    });
+  });
+  $("list").addEventListener("click", async (e) => {
+    const nav = e.target.closest("[data-nav]");
+    if (nav) {
+      const o = allOrders().find((x) => Number(x.id) === Number(nav.dataset.nav));
+      if (o) goToStop(o);
+      return;
+    }
+    const done = e.target.closest("[data-done]");
+    if (done) return openProof(done.dataset.done, "delivered");
+    const back = e.target.closest("[data-return]");
+    if (back) openProof(back.dataset.return, "returned");
+  });
+  $("start-overlay")?.addEventListener("click", (e) => {
+    const done = e.target.closest("[data-done]");
+    if (done) return openProof(done.dataset.done, "delivered");
+    const back = e.target.closest("[data-return]");
+    if (back) openProof(back.dataset.return, "returned");
+  });
+  $("proof-close")?.addEventListener("click", closeProof);
+  $("proof-sheet")?.addEventListener("click", (e) => {
+    if (e.target === $("proof-sheet")) closeProof();
+  });
+  $("proof-reasons")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-reason]");
+    if (!btn) return;
+    proof.reason = btn.dataset.reason;
+    takeProofPhoto();
+  });
+  $("proof-camera")?.addEventListener("click", takeProofPhoto);
+  $("proof-retake")?.addEventListener("click", takeProofPhoto);
+  $("proof-send")?.addEventListener("click", sendProof);
+  $("proof-file")?.addEventListener("change", onProofFile);
+  window.addEventListener("online", () => {
+    setNet();
+    flushGps().then(() => pullRoute()).catch(() => {});
+  });
+  window.addEventListener("offline", setNet);
+  setNet();
+}
+
+async function boot() {
+  bind();
+  try {
+    if ("serviceWorker" in navigator) {
+      if (nativeApp()) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      } else {
+        navigator.serviceWorker.register("/driver/sw.js", { scope: "/driver/" }).catch(() => {});
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  const saved = localStorage.getItem(TOKEN_KEY) || (await kvGet("token"));
+  const cachedDriver = await kvGet("driver");
+  const cachedRoute = await kvGet("route");
+  if (saved) {
+    token = saved;
+    driver = cachedDriver;
+    if (cachedRoute) route = cachedRoute;
+    show("view-app");
+    if (driver) {
+      $("drv-name").textContent = driver.name || "Haydovchi";
+      $("drv-plate").textContent = driver.vehicle_plate || "";
+    }
+    fillReysFilter();
+    drawMap();
+    renderList();
+    syncStartUi();
+    startGps();
+    startHeartbeat();
+    nativeTracking(true);
+    try {
+      await api("/driver/me");
+      await pullRoute();
+    } catch {
+      if (cachedRoute) {
+        applyRoute(cachedRoute);
+        setSync("Offline kesh", true);
+      } else {
+        logout();
+      }
+    }
+  } else {
+    show("view-login");
+  }
+}
+
+boot();
