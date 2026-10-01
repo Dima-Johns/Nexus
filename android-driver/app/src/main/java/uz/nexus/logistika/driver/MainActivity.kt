@@ -25,6 +25,7 @@ import android.webkit.WebViewClient
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.content.FileProvider
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -153,6 +154,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         askPermissions(scanAfter = false)
+        dropStaleLanUrls()
         connect()
     }
 
@@ -214,6 +216,9 @@ class MainActivity : AppCompatActivity() {
                 if (url != null) {
                     prefs().edit().putString("manual_url", url).putString("last_ok_url", url).apply()
                     connect()
+                } else if (raw.isBlank()) {
+                    prefs().edit().remove("manual_url").remove("last_ok_url").apply()
+                    connect()
                 }
             }
         }
@@ -248,12 +253,34 @@ class MainActivity : AppCompatActivity() {
         return "${u.scheme}://$host$port/driver/"
     }
 
+    private fun isLanUrl(url: String): Boolean {
+        val host = Uri.parse(url).host ?: return false
+        return host == "localhost" || host.all { it.isDigit() || it == '.' }
+    }
+
+    // Eski versiyada saqlangan kompyuter (Wi‑Fi) manzillari internetdagi serverdan ustun bo‘lib qolmasin
+    private fun dropStaleLanUrls() {
+        val p = prefs()
+        val version = try {
+            PackageInfoCompat.getLongVersionCode(packageManager.getPackageInfo(packageName, 0))
+        } catch (_: Exception) {
+            0L
+        }
+        if (p.getLong("cfg_version", 0L) >= version) return
+        val e = p.edit()
+        listOf("manual_url", "last_ok_url").forEach { key ->
+            if (isLanUrl(p.getString(key, "") ?: "")) e.remove(key)
+        }
+        e.putLong("cfg_version", version).apply()
+    }
+
+    // Tartib — ustuvorlik: qo‘lda kiritilgan, standart (Railway), oxirgi ishlagan, zaxira
     private fun serverUrls(): List<String> {
         val list = mutableListOf<String>()
         prefs().getString("manual_url", null)?.takeIf { it.isNotBlank() }?.let { list.add(it) }
-        prefs().getString("last_ok_url", null)?.takeIf { it.isNotBlank() && it !in list }?.let { list.add(it) }
         val base = getString(R.string.default_url)
         if (base !in list) list.add(base)
+        prefs().getString("last_ok_url", null)?.takeIf { it.isNotBlank() && it !in list }?.let { list.add(it) }
         resources.getStringArray(R.array.fallback_urls).forEach { if (it.isNotBlank() && it !in list) list.add(it) }
         return list
     }
@@ -261,8 +288,8 @@ class MainActivity : AppCompatActivity() {
     private fun probe(url: String): Boolean {
         return try {
             val c = URL(url).openConnection() as HttpURLConnection
-            c.connectTimeout = 2500
-            c.readTimeout = 2500
+            c.connectTimeout = if (isLanUrl(url)) 2500 else 8000
+            c.readTimeout = if (isLanUrl(url)) 2500 else 8000
             c.requestMethod = "GET"
             c.instanceFollowRedirects = true
             val code = c.responseCode
@@ -340,15 +367,25 @@ class MainActivity : AppCompatActivity() {
         Thread {
             var found: String? = null
             try {
-                val tasks = urls.map { url ->
-                    Callable {
-                        if (probe(url)) url else throw IllegalStateException("no")
+                // Hammasi parallel tekshiriladi, lekin javob berganlardan ro‘yxatda birinchisi tanlanadi
+                val futures = urls.map { url -> probes.submit(Callable { probe(url) }) }
+                val deadline = System.currentTimeMillis() + 10_000
+                for ((i, f) in futures.withIndex()) {
+                    val left = (deadline - System.currentTimeMillis()).coerceAtLeast(1)
+                    val ok = try {
+                        f.get(left, TimeUnit.MILLISECONDS)
+                    } catch (_: Exception) {
+                        false
+                    }
+                    if (ok) {
+                        found = urls[i]
+                        break
                     }
                 }
-                found = probes.invokeAny(tasks, 4, TimeUnit.SECONDS)
+                futures.forEach { it.cancel(true) }
             } catch (_: Exception) {
             }
-            if (found == null) {
+            if (found == null && urls.any { isLanUrl(it) }) {
                 runOnUiThread { showSplash("Server Wi‑Fi tarmoqdan qidirilmoqda…") }
                 found = scanLan()
                 found?.let { prefs().edit().remove("manual_url").putString("last_ok_url", it).apply() }
@@ -561,13 +598,13 @@ class MainActivity : AppCompatActivity() {
             <html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
             <body style="background:#0c101c;color:#e8edf7;font-family:sans-serif;padding:24px;margin:0">
             <h2 style="margin-top:8px">Server topilmadi</h2>
-            <p>Telefon kompyuter bilan <b>bir xil Wi‑Fi</b> da bo‘lsin. Kompyuterda dastur 8000-portda ishlasin.</p>
-            <p style="color:#8b93a7;font-size:13px">Tekshirildi:<br>$urls<br>va telefon ulangan butun Wi‑Fi tarmoq.</p>
+            <p>Telefonda <b>internet</b> (mobil internet yoki Wi‑Fi) yoqilganini tekshiring.</p>
+            <p style="color:#8b93a7;font-size:13px">Tekshirildi:<br>$urls</p>
             <p style="color:#8b93a7">5 soniyada qayta uriniladi…</p>
             <p><button onclick="NexusNative.retry()" style="width:100%;padding:14px 18px;border:0;border-radius:12px;background:#1d4ed8;color:#fff;font-size:16px">Qayta urinish</button></p>
             <details style="margin-top:18px;color:#8b93a7"><summary>Server manzilini qo‘lda kiritish</summary>
-            <p style="font-size:13px">Kompyuter IPv4 manzili (<b>ipconfig</b>, masalan 10.64.46.62) yoki internetdagi server manzili (masalan nexus.up.railway.app).</p>
-            <input id="srv" value="$manualShort" placeholder="10.64.46.62 yoki nexus.up.railway.app" inputmode="url" autocapitalize="none" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #334;background:#141a2a;color:#e8edf7;font-size:16px">
+            <p style="font-size:13px">Odatda kerak emas. Server manzili (masalan nexuslogistic.up.railway.app) yoki sinov uchun kompyuter IPv4 manzili (masalan 10.64.46.62). Bo‘sh qoldirib saqlasangiz — standart server.</p>
+            <input id="srv" value="$manualShort" placeholder="nexuslogistic.up.railway.app" inputmode="url" autocapitalize="none" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #334;background:#141a2a;color:#e8edf7;font-size:16px">
             <button onclick="NexusNative.setServer(document.getElementById('srv').value)" style="width:100%;margin-top:8px;padding:12px;border:0;border-radius:10px;background:#0f766e;color:#fff;font-size:15px">Saqlash va ulanish</button>
             </details>
             </body></html>

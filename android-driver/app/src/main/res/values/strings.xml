@@ -1,13 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nexus Haydovchi</string>
-    <string name="default_url">http://10.152.185.62:8000/driver/</string>
+    <string name="default_url">https://nexuslogistic.up.railway.app/driver/</string>
     <string-array name="fallback_urls">
-        <item>http://10.64.46.62:8000/driver/</item>
-        <item>http://172.20.10.4:8000/driver/</item>
-        <item>http://192.168.1.192:8000/driver/</item>
-        <item>http://192.168.137.1:8000/driver/</item>
-        <item>http://192.168.43.1:8000/driver/</item>
     </string-array>
-    <string name="status_fail">Serverga ulanmadi. Telefon va kompyuter bir Wi‑Fi da bo‘lsin, server 8000-portda ishlasin.</string>
+    <string name="status_fail">Serverga ulanmadi. Internet aloqasini tekshiring.</string>
 </resources>
