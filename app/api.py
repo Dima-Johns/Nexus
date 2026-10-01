@@ -25,6 +25,7 @@ from .database import get_db
 from .dispatch import (
     apply_warehouse,
     ensure_drivers_from_orders,
+    live_origin,
     local_now,
     local_today,
     local_tomorrow,
@@ -34,6 +35,7 @@ from .dispatch import (
     org_warehouses,
     pick_warehouse,
     plan_orders,
+    replan_orders,
     resequence_org,
     resolve_agent,
     resolve_order_agent,
@@ -95,6 +97,7 @@ from .schemas import (
     DriverQrIn,
     GpsBatchIn,
     DriverOrderStatusIn,
+    DriverReplanIn,
     DriverStartIn,
     LoginIn,
     MeUpdate,
@@ -552,6 +555,30 @@ def driver_start(
         if row.status in {"new", "assigned"}:
             row.status = "in_transit"
     out = _driver_route_payload(db, driver, rows)
+    db.commit()
+    return {"ok": True, **out}
+
+
+@router.post("/driver/replan")
+def driver_replan(
+    payload: DriverReplanIn,
+    db: Session = Depends(get_db),
+    driver: Driver = Depends(get_current_driver),
+):
+    """Yo‘lda: tanlangan zayavka birinchi, qolganlari telefon GPS'idan yaqinidan uzog‘iga."""
+    all_rows = driver_active_orders(db, driver)
+    rows = _filter_reys(all_rows, payload.route_code, payload.delivery_date)
+    if not rows:
+        return {"ok": True, **_driver_route_payload(db, driver)}
+    first = next((o for o in rows if o.id == payload.first_id), None) if payload.first_id else None
+    phone = (payload.lat, payload.lng) if payload.lat is not None and payload.lng is not None else None
+    origin = phone or live_origin(driver)
+    if not origin:
+        wh = pick_warehouse(org_warehouses(db, driver.org_id), rows)
+        origin = (float(wh.lat), float(wh.lng)) if wh else None
+    replan_orders(rows, origin, first)
+    db.flush()
+    out = _driver_route_payload(db, driver, sorted(rows, key=lambda o: (o.stop_no or 0, o.id)))
     db.commit()
     return {"ok": True, **out}
 

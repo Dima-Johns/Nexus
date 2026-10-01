@@ -18,7 +18,8 @@ let reysFilter = localStorage.getItem("nx_drv_reys") || "";
 let dateFilter = localStorage.getItem("nx_drv_date") || "";
 let qrBusy = false;
 const RUN_KEY = "nx_drv_run";
-let run = { active: false, currentId: null, arrived: false };
+// going=false — zayavka tugadi, keyingisi tavsiya qilingan, haydovchi hali «Borish»ni bosmagan
+let run = { active: false, currentId: null, arrived: false, going: false };
 try {
   const savedRun = JSON.parse(localStorage.getItem(RUN_KEY) || "null");
   if (savedRun && typeof savedRun === "object") run = { ...run, ...savedRun, arrived: false };
@@ -27,7 +28,7 @@ try {
 }
 
 function saveRun() {
-  localStorage.setItem(RUN_KEY, JSON.stringify({ active: run.active, currentId: run.currentId }));
+  localStorage.setItem(RUN_KEY, JSON.stringify({ active: run.active, currentId: run.currentId, going: run.going }));
   localStorage.setItem("nx_drv_reys", reysFilter || "");
   localStorage.setItem("nx_drv_date", dateFilter || "");
 }
@@ -490,6 +491,7 @@ function setDateFilter(iso, resetReys = true) {
   if (resetReys) reysFilter = "";
   run.currentId = null;
   run.arrived = false;
+  run.going = false;
   saveRun();
   fillReysFilter();
   drawMap();
@@ -514,6 +516,7 @@ function onReysChange(key) {
   reysFilter = key || "";
   run.currentId = null;
   run.arrived = false;
+  run.going = false;
   saveRun();
   fillReysFilter();
   drawMap();
@@ -538,71 +541,189 @@ function syncStartUi() {
   }
   if (btn) {
     btn.disabled = !pending.length;
-    btn.textContent = run.active && cur ? "Navigator" : "Boshlash";
+    btn.textContent = run.active && cur ? (run.going ? "Navigator" : "Borish") : "Boshlash";
   }
   if (!overlay) return;
   overlay.classList.toggle("hidden", total === 0);
   if (!total) return;
   if (run.active && cur) {
     const n = stopIndex(cur);
-    const me = phonePoint();
-    const dist = me && gpsOk(cur.dropoff_lat, cur.dropoff_lng) ? distanceM(me, { lat: Number(cur.dropoff_lat), lng: Number(cur.dropoff_lng) }) : null;
-    const distText = dist == null ? "" : dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : `${Math.round(dist)} m`;
-    overlay.classList.toggle("arrived", !!run.arrived);
-    overlay.innerHTML = `
-      <div class="cur-head"><span class="stop">${n}</span><div style="flex:1"><b>${esc(cur.client_name || cur.code || "Do‘kon")}</b><div class="muted">${esc(cur.dropoff_address || "")}</div></div><span class="muted">${n}/${total}${distText ? ` · ${distText}` : ""}</span></div>
-      <p class="cur-hint">${run.arrived ? "Do‘konga yetib keldingiz. Yetkazildi ni bosing — keyingi do‘kon ochiladi." : "Do‘konga yetib borgach «Yetkazildi» ni bosing, shundan keyin keyingi do‘kon ko‘rsatiladi."}</p>
+    const distText = stopDistText(cur);
+    const next = nextAfter(cur);
+    const pickBtn = pending.length > 1 ? `<button class="btn ghost" type="button" data-pick-open>Boshqasini tanlash</button>` : "";
+    overlay.classList.toggle("arrived", !!(run.going && run.arrived));
+    overlay.classList.toggle("suggest", !run.going);
+    const head = `
+      <div class="cur-label">${run.going ? "Hozir shu zayavkaga boryapsiz" : "Keyingi zayavka"}</div>
+      <div class="cur-head"><span class="stop">${n}</span><div style="flex:1;min-width:0"><b>${esc(cur.client_name || cur.code || "Do‘kon")}</b><div class="muted">${esc(cur.dropoff_address || "")}</div></div><span class="muted cur-meta">${n}/${total}${distText ? `<br>${distText}` : ""}</span></div>`;
+    if (!run.going) {
+      overlay.innerHTML = `${head}
+        <p class="cur-hint">Reja telefon joylashuvidan yaqinidan uzog‘iga qayta tuzildi. Shu zayavkaga borasizmi?</p>
+        <div class="result-row">
+          <button class="btn primary" type="button" data-go-cur="${cur.id}">Borish</button>
+          ${pickBtn}
+        </div>`;
+      return;
+    }
+    overlay.innerHTML = `${head}
+      <p class="cur-hint">${run.arrived ? "Do‘konga yetib keldingiz. «Yetkazildi» ni bosing — keyingi zayavka ko‘rsatiladi." : "Do‘konga yetib borgach «Yetkazildi» ni bosing, shundan keyin keyingi zayavka ko‘rsatiladi."}</p>
       <div class="result-row">
         <button class="btn ok ${run.arrived ? "pulse" : ""}" id="btn-delivered" type="button" data-done="${cur.id}">Yetkazildi</button>
         <button class="btn warn" type="button" data-return="${cur.id}">Qaytarildi</button>
+      </div>
+      <div class="cur-next">
+        <span class="muted">${next ? `Keyingisi: <b>${stopIndex(next)}. ${esc(next.client_name || next.code || "Do‘kon")}</b>` : "Bu oxirgi zayavka"}</span>
+        ${pickBtn}
       </div>`;
     return;
   }
-  overlay.classList.remove("arrived");
-  const delivered = total - pending.length;
+  overlay.classList.remove("arrived", "suggest");
+  const first = pending[0];
   overlay.innerHTML = `<p id="start-hint">${
     pending.length
-      ? `Reysda ${pending.length} ta do‘kon${delivered ? ` (${delivered} ta yetkazildi)` : ""}. Boshlash — 1-do‘konga telefon joylashuvidan yo‘l ochadi.`
-      : "Bu reysdagi hamma do‘konlar yetkazildi."
+      ? `Reysda ${pending.length} ta zayavka. Reja skladdan tuzilgan — 1-zayavka: <b>${esc(first.client_name || first.code || "Do‘kon")}</b>. «Boshlash» ni bosing.`
+      : "Bu reysdagi hamma zayavkalar yetkazildi."
   }</p>`;
+}
+
+function stopDistText(o) {
+  const me = phonePoint();
+  if (!me || !gpsOk(o.dropoff_lat, o.dropoff_lng)) return "";
+  const d = distanceM(me, { lat: Number(o.dropoff_lat), lng: Number(o.dropoff_lng) });
+  return d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
+}
+
+function nextAfter(cur) {
+  return pendingStops().find((o) => !cur || o.id !== cur.id) || null;
+}
+
+// Oflayn holatda: tanlangan zayavka birinchi, qolganlari undan (yoki telefondan) eng yaqinidan boshlab
+function localReplan(firstId, me) {
+  const pending = pendingStops();
+  if (!pending.length) return;
+  const first = firstId != null ? pending.find((o) => Number(o.id) === Number(firstId)) : null;
+  let rest = pending.filter((o) => o !== first);
+  const ordered = first ? [first] : [];
+  let cur = first && gpsOk(first.dropoff_lat, first.dropoff_lng) ? { lat: Number(first.dropoff_lat), lng: Number(first.dropoff_lng) } : me;
+  const noGps = rest.filter((o) => !gpsOk(o.dropoff_lat, o.dropoff_lng));
+  rest = rest.filter((o) => gpsOk(o.dropoff_lat, o.dropoff_lng));
+  while (rest.length) {
+    let j = 0;
+    if (cur) {
+      let best = Infinity;
+      rest.forEach((o, i) => {
+        const d = distanceM(cur, { lat: Number(o.dropoff_lat), lng: Number(o.dropoff_lng) });
+        if (d < best) {
+          best = d;
+          j = i;
+        }
+      });
+    }
+    const [o] = rest.splice(j, 1);
+    ordered.push(o);
+    cur = { lat: Number(o.dropoff_lat), lng: Number(o.dropoff_lng) };
+  }
+  [...ordered, ...noGps].forEach((o, i) => {
+    o.stop_no = i + 1;
+  });
+  saveSession();
+}
+
+async function replan(firstId) {
+  const me = phonePoint();
+  localReplan(firstId, me);
+  drawMap();
+  renderList();
+  syncStartUi();
+  if (!navigator.onLine) return;
+  try {
+    const data = await api("/driver/replan", {
+      method: "POST",
+      body: { ...startFilterBody(), first_id: firstId ?? null, lat: me ? me.lat : null, lng: me ? me.lng : null },
+    });
+    applyRoute(data);
+  } catch (err) {
+    setSync(err.message || "Reja serverga yozilmadi", true);
+  }
 }
 
 async function goToStop(o) {
   if (!o) return;
+  closePick();
+  const wasFirst = pendingStops()[0]?.id === o.id;
   run.active = true;
   run.currentId = o.id;
   run.arrived = false;
+  run.going = true;
   saveRun();
   if (navigator.onLine && !(driver?.status === "on_route" || route.started)) {
-    api("/driver/start", { method: "POST", body: startFilterBody() })
-      .then((data) => applyRoute(data))
-      .catch(() => {});
+    try {
+      applyRoute(await api("/driver/start", { method: "POST", body: startFilterBody() }));
+    } catch {
+      /* oflayn — mahalliy reja bilan davom etamiz */
+    }
   }
   drawMap();
   renderList();
   syncStartUi();
   navigateTo(o);
+  if (!wasFirst) replan(o.id);
 }
 
-async function afterStopDone(id) {
+async function afterStopDone(id, result) {
   if (Number(run.currentId) === Number(id)) run.currentId = null;
   run.arrived = false;
+  run.going = false;
   saveRun();
-  await pullRoute();
-  if (!run.active) return;
-  const next = currentStop();
+  const done = allOrders().find((o) => Number(o.id) === Number(id));
+  if (done) done.status = result || "delivered";
+  if (!run.active) {
+    await pullRoute();
+    return;
+  }
+  if (pendingStops().length) await replan(null);
+  else await pullRoute();
+  const next = pendingStops()[0];
   if (next) {
     run.currentId = next.id;
+    run.going = false;
     saveRun();
-    syncStartUi();
+    if (navigator.vibrate) navigator.vibrate(120);
+    setSync(`Keyingi: ${next.client_name || next.code || "zayavka"}`, false);
     drawMap();
-    navigateTo(next);
+    renderList();
+    syncStartUi();
   } else {
     run.active = false;
     saveRun();
     syncStartUi();
     setSync("Reys yakunlandi", false);
   }
+}
+
+function openPick() {
+  const sheet = $("pick-sheet");
+  const box = $("pick-list");
+  if (!sheet || !box) return;
+  const cur = run.active ? currentStop() : null;
+  const suggested = run.going ? nextAfter(cur) : cur;
+  box.innerHTML = pendingStops()
+    .map((o) => {
+      const tag = run.going && cur && cur.id === o.id ? `<span class="pill live">Hozirgi</span>` : suggested && suggested.id === o.id ? `<span class="pill">Tavsiya</span>` : "";
+      const dist = stopDistText(o);
+      const gps = gpsOk(o.dropoff_lat, o.dropoff_lng);
+      return `<button type="button" class="pick-row" data-pick="${o.id}" ${gps ? "" : "disabled"}>
+        <span class="stop">${stopIndex(o)}</span>
+        <span class="pick-txt"><b>${esc(o.client_name || o.code || "Do‘kon")}</b><span class="muted">${esc(o.dropoff_address || (gps ? "" : "Lokatsiya yo‘q"))}</span></span>
+        <span class="pick-side">${tag}${dist ? `<span class="muted">${dist}</span>` : ""}</span>
+      </button>`;
+    })
+    .join("");
+  sheet.classList.remove("hidden");
+}
+
+function closePick() {
+  $("pick-sheet")?.classList.add("hidden");
 }
 
 const PROOF_REASONS = {
@@ -704,11 +825,12 @@ async function sendProof() {
     form.append("reason", proof.result === "delivered" ? proof.reason : "");
     form.append("photo", proof.blob, `proof_${proof.id}.jpg`);
     const id = proof.id;
-    const label = proof.result === "delivered" ? "Yetkazildi" : "Qaytarildi";
+    const result = proof.result;
+    const label = result === "delivered" ? "Yetkazildi" : "Qaytarildi";
     await api(`/driver/orders/${id}/proof`, { method: "POST", body: form });
     closeProof();
     setSync(`${label} ✓`, false);
-    await afterStopDone(id);
+    await afterStopDone(id, result);
   } catch (err) {
     proofErr(err.message || "Yuborilmadi");
   } finally {
@@ -735,7 +857,7 @@ function renderList() {
             <b>${esc(o.code || "")}</b>
             <div>${esc(o.client_name || "Mijoz")}</div>
           </div>
-          ${isCur ? `<span class="pill live">Hozirgi</span>` : ""}
+          ${isCur ? `<span class="pill live">${run.going ? "Hozirgi" : "Keyingi"}</span>` : ""}
         </div>
         <div class="muted">${esc(o.dropoff_address || "")}</div>
         <div class="muted">${[o.route_code, o.delivery_date, o.window_start && o.window_end ? `${o.window_start}–${o.window_end}` : ""].filter(Boolean).map(esc).join(" · ")}</div>
@@ -798,9 +920,10 @@ async function startRun() {
       }
     }
     const target = currentStop() || first;
+    if (!run.going) run.arrived = false;
     run.active = true;
     run.currentId = target.id;
-    run.arrived = false;
+    run.going = true;
     saveRun();
     drawMap();
     renderList();
@@ -910,7 +1033,7 @@ function onPos(pos) {
     } else meMarker.setLatLng(latlng);
   }
   if (run.active) {
-    const cur = currentStop();
+    const cur = run.going ? currentStop() : null;
     if (cur && gpsOk(cur.dropoff_lat, cur.dropoff_lng)) {
       const d = distanceM({ lat: point.lat, lng: point.lng }, { lat: Number(cur.dropoff_lat), lng: Number(cur.dropoff_lng) });
       const near = d <= Math.max(120, Math.min(300, point.accuracy * 2 || 0));
@@ -1095,7 +1218,7 @@ function logout() {
   stopHeartbeat();
   token = "";
   driver = null;
-  run = { active: false, currentId: null, arrived: false };
+  run = { active: false, currentId: null, arrived: false, going: false };
   localStorage.removeItem(RUN_KEY);
   localStorage.removeItem(TOKEN_KEY);
   if (watchId != null) {
@@ -1158,7 +1281,17 @@ function bind() {
     const done = e.target.closest("[data-done]");
     if (done) return openProof(done.dataset.done, "delivered");
     const back = e.target.closest("[data-return]");
-    if (back) openProof(back.dataset.return, "returned");
+    if (back) return openProof(back.dataset.return, "returned");
+    if (e.target.closest("[data-go-cur]")) return startRun();
+    if (e.target.closest("[data-pick-open]")) openPick();
+  });
+  $("pick-close")?.addEventListener("click", closePick);
+  $("pick-sheet")?.addEventListener("click", (e) => {
+    if (e.target === $("pick-sheet")) return closePick();
+    const row = e.target.closest("[data-pick]");
+    if (!row) return;
+    const o = allOrders().find((x) => Number(x.id) === Number(row.dataset.pick));
+    if (o) goToStop(o);
   });
   $("proof-close")?.addEventListener("click", closeProof);
   $("proof-sheet")?.addEventListener("click", (e) => {

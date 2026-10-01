@@ -413,6 +413,34 @@ input {
 .cur-head { display: flex; align-items: center; gap: 10px; }
 .cur-head b { font-size: 15px; }
 .card.current { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(122, 162, 255, 0.35); }
+.start-overlay.suggest { border-color: rgba(122, 162, 255, 0.6); box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.2); }
+.cur-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ok); margin-bottom: 6px;
+}
+.start-overlay.suggest .cur-label { color: var(--accent); }
+.cur-head .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cur-meta { text-align: right; flex: 0 0 auto; white-space: nowrap; }
+.cur-next {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--stroke-soft);
+}
+.cur-next .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn.ghost { background: transparent; border-color: rgba(122, 162, 255, 0.4); color: #c7d7ff; font-size: 13px; padding: 9px 12px; white-space: nowrap; }
+.result-row .btn.ghost { font-size: 14px; }
+.pick-card { max-height: calc(100vh - 24px); display: flex; flex-direction: column; }
+.pick-list { overflow: auto; display: grid; gap: 6px; padding-bottom: 4px; }
+.pick-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--stroke);
+  background: var(--glass-shine), rgba(255, 255, 255, 0.04); color: var(--ink); cursor: pointer;
+}
+.pick-row:active { border-color: rgba(122, 162, 255, 0.6); }
+.pick-row:disabled { opacity: 0.45; }
+.pick-row .stop { flex: 0 0 auto; }
+.pick-txt { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.pick-txt b, .pick-txt .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-side { flex: 0 0 auto; display: grid; justify-items: end; gap: 4px; }
 .pulse { animation: nx-pulse 1.2s ease-in-out infinite; }
 @keyframes nx-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(94, 234, 212, 0.55); }

@@ -208,6 +208,12 @@ class DriverStartIn(BaseModel):
     delivery_date: str = ""
 
 
+class DriverReplanIn(DriverStartIn):
+    lat: float | None = None
+    lng: float | None = None
+    first_id: int | None = None
+
+
 class OrderIn(BaseModel):
     client_id: int | None = None
     driver_id: int | None = None

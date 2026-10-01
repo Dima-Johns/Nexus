@@ -9,7 +9,7 @@
   <link rel="manifest" href="/static/driver-manifest.json" />
   <link rel="icon" href="/static/driver-icon.svg" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=12" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=13" />
 </head>
 <body>
   <section id="view-login" class="view login">
@@ -68,7 +68,7 @@
     </div>
     <div id="map"></div>
     <div class="start-overlay hidden" id="start-overlay">
-      <p id="start-hint">Boshlash — reysdagi 1-do‘konga telefon joylashuvidan yo‘l ochiladi.</p>
+      <p id="start-hint">Boshlash — reysdagi 1-zayavkaga yo‘l ochiladi.</p>
     </div>
     <div id="list" class="list hidden"></div>
     <div class="dock">
@@ -131,9 +131,19 @@
       <p class="err" id="proof-err"></p>
     </div>
   </div>
+  <div id="pick-sheet" class="sheet-overlay hidden">
+    <div class="sheet-card pick-card">
+      <div class="sheet-head">
+        <b>Qaysi zayavkaga borasiz?</b>
+        <button type="button" class="icon-x" id="pick-close" aria-label="Yopish">×</button>
+      </div>
+      <p class="muted sheet-sub">Tanlangan zayavka birinchi bo‘ladi, qolganlari undan yaqinidan uzog‘iga qayta tuziladi.</p>
+      <div id="pick-list" class="pick-list"></div>
+    </div>
+  </div>
   <input type="file" id="proof-file" accept="image/*" capture="environment" hidden />
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/driver-app.js?v=12"></script>
+  <script src="/static/js/driver-app.js?v=13"></script>
 </body>
 </html>

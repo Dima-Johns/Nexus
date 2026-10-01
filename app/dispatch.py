@@ -641,6 +641,37 @@ def sequence_driver_orders(orders: list[Order], origin: tuple[float, float] | No
         o.stop_no = i
 
 
+LIVE_GPS_MAX_AGE = timedelta(minutes=20)
+
+
+def live_origin(driver: Driver | None) -> tuple[float, float] | None:
+    """Yo‘ldagi haydovchining yangi telefon GPS nuqtasi (marshrut shu yerdan qayta tuziladi)."""
+    if not driver or driver.status != "on_route":
+        return None
+    at = getattr(driver, "gps_at", None)
+    if not at:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) - at > LIVE_GPS_MAX_AGE:
+        return None
+    point = (float(driver.lat or 0), float(driver.lng or 0))
+    return point if _gps_ok(*point) and not _is_placeholder_gps(*point) else None
+
+
+def replan_orders(orders: list[Order], origin: tuple[float, float] | None, first: Order | None = None) -> None:
+    """Qolgan zayavkalarni origin'dan yaqinidan uzog‘iga tartiblaydi; first berilsa u 1-o‘rinda."""
+    rest = [o for o in orders if not first or o.id != first.id]
+    if first:
+        first.stop_no = 1
+        if _gps_ok(first.dropoff_lat, first.dropoff_lng):
+            origin = (float(first.dropoff_lat), float(first.dropoff_lng))
+    sequence_driver_orders(rest, origin)
+    if first:
+        for o in rest:
+            o.stop_no += 1
+
+
 def sequence_drivers(db: Session, driver_ids, org_id: int | None = None) -> None:
     ids = [int(i) for i in driver_ids if i]
     if not ids:
@@ -656,8 +687,12 @@ def sequence_drivers(db: Session, driver_ids, org_id: int | None = None) -> None
     if not oid and by:
         oid = next(iter(by.values()))[0].org_id
     warehouses = org_warehouses(db, oid)
-    for group in by.values():
-        sequence_driver_orders(group, warehouse_origin(pick_warehouse(warehouses, group)))
+    drivers = {d.id: d for d in db.query(Driver).filter(Driver.id.in_(ids)).all()}
+    today = local_today()
+    for (driver_id, date, _code), group in by.items():
+        # Birinchi reja skladdan; haydovchi yo‘lga chiqqach bugungi reys telefon joylashuvidan qayta tuziladi
+        live = live_origin(drivers.get(driver_id)) if date in ("", today) else None
+        sequence_driver_orders(group, live or warehouse_origin(pick_warehouse(warehouses, group)))
 
 
 def resequence_org(db: Session, org_id: int | None) -> None:
