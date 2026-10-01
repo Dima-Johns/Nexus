@@ -168,11 +168,91 @@ async function api(path, opts = {}) {
 
 function setNet() {
   const on = navigator.onLine;
+  const dot = $("profile-dot");
+  if (dot) {
+    dot.classList.toggle("on", on);
+    dot.classList.toggle("off", !on);
+  }
+  const state = $("drv-state");
+  if (state) {
+    state.textContent = on ? "Online" : "Offline";
+    state.classList.toggle("live", on);
+    state.classList.toggle("off", !on);
+  }
   const pill = $("net-pill");
   if (!pill) return;
   pill.textContent = on ? "Online" : "Offline";
   pill.classList.toggle("live", on);
   pill.classList.toggle("off", !on);
+}
+
+function initials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "H";
+  return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
+}
+
+function renderProfile() {
+  const name = driver?.name || "Haydovchi";
+  $("drv-name").textContent = name;
+  $("drv-plate").textContent = driver?.vehicle_plate || "";
+  $("drv-initials").textContent = initials(name);
+  const rows = [
+    ["Telefon", driver?.phone],
+    ["Mashina", [driver?.vehicle_plate, driver?.vehicle_type].filter(Boolean).join(" · ")],
+    ["Agent", driver?.agent_name ? `${driver.agent_code ? driver.agent_code + " · " : ""}${driver.agent_name}` : ""],
+    ["Login", driver?.username],
+  ].filter(([, v]) => v);
+  $("profile-rows").innerHTML = rows.map(([k, v]) => `<div class="profile-row"><span>${k}</span><span>${esc(v)}</span></div>`).join("");
+  $("profile-rows").classList.toggle("hidden", !rows.length);
+}
+
+let outArmed = null;
+
+function openProfile() {
+  renderProfile();
+  setNet();
+  resetLogoutBtn();
+  $("profile-sheet")?.classList.remove("hidden");
+}
+
+function closeProfile() {
+  $("profile-sheet")?.classList.add("hidden");
+  resetLogoutBtn();
+}
+
+function resetLogoutBtn() {
+  clearTimeout(outArmed);
+  outArmed = null;
+  const btn = $("btn-out");
+  if (!btn) return;
+  btn.classList.remove("confirm");
+  btn.textContent = "Chiqish";
+}
+
+// Tasodifan chiqib ketmaslik uchun: birinchi bosish so‘raydi, ikkinchisi chiqaradi
+function onLogoutClick() {
+  const btn = $("btn-out");
+  if (outArmed) {
+    closeProfile();
+    logout();
+    return;
+  }
+  btn.classList.add("confirm");
+  btn.textContent = "Rostdan chiqasizmi? Yana bosing";
+  outArmed = setTimeout(resetLogoutBtn, 3500);
+}
+
+const INTRO_STARTED = Date.now();
+
+function hideIntro() {
+  const el = $("intro");
+  if (!el || el.classList.contains("out")) return;
+  const minMs = el.classList.contains("quick") ? 1300 : 2100;
+  setTimeout(() => {
+    el.classList.add("out");
+    setTimeout(() => el.remove(), 700);
+  }, Math.max(0, minMs - (Date.now() - INTRO_STARTED)));
 }
 
 function setGps(text, live) {
@@ -885,8 +965,7 @@ function applyRoute(data) {
   };
   reysFilter = keepReys;
   dateFilter = keepDate;
-  $("drv-name").textContent = driver?.name || "Haydovchi";
-  $("drv-plate").textContent = driver?.vehicle_plate || "";
+  renderProfile();
   saveSession();
   fillReysFilter();
   drawMap();
@@ -1066,6 +1145,7 @@ async function enterApp(payload) {
   localStorage.setItem(TOKEN_KEY, token);
   saveSession();
   show("view-app");
+  renderProfile();
   drawMap();
   startGps();
   startHeartbeat();
@@ -1235,7 +1315,12 @@ function bind() {
     stopScan();
     show("view-login");
   });
-  $("btn-out").addEventListener("click", logout);
+  $("btn-out").addEventListener("click", onLogoutClick);
+  $("btn-profile")?.addEventListener("click", openProfile);
+  $("profile-close")?.addEventListener("click", closeProfile);
+  $("profile-sheet")?.addEventListener("click", (e) => {
+    if (e.target === $("profile-sheet")) closeProfile();
+  });
   $("btn-sync").addEventListener("click", () => pullRoute().catch((e) => setSync(e.message, true)));
   $("btn-start")?.addEventListener("click", startRun);
   const onPick = () => {
@@ -1337,10 +1422,8 @@ async function boot() {
     driver = cachedDriver;
     if (cachedRoute) route = cachedRoute;
     show("view-app");
-    if (driver) {
-      $("drv-name").textContent = driver.name || "Haydovchi";
-      $("drv-plate").textContent = driver.vehicle_plate || "";
-    }
+    hideIntro();
+    renderProfile();
     fillReysFilter();
     drawMap();
     renderList();
@@ -1361,7 +1444,10 @@ async function boot() {
     }
   } else {
     show("view-login");
+    hideIntro();
   }
 }
 
+if (nativeApp()) $("intro")?.classList.add("quick");
+setTimeout(hideIntro, 4000);
 boot();

@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.widget.TextView
 import android.webkit.GeolocationPermissions
 import android.webkit.JavascriptInterface
@@ -85,7 +86,15 @@ class MainActivity : AppCompatActivity() {
         web = findViewById(R.id.web)
         splash = findViewById(R.id.splash)
         splashText = findViewById(R.id.splash_text)
-        web.setBackgroundColor(Color.parseColor("#0c101c"))
+        findViewById<View>(R.id.splash_brand).apply {
+            alpha = 0f
+            scaleX = 0.9f
+            scaleY = 0.9f
+            translationY = 24f
+            animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
+                .setDuration(750).setInterpolator(DecelerateInterpolator(1.8f)).start()
+        }
+        web.setBackgroundColor(Color.parseColor("#07080c"))
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false

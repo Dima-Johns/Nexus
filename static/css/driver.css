@@ -30,13 +30,12 @@ body {
 .login {
   justify-content: center;
   padding: 24px 20px 40px;
+  overflow: hidden;
   background:
     radial-gradient(circle at 20% 10%, rgba(94, 234, 212, 0.18), transparent 42%),
     radial-gradient(circle at 90% 80%, rgba(122, 162, 255, 0.2), transparent 40%),
     var(--bg);
 }
-.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.logo { width: 14px; height: 14px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 16px var(--ok); }
 h1 { font-size: 28px; margin: 0 0 6px; }
 .sub { color: var(--muted); margin: 0 0 22px; }
 form { display: grid; gap: 10px; }
@@ -152,7 +151,25 @@ input {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
-.app-head b { font-size: 15px; }
+.head-brand { display: flex; align-items: center; gap: 9px; }
+.profile-btn {
+  position: relative;
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1px solid rgba(122, 162, 255, 0.35);
+  background: var(--glass-shine), rgba(122, 162, 255, 0.1);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.profile-btn:active { transform: scale(0.95); }
+.profile-dot {
+  position: absolute; right: 1px; bottom: 1px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--muted); border: 2px solid #0c101c;
+}
+.profile-dot.on { background: var(--ok); box-shadow: 0 0 8px rgba(94, 234, 212, 0.7); }
+.profile-dot.off { background: var(--warn); }
 .status-bar {
   display: flex;
   gap: 8px;
@@ -466,4 +483,118 @@ input {
   background: #f59e0b; color: #111; font-weight: 800; font-size: 11px;
   display: flex; align-items: center; justify-content: center;
   border: 2px solid #fff; transform: rotate(0deg);
+}
+
+/* ---------- Brend: NEXUS belgisi va yozuvi ---------- */
+.nx-mark { width: 78px; height: 78px; overflow: visible; filter: drop-shadow(0 0 18px rgba(94, 234, 212, 0.35)); }
+.nx-mark.sm { width: 60px; height: 60px; }
+.nx-mark.xs { width: 26px; height: 26px; filter: none; }
+.nx-mark-bg { stroke-dasharray: 210; stroke-dashoffset: 210; animation: nx-draw 1.1s cubic-bezier(.6, 0, .2, 1) forwards; }
+.nx-mark-path { stroke-dasharray: 90; stroke-dashoffset: 90; animation: nx-draw 1s .25s cubic-bezier(.6, 0, .2, 1) forwards; }
+.nx-dot { opacity: 0; transform-box: fill-box; transform-origin: center; animation: nx-pop .45s 1.05s cubic-bezier(.2, 1.6, .4, 1) forwards; }
+.nx-dot.d2 { animation-delay: 1.15s; }
+.nx-word {
+  font-weight: 800; font-size: 36px; letter-spacing: .42em; padding-left: .42em;
+  color: #eef2ff; line-height: 1; white-space: nowrap;
+}
+.nx-word.sm { font-size: 28px; }
+.nx-word.xs { font-size: 15px; letter-spacing: .3em; padding-left: 0; }
+.nx-word span {
+  display: inline-block; opacity: 0; transform: translateY(16px); filter: blur(8px);
+  animation: nx-letter .7s cubic-bezier(.2, .8, .2, 1) forwards, nx-glow 3.2s ease-in-out infinite;
+}
+.nx-word span:nth-child(1) { animation-delay: .45s, 1.6s; }
+.nx-word span:nth-child(2) { animation-delay: .53s, 1.75s; }
+.nx-word span:nth-child(3) { animation-delay: .61s, 1.9s; }
+.nx-word span:nth-child(4) { animation-delay: .69s, 2.05s; }
+.nx-word span:nth-child(5) { animation-delay: .77s, 2.2s; }
+.nx-tag {
+  font-size: 11px; letter-spacing: .34em; padding-left: .34em; color: var(--muted);
+  opacity: 0; animation: nx-fade .7s .95s forwards;
+}
+.nx-orb {
+  position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%;
+  filter: blur(70px); opacity: .28; pointer-events: none;
+  animation: nx-orb 9s ease-in-out infinite alternate;
+}
+.nx-orb.a { background: #0f766e; top: -38vmax; left: -28vmax; }
+.nx-orb.b { background: #1d4ed8; bottom: -38vmax; right: -28vmax; animation-delay: -4.5s; }
+
+/* Ochilish ekrani */
+.intro {
+  position: fixed; inset: 0; z-index: 5000; overflow: hidden;
+  display: grid; place-items: center;
+  background: radial-gradient(120% 80% at 50% 40%, #0d1424 0%, #07080c 70%);
+  transition: opacity .6s ease, visibility .6s ease, transform .6s ease;
+}
+.intro.out { opacity: 0; visibility: hidden; transform: scale(1.04); }
+.intro-core { position: relative; display: grid; justify-items: center; gap: 16px; animation: nx-rise .9s cubic-bezier(.2, .8, .2, 1) both; }
+.intro-line {
+  width: 150px; height: 2px; margin-top: 10px; border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08); overflow: hidden;
+  opacity: 0; animation: nx-fade .4s 1.1s forwards;
+}
+.intro-line i {
+  display: block; width: 45%; height: 100%;
+  background: linear-gradient(90deg, transparent, #5eead4, #7aa2ff, transparent);
+  animation: nx-sweep 1.2s 1.1s ease-in-out infinite;
+}
+/* Android ilova ichida: native splash'dan keyin harflar darhol ko‘rinadi */
+.intro.quick .nx-word span { opacity: 1; transform: none; filter: none; animation: nx-glow 3.2s ease-in-out infinite; }
+.intro.quick .nx-tag, .intro.quick .intro-line { animation-delay: .2s; }
+
+/* Login */
+.login > :not(.nx-orb) { position: relative; z-index: 1; }
+.login-hero { display: grid; justify-items: center; gap: 12px; margin-bottom: 26px; animation: nx-rise .8s cubic-bezier(.2, .8, .2, 1) both; }
+.login-card {
+  background: var(--glass-shine), rgba(14, 18, 30, 0.72);
+  border: 1px solid var(--stroke);
+  border-radius: 22px;
+  padding: 20px 18px 18px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  animation: nx-rise .8s .2s cubic-bezier(.2, .8, .2, 1) both;
+}
+.login-card h1 { font-size: 22px; }
+.login-card .sub { font-size: 13px; margin-bottom: 16px; }
+
+/* Profil oynasi */
+.profile-top { display: flex; align-items: center; gap: 14px; margin: 10px 0 16px; }
+.profile-avatar {
+  width: 60px; height: 60px; flex: 0 0 auto; border-radius: 50%;
+  display: grid; place-items: center; font-size: 21px; font-weight: 800; color: #eef2ff;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.28), rgba(122, 162, 255, 0.34));
+  border: 1px solid rgba(122, 162, 255, 0.45);
+  box-shadow: 0 0 22px rgba(122, 162, 255, 0.25);
+}
+.profile-id { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.profile-id b { font-size: 17px; }
+.profile-rows { border: 1px solid var(--stroke); border-radius: 14px; overflow: hidden; margin-bottom: 14px; }
+.profile-row { display: flex; justify-content: space-between; gap: 12px; padding: 11px 14px; font-size: 14px; }
+.profile-row + .profile-row { border-top: 1px solid var(--stroke-soft); }
+.profile-row span:first-child { color: var(--muted); }
+.profile-row span:last-child { text-align: right; font-weight: 600; overflow-wrap: anywhere; }
+.profile-ver { text-align: center; margin: 12px 0 0; font-size: 12px; }
+.btn.danger { border-color: rgba(251, 113, 133, 0.35); font-weight: 600; }
+.btn.danger.confirm { background: rgba(251, 113, 133, 0.32); color: #fff; }
+
+@keyframes nx-draw { to { stroke-dashoffset: 0; } }
+@keyframes nx-pop { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
+@keyframes nx-letter { to { opacity: 1; transform: none; filter: none; } }
+@keyframes nx-glow {
+  0%, 70%, 100% { text-shadow: 0 0 0 rgba(94, 234, 212, 0); color: #eef2ff; }
+  80% { text-shadow: 0 0 18px rgba(94, 234, 212, 0.9); color: #ccfbf1; }
+}
+@keyframes nx-fade { to { opacity: 1; } }
+@keyframes nx-rise { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes nx-sweep { from { transform: translateX(-110%); } to { transform: translateX(240%); } }
+@keyframes nx-orb { from { transform: translate(0, 0) scale(1); } to { transform: translate(6vmax, 4vmax) scale(1.12); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-mark-bg, .nx-mark-path, .nx-dot, .nx-word span, .nx-tag, .intro-line, .intro-line i,
+  .intro-core, .login-hero, .login-card, .nx-orb {
+    animation: none !important; opacity: 1 !important; transform: none !important;
+    filter: none !important; stroke-dashoffset: 0 !important;
+  }
 }

@@ -9,20 +9,61 @@
   <link rel="manifest" href="/static/driver-manifest.json" />
   <link rel="icon" href="/static/driver-icon.svg" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=13" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=14" />
 </head>
 <body>
+  <div id="intro" class="intro" aria-hidden="true">
+    <div class="nx-orb a"></div>
+    <div class="nx-orb b"></div>
+    <div class="intro-core">
+      <svg class="nx-mark" viewBox="0 0 64 64" fill="none">
+        <defs>
+          <linearGradient id="nxg-intro" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#5eead4" />
+            <stop offset="1" stop-color="#7aa2ff" />
+          </linearGradient>
+        </defs>
+        <rect class="nx-mark-bg" x="2" y="2" width="60" height="60" rx="18" stroke="url(#nxg-intro)" stroke-width="2.5" />
+        <path class="nx-mark-path" d="M20 44V20l24 24V20" stroke="url(#nxg-intro)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+        <circle class="nx-dot" cx="20" cy="44" r="4" fill="#5eead4" />
+        <circle class="nx-dot d2" cx="44" cy="20" r="4" fill="#7aa2ff" />
+      </svg>
+      <div class="nx-word"><span>N</span><span>E</span><span>X</span><span>U</span><span>S</span></div>
+      <div class="nx-tag">LOGISTIKA · HAYDOVCHI</div>
+      <div class="intro-line"><i></i></div>
+    </div>
+  </div>
+
   <section id="view-login" class="view login">
-    <div class="brand"><span class="logo"></span><span>Nexus Logistika</span></div>
-    <h1>Haydovchi kirishi</h1>
-    <p class="sub">Login/parol yoki QR kod bilan kiring. Marshrut internet bo‘lganida yuklanadi, keyin offline ham ochiladi.</p>
-    <form id="login-form">
-      <input id="login-user" name="username" autocomplete="username" placeholder="Login" required />
-      <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Parol" required />
-      <p class="err" id="login-err"></p>
-      <button class="btn primary full" type="submit">Kirish</button>
-      <button class="btn full" id="btn-qr" type="button">QR kodni skanerlash</button>
-    </form>
+    <div class="nx-orb a"></div>
+    <div class="nx-orb b"></div>
+    <div class="login-hero">
+      <svg class="nx-mark sm" viewBox="0 0 64 64" fill="none">
+        <defs>
+          <linearGradient id="nxg-login" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#5eead4" />
+            <stop offset="1" stop-color="#7aa2ff" />
+          </linearGradient>
+        </defs>
+        <rect class="nx-mark-bg" x="2" y="2" width="60" height="60" rx="18" stroke="url(#nxg-login)" stroke-width="2.5" />
+        <path class="nx-mark-path" d="M20 44V20l24 24V20" stroke="url(#nxg-login)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+        <circle class="nx-dot" cx="20" cy="44" r="4" fill="#5eead4" />
+        <circle class="nx-dot d2" cx="44" cy="20" r="4" fill="#7aa2ff" />
+      </svg>
+      <div class="nx-word sm"><span>N</span><span>E</span><span>X</span><span>U</span><span>S</span></div>
+      <div class="nx-tag">LOGISTIKA · HAYDOVCHI</div>
+    </div>
+    <div class="login-card">
+      <h1>Xush kelibsiz</h1>
+      <p class="sub">Login/parol yoki QR kod bilan kiring. Marshrut internet bo‘lganida yuklanadi, keyin offline ham ochiladi.</p>
+      <form id="login-form">
+        <input id="login-user" name="username" autocomplete="username" placeholder="Login" required />
+        <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Parol" required />
+        <p class="err" id="login-err"></p>
+        <button class="btn primary full" type="submit">Kirish</button>
+        <button class="btn full" id="btn-qr" type="button">QR kodni skanerlash</button>
+      </form>
+    </div>
   </section>
 
   <section id="view-scan" class="view login hidden">
@@ -35,11 +76,20 @@
 
   <section id="view-app" class="view hidden">
     <header class="app-head">
-      <div>
-        <b id="drv-name">Haydovchi</b>
-        <div class="muted" id="drv-plate"></div>
+      <div class="head-brand">
+        <svg class="nx-mark xs" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+          <rect x="2" y="2" width="60" height="60" rx="18" stroke="#7aa2ff" stroke-width="3" />
+          <path d="M20 44V20l24 24V20" stroke="#5eead4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span class="nx-word xs">NEXUS</span>
       </div>
-      <button class="btn" id="btn-out" type="button">Chiqish</button>
+      <button class="profile-btn" id="btn-profile" type="button" aria-label="Profil">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="8.2" r="4.6" />
+          <path d="M6.9 13.7A8.6 8.6 0 0 0 3.5 20.5h17a8.6 8.6 0 0 0-5.2-7.9" />
+        </svg>
+        <span class="profile-dot" id="profile-dot"></span>
+      </button>
     </header>
     <div class="status-bar">
       <span class="pill" id="net-pill">Tarmoq</span>
@@ -131,6 +181,26 @@
       <p class="err" id="proof-err"></p>
     </div>
   </div>
+  <div id="profile-sheet" class="sheet-overlay hidden">
+    <div class="sheet-card profile-card">
+      <div class="sheet-head">
+        <b>Profil</b>
+        <button type="button" class="icon-x" id="profile-close" aria-label="Yopish">×</button>
+      </div>
+      <div class="profile-top">
+        <div class="profile-avatar" id="drv-initials">H</div>
+        <div class="profile-id">
+          <b id="drv-name">Haydovchi</b>
+          <div class="muted" id="drv-plate"></div>
+          <span class="pill" id="drv-state">Tarmoq</span>
+        </div>
+      </div>
+      <div class="profile-rows" id="profile-rows"></div>
+      <button class="btn danger full" id="btn-out" type="button">Chiqish</button>
+      <p class="muted profile-ver">Nexus Logistika · Haydovchi ilovasi</p>
+    </div>
+  </div>
+
   <div id="pick-sheet" class="sheet-overlay hidden">
     <div class="sheet-card pick-card">
       <div class="sheet-head">
@@ -144,6 +214,6 @@
   <input type="file" id="proof-file" accept="image/*" capture="environment" hidden />
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/driver-app.js?v=13"></script>
+  <script src="/static/js/driver-app.js?v=14"></script>
 </body>
 </html>

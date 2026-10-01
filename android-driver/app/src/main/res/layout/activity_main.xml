@@ -2,7 +2,7 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0c101c">
+    android:background="#07080c">
 
     <WebView
         android:id="@+id/web"
@@ -13,32 +13,57 @@
         android:id="@+id/splash"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#0c101c"
+        android:background="@drawable/splash_bg"
         android:gravity="center"
         android:orientation="vertical"
         android:padding="32dp">
 
-        <TextView
+        <LinearLayout
+            android:id="@+id/splash_brand"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/app_name"
-            android:textColor="#e8edf7"
-            android:textSize="26sp"
-            android:textStyle="bold" />
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-black"
+                android:letterSpacing="0.42"
+                android:paddingStart="14dp"
+                android:shadowColor="#665eead4"
+                android:shadowRadius="18"
+                android:text="NEXUS"
+                android:textColor="#eef2ff"
+                android:textSize="36sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:letterSpacing="0.34"
+                android:paddingStart="4dp"
+                android:text="LOGISTIKA · HAYDOVCHI"
+                android:textColor="#8b93a7"
+                android:textSize="11sp" />
+        </LinearLayout>
 
         <ProgressBar
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:indeterminateTint="#5eead4" />
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="150dp"
+            android:layout_height="3dp"
+            android:layout_marginTop="34dp"
+            android:indeterminate="true"
+            android:indeterminateTint="#5eead4"
+            android:progressBackgroundTint="#22ffffff" />
 
         <TextView
             android:id="@+id/splash_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="18dp"
             android:text="Serverga ulanmoqda…"
             android:textColor="#8b93a7"
-            android:textSize="15sp" />
+            android:textSize="13sp" />
     </LinearLayout>
 </FrameLayout>
