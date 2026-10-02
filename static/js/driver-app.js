@@ -19,16 +19,21 @@ let dateFilter = localStorage.getItem("nx_drv_date") || "";
 let qrBusy = false;
 const RUN_KEY = "nx_drv_run";
 // going=false — zayavka tugadi, keyingisi tavsiya qilingan, haydovchi hali «Borish»ni bosmagan
-let run = { active: false, currentId: null, arrived: false, going: false };
+// manual=true — haydovchi tartibni o‘zi tuzgan, GPS bo‘yicha avtomatik qayta tuzilmaydi
+const RUN_EMPTY = { active: false, currentId: null, arrived: false, going: false, manual: false };
+let run = { ...RUN_EMPTY };
 try {
   const savedRun = JSON.parse(localStorage.getItem(RUN_KEY) || "null");
   if (savedRun && typeof savedRun === "object") run = { ...run, ...savedRun, arrived: false };
 } catch {
   /* fresh run */
 }
+let tab = "map";
+// Tartibni o‘zgartirish rejimida: kutilayotgan zayavkalar id'lari yangi tartibda
+let editing = null;
 
 function saveRun() {
-  localStorage.setItem(RUN_KEY, JSON.stringify({ active: run.active, currentId: run.currentId, going: run.going }));
+  localStorage.setItem(RUN_KEY, JSON.stringify({ active: run.active, currentId: run.currentId, going: run.going, manual: run.manual }));
   localStorage.setItem("nx_drv_reys", reysFilter || "");
   localStorage.setItem("nx_drv_date", dateFilter || "");
 }
@@ -182,11 +187,6 @@ function setNet() {
     state.classList.toggle("live", on);
     state.classList.toggle("off", !on);
   }
-  const pill = $("net-pill");
-  if (!pill) return;
-  pill.textContent = on ? "Online" : "Offline";
-  pill.classList.toggle("live", on);
-  pill.classList.toggle("off", !on);
 }
 
 function initials(name) {
@@ -205,6 +205,8 @@ function renderProfile() {
     ["Mashina", [driver?.vehicle_plate, driver?.vehicle_type].filter(Boolean).join(" · ")],
     ["Agent", driver?.agent_name ? `${driver.agent_code ? driver.agent_code + " · " : ""}${driver.agent_name}` : ""],
     ["Login", driver?.username],
+    ["GPS", gpsState.text],
+    ["Marshrut", syncState.text],
   ].filter(([, v]) => v);
   $("profile-rows").innerHTML = rows.map(([k, v]) => `<div class="profile-row"><span>${k}</span><span>${esc(v)}</span></div>`).join("");
   $("profile-rows").classList.toggle("hidden", !rows.length);
@@ -258,20 +260,36 @@ function hideIntro() {
   }, Math.max(0, minMs - (Date.now() - INTRO_STARTED)));
 }
 
-function setGps(text, live) {
-  const pill = $("gps-pill");
-  if (!pill) return;
-  pill.textContent = text;
-  pill.classList.toggle("live", !!live);
-  pill.classList.toggle("off", !live);
+let gpsState = { text: "", live: false };
+let syncState = { text: "", warn: false };
+
+function profileOpen() {
+  return !$("profile-sheet")?.classList.contains("hidden");
 }
 
+function setGps(text, live) {
+  gpsState = { text, live: !!live };
+  if (profileOpen()) renderProfile();
+}
+
+// Holat profil oynasida va yangilash ikonkasidagi nuqtada ko‘rinadi
 function setSync(text, warn) {
-  const pill = $("sync-pill");
-  if (!pill) return;
-  pill.textContent = text;
-  pill.classList.toggle("off", !!warn);
-  pill.classList.toggle("live", !warn);
+  syncState = { text, warn: !!warn };
+  $("sync-dot")?.classList.toggle("on", !!warn);
+  if (profileOpen()) renderProfile();
+}
+
+let toastTimer = null;
+
+function toast(text, warn) {
+  setSync(text, warn);
+  const el = $("toast");
+  if (!el || !text) return;
+  el.textContent = text;
+  el.classList.toggle("warn", !!warn);
+  el.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add("hidden"), 2800);
 }
 
 function saveSession() {
@@ -462,7 +480,7 @@ function phonePoint() {
 
 function navigateTo(o) {
   if (!o || !gpsOk(o.dropoff_lat, o.dropoff_lng)) {
-    setSync("Bu do‘konda lokatsiya yo‘q", true);
+    toast("Bu do‘konda lokatsiya yo‘q", true);
     return false;
   }
   const dest = { lat: Number(o.dropoff_lat), lng: Number(o.dropoff_lng), name: o.client_name || o.code || "Do‘kon" };
@@ -575,6 +593,8 @@ function setDateFilter(iso, resetReys = true) {
   run.currentId = null;
   run.arrived = false;
   run.going = false;
+  run.manual = false;
+  editing = null;
   saveRun();
   fillReysFilter();
   drawMap();
@@ -600,6 +620,8 @@ function onReysChange(key) {
   run.currentId = null;
   run.arrived = false;
   run.going = false;
+  run.manual = false;
+  editing = null;
   saveRun();
   fillReysFilter();
   drawMap();
@@ -610,6 +632,8 @@ function onReysChange(key) {
 function esc(v) {
   return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 }
+
+const START_ICON = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 20 21l-8-4.5L4 21z"/></svg>`;
 
 function syncStartUi() {
   const overlay = $("start-overlay");
@@ -623,11 +647,18 @@ function syncStartUi() {
     saveRun();
   }
   if (btn) {
-    btn.disabled = !pending.length;
-    btn.textContent = run.active && cur ? (run.going ? "Navigator" : "Borish") : "Boshlash";
+    btn.disabled = !pending.length || !!editing;
+    const label = run.active && cur ? (run.going ? "Navigator" : "Borish") : "Boshlash";
+    const sub = !pending.length ? (total ? "Hamma zayavkalar yetkazildi" : "Zayavka yo‘q") : run.active && cur ? `${stopIndex(cur)}. ${cur.client_name || cur.code || "Do‘kon"}` : `${pending.length} ta zayavka`;
+    btn.innerHTML = `${START_ICON}<span class="start-txt"><b>${label}</b><small>${esc(sub)}</small></span>`;
+  }
+  const badge = $("list-badge");
+  if (badge) {
+    badge.textContent = String(pending.length);
+    badge.classList.toggle("hidden", !pending.length);
   }
   if (!overlay) return;
-  overlay.classList.toggle("hidden", total === 0);
+  overlay.classList.toggle("hidden", total === 0 || tab !== "map");
   if (!total) return;
   if (run.active && cur) {
     const n = stopIndex(cur);
@@ -641,7 +672,7 @@ function syncStartUi() {
       <div class="cur-head"><span class="stop">${n}</span><div style="flex:1;min-width:0"><b>${esc(cur.client_name || cur.code || "Do‘kon")}</b><div class="muted">${esc(cur.dropoff_address || "")}</div></div><span class="muted cur-meta">${n}/${total}${distText ? `<br>${distText}` : ""}</span></div>`;
     if (!run.going) {
       overlay.innerHTML = `${head}
-        <p class="cur-hint">Reja telefon joylashuvidan yaqinidan uzog‘iga qayta tuzildi. Shu zayavkaga borasizmi?</p>
+        <p class="cur-hint">${run.manual ? "Siz tuzgan tartib bo‘yicha keyingi zayavka." : "Reja telefon joylashuvidan yaqinidan uzog‘iga qayta tuzildi."} Shu zayavkaga borasizmi?</p>
         <div class="result-row">
           <button class="btn primary" type="button" data-go-cur="${cur.id}">Borish</button>
           ${pickBtn}
@@ -664,7 +695,7 @@ function syncStartUi() {
   const first = pending[0];
   overlay.innerHTML = `<p id="start-hint">${
     pending.length
-      ? `Reysda ${pending.length} ta zayavka. Reja skladdan tuzilgan — 1-zayavka: <b>${esc(first.client_name || first.code || "Do‘kon")}</b>. «Boshlash» ni bosing.`
+      ? `Reysda ${pending.length} ta zayavka. ${run.manual ? "Tartibni o‘zingiz tuzdingiz" : "Reja skladdan tuzilgan"} — 1-zayavka: <b>${esc(first.client_name || first.code || "Do‘kon")}</b>. «Boshlash» ni bosing.`
       : "Bu reysdagi hamma zayavkalar yetkazildi."
   }</p>`;
 }
@@ -712,7 +743,46 @@ function localReplan(firstId, me) {
   saveSession();
 }
 
+function isDone(o) {
+  return ["delivered", "returned", "cancelled"].includes(o.status);
+}
+
+// Qo‘lda tuzilgan tartibni telefonga va serverga yozadi; ids — kutilayotgan zayavkalar yangi tartibda
+async function saveOrder(ids) {
+  const full = [...orderedStops().filter(isDone).map((o) => o.id), ...ids];
+  full.forEach((id, i) => {
+    const o = allOrders().find((x) => Number(x.id) === Number(id));
+    if (o) o.stop_no = i + 1;
+  });
+  saveSession();
+  drawMap();
+  renderList();
+  syncStartUi();
+  if (!navigator.onLine) {
+    toast("Offline: tartib telefonda saqlandi", true);
+    return;
+  }
+  try {
+    applyRoute(await api("/driver/reorder", { method: "POST", body: { ...startFilterBody(), order_ids: full } }));
+    return true;
+  } catch (err) {
+    toast(err.message || "Tartib serverga yozilmadi", true);
+  }
+}
+
 async function replan(firstId) {
+  if (run.manual) {
+    // Qo‘lda tuzilgan tartib saqlanadi — tanlangan zayavka faqat boshiga o‘tadi
+    if (firstId == null) {
+      drawMap();
+      renderList();
+      syncStartUi();
+      return;
+    }
+    const ids = pendingStops().map((o) => o.id);
+    await saveOrder([firstId, ...ids.filter((id) => Number(id) !== Number(firstId))]);
+    return;
+  }
   const me = phonePoint();
   localReplan(firstId, me);
   drawMap();
@@ -726,7 +796,7 @@ async function replan(firstId) {
     });
     applyRoute(data);
   } catch (err) {
-    setSync(err.message || "Reja serverga yozilmadi", true);
+    toast(err.message || "Reja serverga yozilmadi", true);
   }
 }
 
@@ -772,7 +842,7 @@ async function afterStopDone(id, result) {
     run.going = false;
     saveRun();
     if (navigator.vibrate) navigator.vibrate(120);
-    setSync(`Keyingi: ${next.client_name || next.code || "zayavka"}`, false);
+    toast(`Keyingi: ${next.client_name || next.code || "zayavka"}`, false);
     drawMap();
     renderList();
     syncStartUi();
@@ -780,7 +850,7 @@ async function afterStopDone(id, result) {
     run.active = false;
     saveRun();
     syncStartUi();
-    setSync("Reys yakunlandi", false);
+    toast("Reys yakunlandi", false);
   }
 }
 
@@ -788,6 +858,12 @@ function openPick() {
   const sheet = $("pick-sheet");
   const box = $("pick-list");
   if (!sheet || !box) return;
+  const sub = $("pick-sub");
+  if (sub) {
+    sub.textContent = run.manual
+      ? "Tanlangan zayavka birinchi bo‘ladi, qolganlari siz tuzgan tartibda qoladi."
+      : "Tanlangan zayavka birinchi bo‘ladi, qolganlari undan yaqinidan uzog‘iga qayta tuziladi.";
+  }
   const cur = run.active ? currentStop() : null;
   const suggested = run.going ? nextAfter(cur) : cur;
   box.innerHTML = pendingStops()
@@ -829,7 +905,7 @@ function proofErr(text) {
 
 function openProof(id, result) {
   if (!navigator.onLine) {
-    setSync("Offline: internet chiqqach belgilang", true);
+    toast("Offline: internet chiqqach belgilang", true);
     return;
   }
   const o = allOrders().find((x) => Number(x.id) === Number(id));
@@ -912,7 +988,7 @@ async function sendProof() {
     const label = result === "delivered" ? "Yetkazildi" : "Qaytarildi";
     await api(`/driver/orders/${id}/proof`, { method: "POST", body: form });
     closeProof();
-    setSync(`${label} ✓`, false);
+    toast(`${label} ✓`, false);
     await afterStopDone(id, result);
   } catch (err) {
     proofErr(err.message || "Yuborilmadi");
@@ -921,11 +997,162 @@ async function sendProof() {
   }
 }
 
+function renderListHead() {
+  const head = $("list-head");
+  if (!head) return;
+  const pending = pendingStops();
+  if (editing) {
+    head.innerHTML = `
+      <div class="lh-txt"><b>Tartibni o‘zgartirish</b><span class="muted">Sudrang yoki ↑ ↓ tugmalarini bosing</span></div>
+      <div class="lh-actions">
+        <button class="btn ghost" type="button" data-edit-cancel>Bekor</button>
+        <button class="btn primary sm" type="button" data-edit-save>Saqlash</button>
+      </div>`;
+    return;
+  }
+  const mode = run.manual ? "Siz tuzgan tartib" : "Avtomatik tartib";
+  head.innerHTML = `
+    <div class="lh-txt"><b>Borish ketma-ketligi</b><span class="muted">${pending.length ? `${mode} · ${pending.length} ta kutilmoqda` : "Kutilayotgan zayavka yo‘q"}</span></div>
+    <button class="btn ghost lh-edit" type="button" data-edit-start ${pending.length > 1 ? "" : "disabled"}>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 4 3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l-3.5-3.5M17 20l3.5-3.5"/></svg>
+      O‘zgartirish
+    </button>`;
+}
+
+function editRows() {
+  const pending = pendingStops();
+  const byId = new Map(pending.map((o) => [Number(o.id), o]));
+  const rows = editing.map((id) => byId.get(Number(id))).filter(Boolean);
+  pending.forEach((o) => {
+    if (!rows.includes(o)) rows.push(o);
+  });
+  editing = rows.map((o) => o.id);
+  return rows;
+}
+
+function renderEditList(box) {
+  const doneN = orderedStops().filter(isDone).length;
+  const rows = editRows();
+  const last = rows.length - 1;
+  box.innerHTML =
+    (doneN ? `<div class="re-done muted">${doneN} ta zayavka yakunlangan — ular ro‘yxat boshida qoladi</div>` : "") +
+    rows
+      .map(
+        (o, i) => `<div class="re-row" data-id="${o.id}">
+        <span class="re-grip" data-grip aria-label="Sudrash">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+        </span>
+        <span class="stop">${doneN + i + 1}</span>
+        <span class="re-txt"><b>${esc(o.client_name || o.code || "Do‘kon")}</b><span class="muted">${esc(o.dropoff_address || o.code || "")}</span></span>
+        <span class="re-arrows">
+          <button type="button" data-move="-1" ${i === 0 ? "disabled" : ""} aria-label="Yuqoriga">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+          </button>
+          <button type="button" data-move="1" ${i === last ? "disabled" : ""} aria-label="Pastga">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </span>
+      </div>`
+      )
+      .join("") +
+    `<button type="button" class="btn ghost re-auto" data-edit-auto>Avtomatik tartibga qaytarish (GPS bo‘yicha)</button>`;
+}
+
+function startReorder() {
+  if (pendingStops().length < 2) return;
+  editing = pendingStops().map((o) => o.id);
+  renderList();
+  syncStartUi();
+}
+
+function cancelReorder() {
+  editing = null;
+  renderList();
+  syncStartUi();
+}
+
+async function saveReorder() {
+  if (!editing) return;
+  const ids = editRows().map((o) => o.id);
+  editing = null;
+  run.manual = true;
+  // Hali yo‘lga chiqmagan bo‘lsa — yangi tartibdagi birinchi zayavka tavsiya qilinadi
+  if (!run.going) run.currentId = null;
+  saveRun();
+  if (await saveOrder(ids)) toast("Ketma-ketlik saqlandi", false);
+}
+
+async function autoReorder() {
+  editing = null;
+  run.manual = false;
+  if (!run.going) run.currentId = null;
+  saveRun();
+  await replan(run.going ? run.currentId : null);
+  toast("Tartib GPS bo‘yicha qayta tuzildi", false);
+}
+
+function moveEdit(id, delta) {
+  const i = editing.findIndex((x) => Number(x) === Number(id));
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= editing.length) return;
+  [editing[i], editing[j]] = [editing[j], editing[i]];
+  renderList();
+}
+
+// Barmoq bilan sudrash: qator barmoq ostidagi joyga ko‘chadi, qo‘yib yuborilganda tartib yoziladi
+let drag = null;
+
+function onGripDown(e) {
+  const grip = e.target.closest("[data-grip]");
+  if (!grip || !editing) return;
+  const row = grip.closest(".re-row");
+  e.preventDefault();
+  try {
+    grip.setPointerCapture(e.pointerId);
+  } catch {
+    /* capture bo‘lmasa ham ro‘yxat ustidagi harakatlar yetadi */
+  }
+  drag = { row, grip, id: e.pointerId };
+  row.classList.add("dragging");
+}
+
+function onGripMove(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const box = $("list");
+  const rect = box.getBoundingClientRect();
+  if (e.clientY < rect.top + 40) box.scrollTop -= 10;
+  else if (e.clientY > rect.bottom - 40) box.scrollTop += 10;
+  const rows = [...box.querySelectorAll(".re-row")].filter((r) => r !== drag.row);
+  const before = rows.find((r) => {
+    const b = r.getBoundingClientRect();
+    return e.clientY < b.top + b.height / 2;
+  });
+  if (before) {
+    if (drag.row.nextElementSibling !== before) box.insertBefore(drag.row, before);
+  } else {
+    const lastRow = rows[rows.length - 1];
+    if (lastRow && lastRow.nextElementSibling !== drag.row) lastRow.after(drag.row);
+  }
+}
+
+function onGripUp(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  drag.row.classList.remove("dragging");
+  drag = null;
+  editing = [...$("list").querySelectorAll(".re-row")].map((r) => Number(r.dataset.id));
+  renderList();
+}
+
 function renderList() {
   const box = $("list");
   const rows = orderedStops();
+  renderListHead();
   if (!rows.length) {
     box.innerHTML = `<div class="empty">${navigator.onLine ? "Bu sana/reysda zayavka yo‘q. Sanani yoki reysni almashtiring." : "Keshda marshrut yo‘q. Internet chiqishi bilan yangilang."}</div>`;
+    return;
+  }
+  if (editing) {
+    if (!drag) renderEditList(box);
     return;
   }
   const cur = run.active ? currentStop() : null;
@@ -983,7 +1210,7 @@ async function startRun() {
   if (starting) return;
   const first = currentStop();
   if (!first) {
-    setSync("Tanlangan reysda do‘kon yo‘q", true);
+    toast("Tanlangan reysda do‘kon yo‘q", true);
     return;
   }
   starting = true;
@@ -998,7 +1225,7 @@ async function startRun() {
         });
         applyRoute(data);
       } catch (err) {
-        setSync(err.message || "Serverga yozilmadi", true);
+        toast(err.message || "Serverga yozilmadi", true);
       }
     }
     const target = currentStop() || first;
@@ -1306,7 +1533,8 @@ function logout() {
   token = "";
   driver = null;
   route = { orders: [], geometry: [], downloaded_at: null };
-  run = { active: false, currentId: null, arrived: false, going: false };
+  run = { ...RUN_EMPTY };
+  editing = null;
   localStorage.removeItem(RUN_KEY);
   localStorage.removeItem(TOKEN_KEY);
   // Token IndexedDB'da ham saqlanadi — tozalanmasa ilova qayta ochilganda shu akkauntga o‘zi kirib ketadi
@@ -1318,6 +1546,38 @@ function logout() {
   const pass = $("login-pass");
   if (pass) pass.value = "";
   show("view-login");
+}
+
+function setTab(next) {
+  tab = next === "list" ? "list" : "map";
+  document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  $("map").classList.toggle("hidden", tab !== "map");
+  $("list-view").classList.toggle("hidden", tab !== "list");
+  if (tab === "map") setTimeout(() => map && map.invalidateSize(), 40);
+  syncStartUi();
+}
+
+let refreshing = false;
+
+async function refresh() {
+  if (refreshing) return;
+  refreshing = true;
+  const btn = $("btn-sync");
+  btn?.classList.add("spin");
+  try {
+    if (!navigator.onLine) {
+      await pullRoute();
+      toast("Internet yo‘q — saqlangan marshrut ko‘rsatildi", true);
+      return;
+    }
+    await pullRoute();
+    toast("Marshrut yangilandi", false);
+  } catch (err) {
+    toast(err.message || "Yangilanmadi", true);
+  } finally {
+    refreshing = false;
+    setTimeout(() => btn?.classList.remove("spin"), 300);
+  }
 }
 
 function bind() {
@@ -1333,7 +1593,7 @@ function bind() {
   $("profile-sheet")?.addEventListener("click", (e) => {
     if (e.target === $("profile-sheet")) closeProfile();
   });
-  $("btn-sync").addEventListener("click", () => pullRoute().catch((e) => setSync(e.message, true)));
+  $("btn-sync").addEventListener("click", refresh);
   $("btn-start")?.addEventListener("click", startRun);
   const onPick = () => {
     const val = $("date-pick")?.value;
@@ -1354,15 +1614,24 @@ function bind() {
     onReysChange(chip.dataset.reys || "");
   });
   document.querySelectorAll("[data-tab]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const tab = btn.dataset.tab;
-      document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("active", b === btn));
-      $("map").classList.toggle("hidden", tab !== "map");
-      $("list").classList.toggle("hidden", tab !== "list");
-      if (tab === "map") setTimeout(() => map && map.invalidateSize(), 40);
-    });
+    btn.addEventListener("click", () => setTab(btn.dataset.tab));
   });
+  $("list-head")?.addEventListener("click", (e) => {
+    if (e.target.closest("[data-edit-start]")) return startReorder();
+    if (e.target.closest("[data-edit-cancel]")) return cancelReorder();
+    if (e.target.closest("[data-edit-save]")) saveReorder();
+  });
+  $("list").addEventListener("pointerdown", onGripDown);
+  $("list").addEventListener("pointermove", onGripMove);
+  $("list").addEventListener("pointerup", onGripUp);
+  $("list").addEventListener("pointercancel", onGripUp);
   $("list").addEventListener("click", async (e) => {
+    if (editing) {
+      const mv = e.target.closest("[data-move]");
+      if (mv) return moveEdit(mv.closest(".re-row").dataset.id, Number(mv.dataset.move));
+      if (e.target.closest("[data-edit-auto]")) autoReorder();
+      return;
+    }
     const nav = e.target.closest("[data-nav]");
     if (nav) {
       const o = allOrders().find((x) => Number(x.id) === Number(nav.dataset.nav));

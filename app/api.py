@@ -97,6 +97,7 @@ from .schemas import (
     DriverQrIn,
     GpsBatchIn,
     DriverOrderStatusIn,
+    DriverReorderIn,
     DriverReplanIn,
     DriverStartIn,
     LoginIn,
@@ -592,6 +593,26 @@ def driver_replan(
     replan_orders(rows, origin, first)
     db.flush()
     out = _driver_route_payload(db, driver, sorted(rows, key=lambda o: (o.stop_no or 0, o.id)))
+    db.commit()
+    return {"ok": True, **out}
+
+
+@router.post("/driver/reorder")
+def driver_reorder(
+    payload: DriverReorderIn,
+    db: Session = Depends(get_db),
+    driver: Driver = Depends(get_current_driver),
+):
+    """Haydovchi ketma-ketlikni qo‘lda o‘zgartirdi — stop_no shu tartibda yoziladi."""
+    all_rows = driver_active_orders(db, driver)
+    rows = _filter_reys(all_rows, payload.route_code, payload.delivery_date)
+    by_id = {o.id: o for o in rows}
+    picked = [by_id[i] for i in dict.fromkeys(payload.order_ids) if i in by_id]
+    rest = sorted((o for o in rows if o not in picked), key=lambda o: (o.stop_no or 0, o.id))
+    for n, row in enumerate(picked + rest, start=1):
+        row.stop_no = n
+    db.flush()
+    out = _driver_route_payload(db, driver, picked + rest)
     db.commit()
     return {"ok": True, **out}
 

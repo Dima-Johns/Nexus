@@ -9,7 +9,7 @@
   <link rel="manifest" href="/static/driver-manifest.json" />
   <link rel="icon" href="/static/driver-icon.svg" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=14" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=16" />
 </head>
 <body>
   <div id="intro" class="intro" aria-hidden="true">
@@ -83,23 +83,25 @@
         </svg>
         <span class="nx-word xs">NEXUS</span>
       </div>
-      <button class="profile-btn" id="btn-profile" type="button" aria-label="Profil">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="8.2" r="4.6" />
-          <path d="M6.9 13.7A8.6 8.6 0 0 0 3.5 20.5h17a8.6 8.6 0 0 0-5.2-7.9" />
-        </svg>
-        <span class="profile-dot" id="profile-dot"></span>
-      </button>
+      <div class="head-actions">
+        <button class="head-icon" id="btn-sync" type="button" aria-label="Yangilash" title="Yangilash">
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 11a8 8 0 0 0-14.6-4.5L3.5 9" />
+            <path d="M3.5 4v5h5" />
+            <path d="M4 13a8 8 0 0 0 14.6 4.5l1.9-2.5" />
+            <path d="M20.5 20v-5h-5" />
+          </svg>
+          <span class="head-icon-dot" id="sync-dot"></span>
+        </button>
+        <button class="profile-btn" id="btn-profile" type="button" aria-label="Profil">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8.2" r="4.6" />
+            <path d="M6.9 13.7A8.6 8.6 0 0 0 3.5 20.5h17a8.6 8.6 0 0 0-5.2-7.9" />
+          </svg>
+          <span class="profile-dot" id="profile-dot"></span>
+        </button>
+      </div>
     </header>
-    <div class="status-bar">
-      <span class="pill" id="net-pill">Tarmoq</span>
-      <span class="pill" id="gps-pill">GPS</span>
-      <span class="pill" id="sync-pill">Kesh</span>
-    </div>
-    <div class="tabs">
-      <button class="btn active" data-tab="map" type="button">Yo‘nalish</button>
-      <button class="btn" data-tab="list" type="button">Zayavkalar</button>
-    </div>
     <div class="filter-bar">
       <div class="date-group">
       <button type="button" class="date-step" id="date-prev" aria-label="Oldingi kun">‹</button>
@@ -116,14 +118,36 @@
       <div class="reys-scroll" id="reys-chips"></div>
       <span class="muted filter-count" id="reys-count"></span>
     </div>
-    <div id="map"></div>
-    <div class="start-overlay hidden" id="start-overlay">
-      <p id="start-hint">Boshlash — reysdagi 1-zayavkaga yo‘l ochiladi.</p>
+    <div class="stage">
+      <div id="map"></div>
+      <div class="start-overlay hidden" id="start-overlay">
+        <p id="start-hint">Boshlash — reysdagi 1-zayavkaga yo‘l ochiladi.</p>
+      </div>
+      <div id="list-view" class="list-view hidden">
+        <div class="list-head" id="list-head"></div>
+        <div id="list" class="list"></div>
+      </div>
+      <div class="toast hidden" id="toast"></div>
     </div>
-    <div id="list" class="list hidden"></div>
-    <div class="dock">
-      <button class="btn primary" id="btn-start" type="button">Boshlash</button>
-      <button class="btn" id="btn-sync" type="button">Yangilash</button>
+    <div class="bottom">
+      <button class="btn primary start-big" id="btn-start" type="button">Boshlash</button>
+      <nav class="bottom-nav">
+        <button class="nav-btn active" data-tab="map" type="button">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6z" />
+            <path d="M9 4v14M15 6v14" />
+          </svg>
+          <span>Yo‘nalish</span>
+        </button>
+        <button class="nav-btn" data-tab="list" type="button">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="3.5" width="16" height="17" rx="3" />
+            <path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4.5" />
+          </svg>
+          <span>Zayavkalar</span>
+          <b class="nav-badge hidden" id="list-badge"></b>
+        </button>
+      </nav>
     </div>
   </section>
 
@@ -207,13 +231,13 @@
         <b>Qaysi zayavkaga borasiz?</b>
         <button type="button" class="icon-x" id="pick-close" aria-label="Yopish">×</button>
       </div>
-      <p class="muted sheet-sub">Tanlangan zayavka birinchi bo‘ladi, qolganlari undan yaqinidan uzog‘iga qayta tuziladi.</p>
+      <p class="muted sheet-sub" id="pick-sub">Tanlangan zayavka birinchi bo‘ladi, qolganlari undan yaqinidan uzog‘iga qayta tuziladi.</p>
       <div id="pick-list" class="pick-list"></div>
     </div>
   </div>
   <input type="file" id="proof-file" accept="image/*" capture="environment" hidden />
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/driver-app.js?v=15"></script>
+  <script src="/static/js/driver-app.js?v=16"></script>
 </body>
 </html>
