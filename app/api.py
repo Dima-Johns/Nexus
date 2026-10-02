@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
@@ -504,6 +504,19 @@ def driver_qr_login(payload: DriverQrIn, db: Session = Depends(get_db)):
 @router.get("/driver/me")
 def driver_me(driver: Driver = Depends(get_current_driver)):
     return _driver_out(driver)
+
+
+@router.post("/driver/logout")
+def driver_logout(
+    authorization: str | None = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Ilovadan chiqish — shu qurilmaning tokeni bekor qilinadi (boshqa qurilmalar sessiyasi qoladi)."""
+    token = (authorization or "").split(" ", 1)[-1].strip()
+    if token:
+        db.query(SessionToken).filter(SessionToken.token == token, SessionToken.driver_id.isnot(None)).delete()
+        db.commit()
+    return {"ok": True}
 
 
 @router.get("/driver/orders", response_model=list[OrderOut])

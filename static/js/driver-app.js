@@ -157,7 +157,10 @@ async function api(path, opts = {}) {
   if (res.status === 401) {
     token = "";
     localStorage.removeItem(TOKEN_KEY);
-    throw new Error(typeof data.detail === "string" ? data.detail : "Sessiya yaroqsiz");
+    kvSet("token", "").catch(() => {});
+    const err = new Error(typeof data.detail === "string" ? data.detail : "Sessiya yaroqsiz");
+    err.status = 401;
+    throw err;
   }
   if (!res.ok) {
     const d = data.detail;
@@ -1294,17 +1297,26 @@ window.nexusQrResult = (raw) => {
 };
 
 function logout() {
+  const old = token;
+  if (old && navigator.onLine) {
+    fetch(API + "/driver/logout", { method: "POST", headers: { Authorization: `Bearer ${old}` }, keepalive: true }).catch(() => {});
+  }
   nativeTracking(false);
   stopHeartbeat();
   token = "";
   driver = null;
+  route = { orders: [], geometry: [], downloaded_at: null };
   run = { active: false, currentId: null, arrived: false, going: false };
   localStorage.removeItem(RUN_KEY);
   localStorage.removeItem(TOKEN_KEY);
+  // Token IndexedDB'da ham saqlanadi — tozalanmasa ilova qayta ochilganda shu akkauntga o‘zi kirib ketadi
+  ["token", "driver", "route"].forEach((k) => kvSet(k, null).catch(() => {}));
   if (watchId != null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
   }
+  const pass = $("login-pass");
+  if (pass) pass.value = "";
   show("view-login");
 }
 
@@ -1434,8 +1446,10 @@ async function boot() {
     try {
       await api("/driver/me");
       await pullRoute();
-    } catch {
-      if (cachedRoute) {
+    } catch (err) {
+      if (err?.status === 401) {
+        logout();
+      } else if (cachedRoute) {
         applyRoute(cachedRoute);
         setSync("Offline kesh", true);
       } else {
