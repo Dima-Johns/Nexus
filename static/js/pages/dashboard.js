@@ -1,6 +1,6 @@
 import { api, can } from "../api.js";
-import { escapeHtml } from "../ui.js?v=68";
-import * as wsModule from "../workspace.js?v=68";
+import { escapeHtml } from "../ui.js?v=69";
+import * as wsModule from "../workspace.js?v=69";
 
 // Har doim bindWorkspace() chaqirilgan (zayavkalar yuklangan) nusxadan o'qiymiz.
 function ws() {
@@ -418,7 +418,7 @@ async function drawRoads(groups) {
   }
 }
 
-function redrawMap(fit = false) {
+function redrawMap(fit = false, keepView = false) {
   if (!map) return;
   const visible = visibleOrders();
   if (selectedId && !visible.some((o) => String(o.id) === String(selectedId))) selectedId = null;
@@ -427,7 +427,7 @@ function redrawMap(fit = false) {
   drawSketch(groups);
   updateLegend(groups);
   drawRoads(groups).catch(() => {});
-  if (fit || !selectedId) fitStores();
+  if (!keepView && (fit || !selectedId)) fitStores();
 }
 
 function focusStore(detail) {
@@ -596,7 +596,7 @@ export async function init(root) {
   await refreshVehicles().catch(() => {});
   startTimer();
   onSelect = (e) => focusStore(e.detail);
-  onChanged = () => redrawMap(true);
+  onChanged = (e) => redrawMap(true, Boolean(e.detail?.quiet));
   onResize = () => map && map.invalidateSize();
   onDriver = (e) => {
     focusedDriverId = e.detail?.id || null;
@@ -639,8 +639,13 @@ export function hide() {
   }
 }
 
+export function refresh() {
+  return refreshVehicles().catch(() => {});
+}
+
 export function show() {
   if (!map) return;
+  refresh();
   startTimer();
   requestAnimationFrame(() => {
     resizeMap();

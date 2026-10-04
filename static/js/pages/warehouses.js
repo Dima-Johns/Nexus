@@ -1,5 +1,5 @@
 import { api, can, me } from "../api.js";
-import { $, escapeHtml, formData, table, askConfirm } from "../ui.js?v=68";
+import { $, escapeHtml, formData, table, askConfirm } from "../ui.js?v=69";
 
 const L = window.L;
 let bound = false;

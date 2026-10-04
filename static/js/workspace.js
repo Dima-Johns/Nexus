@@ -1,5 +1,5 @@
-import { api, apiUpload } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=68";
+import { api, apiUpload, token } from "./api.js";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=69";
 
 let orders = [];
 let filter = "incoming";
@@ -331,8 +331,9 @@ function closeFilterPanel() {
   $("#btn-filter")?.classList.remove("active");
 }
 
+let quietNotify = false;
 function notifyMap() {
-  window.dispatchEvent(new CustomEvent("nexus:orders-changed"));
+  window.dispatchEvent(new CustomEvent("nexus:orders-changed", { detail: { quiet: quietNotify } }));
 }
 
 function driverColor(name) {
@@ -567,16 +568,21 @@ async function fillSelects() {
   ]);
   warehouses = whs || [];
   driversById = Object.fromEntries((drivers || []).map((d) => [String(d.id), d]));
-  $("#order-client").innerHTML = clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
-  if ($("#order-driver")) {
-    $("#order-driver").innerHTML =
-      `<option value="">Haydovchi yo‘q</option>` + drivers.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("");
-  }
-  renderDriverPicker(drivers || []);
+  setOptions($("#order-client"), clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join(""));
+  setOptions(
+    $("#order-driver"),
+    `<option value="">Haydovchi yo‘q</option>` + drivers.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("")
+  );
+  renderDriverPicker(drivers || [], $("#driver-picker-search")?.value || "");
   const approved = tpls.filter((t) => t.status === "approved" && (t.entity || "orders") === "orders");
-  $("#approved-templates").innerHTML = approved
-    .map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`)
-    .join("");
+  setOptions($("#approved-templates"), approved.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join(""));
+}
+
+function setOptions(sel, html) {
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = html;
+  if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
 }
 
 function renderDriverPicker(drivers, query = "") {
@@ -887,12 +893,33 @@ async function runPlan() {
   }
 }
 
-export async function refreshWorkspace() {
+export async function refreshWorkspace({ quiet = false } = {}) {
   orders = await api("/orders");
   const ids = new Set(orders.map((o) => o.id));
   selected = new Set([...selected].filter((id) => ids.has(id)));
   await fillSelects().catch(() => {});
-  renderList();
+  quietNotify = quiet;
+  try {
+    renderList();
+  } finally {
+    quietNotify = false;
+  }
+  lastSync = Date.now();
+}
+
+const SYNC_GAP_MS = 3000;
+let lastSync = 0;
+let syncing = null;
+
+export function syncWorkspace() {
+  if (syncing) return syncing;
+  if (!token || document.hidden || Date.now() - lastSync < SYNC_GAP_MS) return Promise.resolve();
+  syncing = refreshWorkspace({ quiet: true })
+    .catch(() => {})
+    .finally(() => {
+      syncing = null;
+    });
+  return syncing;
 }
 
 export function bindWorkspace() {
@@ -905,6 +932,7 @@ export function bindWorkspace() {
     tab.onclick = () => {
       filter = tab.dataset.filter;
       selected.clear();
+      syncWorkspace();
       if (filter === "incoming") {
         expandedDrivers.clear();
         window.dispatchEvent(new CustomEvent("nexus:driver-select", { detail: { id: null } }));

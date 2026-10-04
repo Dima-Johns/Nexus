@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=68";
-import { mountOfficePicker } from "../office-picker.js?v=68";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=68";
+import { openDriverAccess } from "../driver-access.js?v=69";
+import { mountOfficePicker } from "../office-picker.js?v=69";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=69";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -16,6 +16,7 @@ let clientsCache = [];
 let createPicker = null;
 let editPicker = null;
 let officeOrgId = null;
+let paneRoot = null;
 
 let fields = [];
 let inspectData = null;
@@ -208,7 +209,7 @@ async function loadDrivers(root) {
   agentsCache = agents;
   setCount(root, "cnt-drivers", drivers.length);
   const sel = $("#admin-driver-agent", root);
-  if (sel) sel.innerHTML = agentOptions(agents, "");
+  if (sel) sel.innerHTML = agentOptions(agents, sel.value);
   renderDrivers(root);
 }
 
@@ -1079,6 +1080,7 @@ function markPermDirty(card) {
 }
 
 export async function init(root) {
+  paneRoot = root;
   showTab(root, localStorage.getItem(TAB_KEY) || "");
   root.querySelector("#admin-tabs")?.addEventListener("click", (e) => {
     const tab = e.target.closest("[data-admin-tab]");
@@ -1384,9 +1386,21 @@ export async function init(root) {
   });
 }
 
+export async function show() {
+  const root = paneRoot;
+  if (!root) return;
+  await Promise.all([
+    can("orgs.manage") ? loadOrgs(root).catch(() => {}) : null,
+    can("users.manage") ? loadUsers(root).catch(() => {}) : null,
+    can("clients.view") ? loadClients(root).catch(() => {}) : null,
+    can("drivers.view") || can("drivers.manage") ? loadDrivers(root).catch(() => {}) : null,
+  ]);
+}
+
 export function destroy() {
   createPicker?.destroy();
   editPicker?.destroy();
   createPicker = null;
   editPicker = null;
+  paneRoot = null;
 }

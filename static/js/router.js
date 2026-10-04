@@ -1,6 +1,6 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
-import { $, $$ } from "./ui.js?v=68";
-import { refreshWorkspace } from "./workspace.js?v=68";
+import { $, $$ } from "./ui.js?v=69";
+import { refreshWorkspace, syncWorkspace } from "./workspace.js?v=69";
 
 const ROUTES = {
   "/": "dashboard",
@@ -46,8 +46,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=68`),
-    import(`/static/js/pages/${name}.js?v=68`),
+    fetch(`/static/pages/${name}.html?v=69`),
+    import(`/static/js/pages/${name}.js?v=69`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;
@@ -157,10 +157,21 @@ export async function render() {
     workspaceReady = true;
     await Promise.all([panePromise, refreshWorkspace().catch(() => {})]);
   } else {
+    syncWorkspace();
     await panePromise;
   }
   applyPerms();
   prefetchPages();
+}
+
+let lastFocusSync = 0;
+function syncOnReturn() {
+  if (document.hidden || !me || !current.name || current.name === "login") return;
+  if (Date.now() - lastFocusSync < 3000) return;
+  lastFocusSync = Date.now();
+  syncWorkspace();
+  const mod = panes[current.name]?._mod;
+  Promise.resolve((mod?.refresh || mod?.show)?.()).catch(() => {});
 }
 
 export function bindNavigation() {
@@ -177,6 +188,8 @@ export function bindNavigation() {
     go(href);
   });
   window.addEventListener("popstate", () => render());
+  document.addEventListener("visibilitychange", syncOnReturn);
+  window.addEventListener("focus", syncOnReturn);
   $("#logout").onclick = () => {
     setToken("");
     setMe(null);
