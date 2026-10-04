@@ -1,6 +1,7 @@
 import json
 import os
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .auth import hash_password, issue_driver_credentials
@@ -41,7 +42,7 @@ def default_org(db: Session) -> Organization:
     org = db.query(Organization).order_by(Organization.id.asc()).first()
     if org:
         return org
-    org = Organization(name="Nexus Logistika", code="01", is_active=True)
+    org = Organization(name="Nexus Logistika", code="", is_active=True)
     db.add(org)
     db.flush()
     return org
@@ -52,6 +53,41 @@ def ensure_tenancy(db: Session) -> None:
     oid = org.id
     for model in (User, Client, Agent, Driver, Order, ImportTemplate):
         db.query(model).filter(model.org_id.is_(None)).update({model.org_id: oid}, synchronize_session=False)
+    db.commit()
+
+
+def ensure_org_codes(db: Session) -> None:
+    """Har tashkilotga login uchun 6 xonali raqamli kod. Asosiy tashkilot kodi DEFAULT_ORG_CODE (sukut: 100001)."""
+    from .tenancy import is_org_code, new_org_code
+
+    orgs = db.query(Organization).order_by(Organization.id.asc()).all()
+    taken = [o.code or "" for o in orgs]
+    seen: set[str] = set()
+    for i, org in enumerate(orgs):
+        if is_org_code(org.code) and org.code not in seen:
+            seen.add(org.code)
+            continue
+        wanted = (os.getenv("DEFAULT_ORG_CODE") or "100001").strip() if i == 0 else ""
+        if not is_org_code(wanted) or wanted in taken:
+            wanted = new_org_code(db)
+        org.code = wanted
+        seen.add(wanted)
+        taken.append(wanted)
+        db.flush()
+    db.commit()
+    db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_organizations_code ON organizations (code) WHERE COALESCE(code, '') <> ''"))
+    db.commit()
+    if orgs:
+        print(f"[nexus] Asosiy tashkilot «{orgs[0].name}» kodi: {orgs[0].code}", flush=True)
+
+
+def ensure_superadmin(db: Session) -> None:
+    """Superadmin yo‘q bo‘lsa — mavjud administratorlar superadmin qilinadi."""
+    if db.query(User).filter(User.role == "superadmin").first():
+        return
+    admins = db.query(User).filter(User.role == "admin").all()
+    for user in admins:
+        user.role = "superadmin"
     db.commit()
 
 
@@ -99,7 +135,7 @@ def seed_if_empty(db: Session) -> None:
         username="admin",
         password_hash=hash_password(os.getenv("ADMIN_PASSWORD") or "admin123"),
         full_name="Tizim administratori",
-        role="admin",
+        role="superadmin",
         org_id=org.id,
         idle_timeout_minutes=30,
         permissions_json="[]",
@@ -247,9 +283,8 @@ def ensure_driver_logins(db: Session) -> None:
 
 
 def ensure_agents(db: Session) -> None:
-    orgs = db.query(Organization).all()
-    if not orgs:
-        orgs = [default_org(db)]
+    # Demo agentlar faqat asosiy tashkilotga; yangi ochilgan tashkilotlar toza boshlanadi
+    orgs = [default_org(db)]
     for org in orgs:
         seed_org_agents(db, org.id)
         leftover = db.query(Agent).filter(Agent.org_id == org.id).all()

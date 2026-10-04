@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import json
+import re
+import secrets
 from typing import Annotated
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .auth import get_current_user, require_admin
-from .models import User
-from .permissions import ADMIN_ONLY_KEYS, has_perm, permissions_of
+from .models import Organization, User
+from .permissions import ADMIN_ONLY_KEYS, has_perm, is_super, permissions_of
+
+ORG_CODE_RE = re.compile(r"^\d{6}$")
 
 
 def org_id_of(user: User) -> int:
@@ -43,6 +47,26 @@ def require_perm(key: str):
     return _inner
 
 
+def is_org_code(value: str) -> bool:
+    return bool(ORG_CODE_RE.match(value or ""))
+
+
+def new_org_code(db: Session) -> str:
+    for _ in range(200):
+        code = str(secrets.randbelow(900000) + 100000)
+        if not db.query(Organization).filter(Organization.code == code).first():
+            return code
+    raise HTTPException(500, "Tashkilot kodi yaratilmadi, qayta urinib ko‘ring")
+
+
+def users_scope(db: Session, actor: User):
+    """Superadmin hamma tashkilot akkauntlarini ko‘radi, qolganlar faqat o‘z tashkilotinikini."""
+    q = db.query(User)
+    if not is_super(actor):
+        q = q.filter(User.org_id == org_id_of(actor))
+    return q
+
+
 def user_payload(user: User) -> dict:
     org = getattr(user, "org", None)
     return {
@@ -53,6 +77,7 @@ def user_payload(user: User) -> dict:
         "is_active": user.is_active,
         "org_id": user.org_id,
         "org_name": org.name if org else "",
+        "org_code": (org.code or "") if org else "",
         "idle_timeout_minutes": int(user.idle_timeout_minutes or 0),
         "permissions": permissions_of(user),
     }

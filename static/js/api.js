@@ -13,10 +13,15 @@ export function setMe(user) {
   me = user;
 }
 
+// Admin ruxsatlari serverda hisoblanadi (orgs.manage faqat superadmin bergandan keyin keladi)
 export function can(key) {
   if (!me) return false;
-  if (me.role === "admin") return true;
+  if (me.role === "superadmin") return true;
   return Array.isArray(me.permissions) && me.permissions.includes(key);
+}
+
+export function isSuper() {
+  return me?.role === "superadmin";
 }
 
 function forceLogin() {

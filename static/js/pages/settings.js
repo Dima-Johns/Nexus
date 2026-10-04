@@ -1,12 +1,19 @@
-import { api, can, me, setMe } from "../api.js";
-import { $, escapeHtml, formData, table } from "../ui.js?v=63";
-import { loadRemembered, saveRemembered } from "../theme.js?v=63";
+import { api, can, isSuper, me, setMe } from "../api.js";
+import { $, escapeHtml, formData, table } from "../ui.js?v=64";
+import { loadRemembered, saveRemembered } from "../theme.js?v=64";
+
+const ROLE = { superadmin: "Superadmin", admin: "Administrator", dispatcher: "Dispetcher" };
 
 function loadIdle(root) {
   const sel = $("#idle-mins", root);
   if (sel) sel.value = String(me?.idle_timeout_minutes ?? 30);
   const line = $("#org-line", root);
-  if (line) line.textContent = me?.org_name ? `Joriy tashkilot: ${me.org_name}` : "";
+  if (line) {
+    const parts = [];
+    if (me?.org_name) parts.push(`Joriy tashkilot: ${me.org_name}`);
+    if (me?.org_code) parts.push(`kirish kodi: ${me.org_code}`);
+    line.textContent = parts.join(" · ");
+  }
 }
 
 async function loadUsers(root) {
@@ -18,14 +25,15 @@ async function loadUsers(root) {
     users
       .map((u) => {
         const self = me && u.id === me.id;
+        const locked = self || (u.role === "superadmin" && !isSuper());
         return `<tr>
           <td>${escapeHtml(u.username)}</td>
           <td>${escapeHtml(u.full_name)}</td>
           <td>${escapeHtml(u.org_name || "—")}</td>
-          <td><span class="badge ${u.role === "admin" ? "approved" : "assigned"}">${escapeHtml(u.role)}</span></td>
+          <td><span class="badge ${u.role === "dispatcher" ? "assigned" : "approved"}">${escapeHtml(ROLE[u.role] || u.role)}</span></td>
           <td><span class="badge ${u.is_active ? "approved" : "rejected"}">${u.is_active ? "faol" : "o‘chiq"}</span></td>
           <td class="row-actions">
-            ${self ? `<span class="muted">siz</span>` : `
+            ${locked ? `<span class="muted">${self ? "siz" : ""}</span>` : `
               <button class="btn tiny" data-toggle="${u.id}" data-active="${u.is_active ? "1" : "0"}">${u.is_active ? "Faolsiz" : "Yoqish"}</button>
               <button class="btn tiny" data-pass="${u.id}">Parol</button>
               <button class="btn tiny" data-del="${u.id}">Olib tashlash</button>

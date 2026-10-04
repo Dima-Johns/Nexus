@@ -157,6 +157,8 @@ def get_current_user(
     user = db.query(User).options(joinedload(User.org)).filter(User.id == row.user_id).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Foydalanuvchi faol emas")
+    if user.role != "superadmin" and user.org is not None and not user.org.is_active:
+        raise HTTPException(status_code=401, detail="Tashkilot faol emas")
     now = datetime.now(timezone.utc)
     timeout = int(user.idle_timeout_minutes or 0)
     seen = row.last_seen_at
@@ -196,6 +198,12 @@ def get_current_driver(
 
 
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
-    if user.role != "admin":
+    if user.role not in ("superadmin", "admin"):
         raise HTTPException(status_code=403, detail="Faqat admin ruxsati")
+    return user
+
+
+def require_superadmin(user: Annotated[User, Depends(get_current_user)]) -> User:
+    if user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Faqat superadmin ruxsati")
     return user

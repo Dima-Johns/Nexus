@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from .auth import (
@@ -43,7 +44,7 @@ from .dispatch import (
     sequence_drivers,
     sync_agents_from_orders,
 )
-from .seed import DEFAULT_DISPATCHER_PERMS
+from .seed import DEFAULT_DISPATCHER_PERMS, ensure_org_templates
 from .phones import format_uz_phone
 from .importer import (
     DRIVER_MAPPING,
@@ -76,7 +77,15 @@ from .models import (
     User,
     Warehouse,
 )
-from .permissions import ADMIN_ONLY_KEYS, PERMISSIONS, can_write_agent_code, has_perm, parse_permission_list
+from .permissions import (
+    ADMIN_ONLY_KEYS,
+    SUPER_ONLY_KEYS,
+    can_write_agent_code,
+    catalog_for,
+    has_perm,
+    is_super,
+    parse_permission_list,
+)
 from .schemas import (
     AgentCodeIn,
     AgentIn,
@@ -106,6 +115,9 @@ from .schemas import (
     OrderOut,
     OrgIn,
     OrgOut,
+    OrgUpdate,
+    OrgUserIn,
+    OrgUserUpdate,
     PlanIn,
     RouteRenameIn,
     TemplateIn,
@@ -118,7 +130,17 @@ from .schemas import (
     WarehouseIn,
     WarehouseOut,
 )
-from .tenancy import dump_permissions, get_org_row, org_id_of, q_org, require_perm, user_payload
+from .tenancy import (
+    dump_permissions,
+    get_org_row,
+    is_org_code,
+    new_org_code,
+    org_id_of,
+    q_org,
+    require_perm,
+    user_payload,
+    users_scope,
+)
 from .tracking import ONLINE_TTL, _aware, driver_active_orders, ingest_gps, route_geometry_for, tracking_payload
 
 router = APIRouter(prefix="/api")
@@ -423,9 +445,22 @@ def _template_out(t: ImportTemplate) -> TemplateOut:
 
 @router.post("/auth/login")
 def login(payload: LoginIn, db: Session = Depends(get_db)):
-    user = db.query(User).options(joinedload(User.org)).filter(User.username == payload.username).first()
+    code = (payload.org_code or "").strip()
+    if not is_org_code(code):
+        raise HTTPException(status_code=400, detail="Tashkilot kodi 6 xonali raqam bo‘lishi kerak")
+    org = db.query(Organization).filter(Organization.code == code).first()
+    user = None
+    if org:
+        user = (
+            db.query(User)
+            .options(joinedload(User.org))
+            .filter(User.org_id == org.id, User.username == payload.username.strip())
+            .first()
+        )
     if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Login yoki parol noto'g'ri")
+        raise HTTPException(status_code=401, detail="Tashkilot kodi, login yoki parol noto‘g‘ri")
+    if not org.is_active and user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Tashkilot faol emas. Administrator bilan bog‘laning")
     token = create_token(db, user)
     return {"token": token, "user": user_payload(user)}
 
@@ -446,7 +481,7 @@ def update_me(payload: MeUpdate, db: Session = Depends(get_db), user: User = Dep
         username = payload.username.strip()
         if len(username) < 3:
             raise HTTPException(400, "Login kamida 3 belgi bo‘lsin")
-        taken = db.query(User).filter(User.username == username, User.id != row.id).first()
+        taken = db.query(User).filter(User.org_id == row.org_id, User.username == username, User.id != row.id).first()
         if taken:
             raise HTTPException(400, "Bu login band")
         row.username = username
@@ -464,13 +499,8 @@ def update_me(payload: MeUpdate, db: Session = Depends(get_db), user: User = Dep
         if mins < 0 or mins > 1440:
             raise HTTPException(400, "Harakatsizlik 0–1440 daqiqa oralig‘ida")
         row.idle_timeout_minutes = mins
-    if payload.org_id is not None:
-        if user.role != "admin":
-            raise HTTPException(403, "Tashkilotni faqat admin almashtiradi")
-        org = db.query(Organization).filter(Organization.id == payload.org_id).first()
-        if not org:
-            raise HTTPException(404, "Tashkilot topilmadi")
-        row.org_id = org.id
+    if payload.org_id is not None and payload.org_id != row.org_id:
+        raise HTTPException(403, "Tashkilotni almashtirib bo‘lmaydi")
     db.commit()
     row = db.query(User).options(joinedload(User.org)).filter(User.id == user.id).first()
     return user_payload(row)
@@ -702,52 +732,79 @@ async def driver_order_proof(
     return {"ok": True, "order": _order_out(row), "driver": _driver_out(driver)}
 
 
+# superadmin API orqali berilmaydi — faqat ishga tushishda mavjud administratordan o‘tkaziladi
 ALLOWED_ROLES = {"admin", "dispatcher"}
 
 
-def _count_admins(db: Session) -> int:
-    return db.query(User).filter(User.role == "admin", User.is_active.is_(True)).count()
+def _count_admins(db: Session, org_id: int | None) -> int:
+    return (
+        db.query(User)
+        .filter(User.org_id == org_id, User.role.in_(("admin", "superadmin")), User.is_active.is_(True))
+        .count()
+    )
+
+
+def _scoped_user(db: Session, actor: User, item_id: int) -> User:
+    """Boshqa tashkilot akkauntiga tegib bo‘lmaydi; superadmin akkauntini faqat superadmin o‘zgartiradi."""
+    row = users_scope(db, actor).filter(User.id == item_id).first()
+    if not row:
+        raise HTTPException(404, "Foydalanuvchi topilmadi")
+    if row.role == "superadmin" and not is_super(actor):
+        raise HTTPException(403, "Superadmin akkauntini o‘zgartirib bo‘lmaydi")
+    return row
+
+
+def _new_user(db: Session, org_id: int, username: str, password: str, full_name: str, role: str) -> User:
+    username = (username or "").strip()
+    if len(username) < 3:
+        raise HTTPException(400, "Login kamida 3 belgi bo‘lsin")
+    if len(password or "") < 6:
+        raise HTTPException(400, "Parol kamida 6 belgi bo‘lsin")
+    if role not in ALLOWED_ROLES:
+        raise HTTPException(400, "Rol: admin yoki dispetcher")
+    if db.query(User).filter(User.org_id == org_id, User.username == username).first():
+        raise HTTPException(400, "Bu tashkilotda bu login band")
+    row = User(
+        username=username,
+        password_hash=hash_password(password),
+        full_name=(full_name or "").strip() or username,
+        role=role,
+        is_active=True,
+        org_id=org_id,
+        idle_timeout_minutes=30,
+        permissions_json=dump_permissions(list(DEFAULT_DISPATCHER_PERMS) if role == "dispatcher" else []),
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _merge_perms(actor: User, row: User, wanted: list[str]) -> list[str]:
+    """Faqat superadmin SUPER_ONLY ruxsatlarni beradi/oladi; boshqalar saqlaganda ular o‘z holicha qoladi."""
+    keys = parse_permission_list(wanted)
+    if row.role not in ("admin", "superadmin"):
+        keys = [k for k in keys if k not in ADMIN_ONLY_KEYS]
+    if is_super(actor):
+        return keys
+    kept = [k for k in parse_permission_list(row.permissions_json) if k in SUPER_ONLY_KEYS]
+    return [k for k in keys if k not in SUPER_ONLY_KEYS] + kept
 
 
 @router.get("/users", response_model=list[UserOut])
 def list_users(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    rows = db.query(User).options(joinedload(User.org)).order_by(User.id.asc()).all()
+    rows = users_scope(db, admin).options(joinedload(User.org)).order_by(User.org_id.asc(), User.id.asc()).all()
     return [user_payload(u) for u in rows]
 
 
 @router.post("/users", response_model=UserOut)
 def create_user(payload: UserCreate, db: Session = Depends(get_db), admin: User = Depends(require_perm("users.manage"))):
-    username = payload.username.strip()
-    if len(username) < 3:
-        raise HTTPException(400, "Login kamida 3 belgi bo‘lsin")
-    if len(payload.password) < 6:
-        raise HTTPException(400, "Parol kamida 6 belgi bo‘lsin")
     role = payload.role if payload.role in ALLOWED_ROLES else "dispatcher"
-    if db.query(User).filter(User.username == username).first():
-        raise HTTPException(400, "Bu login band")
-    org_id = admin.org_id
-    if org_id:
-        org = db.query(Organization).filter(Organization.id == org_id).first()
-        if not org:
-            raise HTTPException(404, "Tashkilot topilmadi")
-    else:
-        raise HTTPException(400, "Tashkilot topilmadi")
-    row = User(
-        username=username,
-        password_hash=hash_password(payload.password),
-        full_name=payload.full_name.strip() or username,
-        role=role,
-        is_active=payload.is_active,
-        org_id=org_id,
-        idle_timeout_minutes=max(0, min(1440, int(payload.idle_timeout_minutes or 30))),
-        permissions_json=dump_permissions(
-            (
-                [k for k in parse_permission_list(payload.permissions) if k not in ADMIN_ONLY_KEYS]
-                or (list(DEFAULT_DISPATCHER_PERMS) if role == "dispatcher" else [])
-            )
-        ),
-    )
-    db.add(row)
+    row = _new_user(db, org_id_of(admin), payload.username, payload.password, payload.full_name, role)
+    row.is_active = payload.is_active
+    row.idle_timeout_minutes = max(0, min(1440, int(payload.idle_timeout_minutes or 30)))
+    picked = [k for k in parse_permission_list(payload.permissions) if k not in ADMIN_ONLY_KEYS | SUPER_ONLY_KEYS]
+    if picked:
+        row.permissions_json = dump_permissions(picked)
     db.commit()
     row = db.query(User).options(joinedload(User.org)).filter(User.id == row.id).first()
     return user_payload(row)
@@ -755,39 +812,33 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), admin: User 
 
 @router.put("/users/{item_id}", response_model=UserOut)
 def update_user(item_id: int, payload: UserUpdate, db: Session = Depends(get_db), admin: User = Depends(require_perm("users.manage"))):
-    row = db.query(User).filter(User.id == item_id).first()
-    if not row:
-        raise HTTPException(404, "Foydalanuvchi topilmadi")
+    row = _scoped_user(db, admin, item_id)
     if payload.full_name is not None:
         row.full_name = payload.full_name.strip() or row.full_name
     if payload.password:
         if len(payload.password) < 6:
             raise HTTPException(400, "Parol kamida 6 belgi bo‘lsin")
         row.password_hash = hash_password(payload.password)
-    if payload.role is not None:
-        if payload.role not in ALLOWED_ROLES:
+    if payload.role is not None and payload.role != row.role:
+        if row.role == "superadmin" or payload.role not in ALLOWED_ROLES:
             raise HTTPException(400, "Noto‘g‘ri rol")
-        if row.role == "admin" and payload.role != "admin" and _count_admins(db) <= 1:
-            raise HTTPException(400, "Oxirgi admin rolini o‘zgartirib bo‘lmaydi")
+        if row.role == "admin" and _count_admins(db, row.org_id) <= 1:
+            raise HTTPException(400, "Tashkilotdagi oxirgi admin rolini o‘zgartirib bo‘lmaydi")
         row.role = payload.role
     if payload.is_active is not None:
         if row.id == admin.id and not payload.is_active:
             raise HTTPException(400, "O‘z akkauntingizni o‘chirib bo‘lmaydi")
-        if row.role == "admin" and row.is_active and not payload.is_active and _count_admins(db) <= 1:
-            raise HTTPException(400, "Oxirgi adminni o‘chirib bo‘lmaydi")
+        if row.role in ("admin", "superadmin") and row.is_active and not payload.is_active and _count_admins(db, row.org_id) <= 1:
+            raise HTTPException(400, "Tashkilotdagi oxirgi adminni o‘chirib bo‘lmaydi")
         row.is_active = payload.is_active
-    if payload.org_id is not None:
-        org = db.query(Organization).filter(Organization.id == payload.org_id).first()
-        if not org:
-            raise HTTPException(404, "Tashkilot topilmadi")
-        row.org_id = org.id
+        if not payload.is_active:
+            db.query(SessionToken).filter(SessionToken.user_id == row.id).delete()
+    if payload.org_id is not None and payload.org_id != row.org_id:
+        raise HTTPException(400, "Akkauntni boshqa tashkilotga o‘tkazib bo‘lmaydi")
     if payload.idle_timeout_minutes is not None:
         row.idle_timeout_minutes = max(0, min(1440, int(payload.idle_timeout_minutes)))
     if payload.permissions is not None:
-        keys = parse_permission_list(payload.permissions)
-        if row.role != "admin":
-            keys = [k for k in keys if k not in ADMIN_ONLY_KEYS]
-        row.permissions_json = dump_permissions(keys)
+        row.permissions_json = dump_permissions(_merge_perms(admin, row, payload.permissions))
     db.commit()
     row = db.query(User).options(joinedload(User.org)).filter(User.id == item_id).first()
     return user_payload(row)
@@ -795,13 +846,11 @@ def update_user(item_id: int, payload: UserUpdate, db: Session = Depends(get_db)
 
 @router.delete("/users/{item_id}")
 def delete_user(item_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    row = db.query(User).filter(User.id == item_id).first()
-    if not row:
-        raise HTTPException(404, "Foydalanuvchi topilmadi")
+    row = _scoped_user(db, admin, item_id)
     if row.id == admin.id:
         raise HTTPException(400, "O‘z akkauntingizni o‘chirib bo‘lmaydi")
-    if row.role == "admin" and row.is_active and _count_admins(db) <= 1:
-        raise HTTPException(400, "Oxirgi adminni o‘chirib bo‘lmaydi")
+    if row.role in ("admin", "superadmin") and row.is_active and _count_admins(db, row.org_id) <= 1:
+        raise HTTPException(400, "Tashkilotdagi oxirgi adminni o‘chirib bo‘lmaydi")
     db.query(SessionToken).filter(SessionToken.user_id == item_id).delete()
     db.delete(row)
     db.commit()
@@ -809,8 +858,8 @@ def delete_user(item_id: int, db: Session = Depends(get_db), admin: User = Depen
 
 
 @router.get("/permissions")
-def list_permissions(_: User = Depends(require_admin)):
-    return {"permissions": PERMISSIONS}
+def list_permissions(admin: User = Depends(require_admin)):
+    return {"permissions": catalog_for(admin), "super_only": sorted(SUPER_ONLY_KEYS) if is_super(admin) else []}
 
 
 @router.put("/users/{item_id}/permissions", response_model=UserOut)
@@ -820,46 +869,139 @@ def set_user_permissions(
     db: Session = Depends(get_db),
     admin: User = Depends(require_perm("perms.manage")),
 ):
-    row = db.query(User).filter(User.id == item_id).first()
-    if not row:
-        raise HTTPException(404, "Foydalanuvchi topilmadi")
-    keys = parse_permission_list(payload.permissions)
-    if row.role != "admin":
-        keys = [k for k in keys if k not in ADMIN_ONLY_KEYS]
-    row.permissions_json = dump_permissions(keys)
+    row = _scoped_user(db, admin, item_id)
+    row.permissions_json = dump_permissions(_merge_perms(admin, row, payload.permissions))
     db.commit()
     row = db.query(User).options(joinedload(User.org)).filter(User.id == item_id).first()
     return user_payload(row)
 
 
+def _org_out(db: Session, org: Organization, actor: User) -> OrgOut:
+    roles = dict(
+        db.query(User.role, func.count(User.id)).filter(User.org_id == org.id).group_by(User.role).all()
+    )
+    return OrgOut(
+        id=org.id,
+        name=org.name,
+        code=org.code or "",
+        is_active=org.is_active,
+        user_count=sum(roles.values()),
+        admin_count=roles.get("admin", 0) + roles.get("superadmin", 0),
+        dispatcher_count=roles.get("dispatcher", 0),
+        driver_count=db.query(Driver).filter(Driver.org_id == org.id).count(),
+        is_own=org.id == actor.org_id,
+        created_at=org.created_at.isoformat() if org.created_at else None,
+    )
+
+
+def _org_or_404(db: Session, item_id: int) -> Organization:
+    org = db.query(Organization).filter(Organization.id == item_id).first()
+    if not org:
+        raise HTTPException(404, "Tashkilot topilmadi")
+    return org
+
+
 @router.get("/orgs", response_model=list[OrgOut])
-def list_orgs(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def list_orgs(db: Session = Depends(get_db), actor: User = Depends(require_perm("orgs.manage"))):
     rows = db.query(Organization).order_by(Organization.id.asc()).all()
-    return [
-        OrgOut(
-            id=org.id,
-            name=org.name,
-            code=org.code or "",
-            is_active=org.is_active,
-            user_count=db.query(User).filter(User.org_id == org.id).count(),
-        )
-        for org in rows
-    ]
+    return [_org_out(db, org, actor) for org in rows]
 
 
 @router.post("/orgs", response_model=OrgOut)
-def create_org(_: OrgIn, __: Session = Depends(get_db), ___: User = Depends(require_admin)):
-    raise HTTPException(400, "Tashkilot ochish o‘chirilgan")
+def create_org(payload: OrgIn, db: Session = Depends(get_db), actor: User = Depends(require_perm("orgs.manage"))):
+    name = payload.name.strip()
+    if len(name) < 2:
+        raise HTTPException(400, "Tashkilot nomi kamida 2 belgi bo‘lsin")
+    if db.query(Organization).filter(func.lower(Organization.name) == name.lower()).first():
+        raise HTTPException(400, "Bu nomdagi tashkilot bor")
+    org = Organization(name=name[:160], code=new_org_code(db), is_active=True)
+    db.add(org)
+    db.flush()
+    if payload.admin_username.strip():
+        _new_user(db, org.id, payload.admin_username, payload.admin_password, payload.admin_full_name, "admin")
+    ensure_org_templates(db, org.id)
+    db.commit()
+    return _org_out(db, org, actor)
 
 
 @router.put("/orgs/{item_id}", response_model=OrgOut)
-def update_org(item_id: int, _: OrgIn, __: Session = Depends(get_db), ___: User = Depends(require_admin)):
-    raise HTTPException(400, "Tashkilot tahrirlash o‘chirilgan")
+def update_org(item_id: int, payload: OrgUpdate, db: Session = Depends(get_db), actor: User = Depends(require_perm("orgs.manage"))):
+    org = _org_or_404(db, item_id)
+    if payload.name is not None:
+        name = payload.name.strip()
+        if len(name) < 2:
+            raise HTTPException(400, "Tashkilot nomi kamida 2 belgi bo‘lsin")
+        clash = db.query(Organization).filter(func.lower(Organization.name) == name.lower(), Organization.id != org.id).first()
+        if clash:
+            raise HTTPException(400, "Bu nomdagi tashkilot bor")
+        org.name = name[:160]
+    if payload.is_active is not None and payload.is_active != org.is_active:
+        if org.id == actor.org_id:
+            raise HTTPException(400, "O‘z tashkilotingizni faolsizlantirib bo‘lmaydi")
+        if db.query(User).filter(User.org_id == org.id, User.role == "superadmin").first():
+            raise HTTPException(400, "Superadmin tashkilotini faolsizlantirib bo‘lmaydi")
+        org.is_active = payload.is_active
+        if not org.is_active:
+            ids = [u.id for u in db.query(User.id).filter(User.org_id == org.id).all()]
+            if ids:
+                db.query(SessionToken).filter(SessionToken.user_id.in_(ids)).delete(synchronize_session=False)
+    db.commit()
+    return _org_out(db, org, actor)
 
 
-@router.delete("/orgs/{item_id}")
-def delete_org(item_id: int, _: Session = Depends(get_db), __: User = Depends(require_admin)):
-    raise HTTPException(400, "Tashkilot o‘chirish o‘chirilgan")
+@router.post("/orgs/{item_id}/code", response_model=OrgOut)
+def regenerate_org_code(item_id: int, db: Session = Depends(get_db), actor: User = Depends(require_perm("orgs.manage"))):
+    org = _org_or_404(db, item_id)
+    org.code = new_org_code(db)
+    db.commit()
+    return _org_out(db, org, actor)
+
+
+@router.get("/orgs/{item_id}/users", response_model=list[UserOut])
+def list_org_users(item_id: int, db: Session = Depends(get_db), _: User = Depends(require_perm("orgs.manage"))):
+    org = _org_or_404(db, item_id)
+    rows = db.query(User).options(joinedload(User.org)).filter(User.org_id == org.id).order_by(User.id.asc()).all()
+    return [user_payload(u) for u in rows]
+
+
+@router.post("/orgs/{item_id}/users", response_model=UserOut)
+def create_org_user(item_id: int, payload: OrgUserIn, db: Session = Depends(get_db), _: User = Depends(require_perm("orgs.manage"))):
+    org = _org_or_404(db, item_id)
+    row = _new_user(db, org.id, payload.username, payload.password, payload.full_name, payload.role)
+    db.commit()
+    row = db.query(User).options(joinedload(User.org)).filter(User.id == row.id).first()
+    return user_payload(row)
+
+
+@router.put("/orgs/{item_id}/users/{user_id}", response_model=UserOut)
+def update_org_user(
+    item_id: int,
+    user_id: int,
+    payload: OrgUserUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_perm("orgs.manage")),
+):
+    org = _org_or_404(db, item_id)
+    row = db.query(User).filter(User.id == user_id, User.org_id == org.id).first()
+    if not row:
+        raise HTTPException(404, "Foydalanuvchi topilmadi")
+    if row.role == "superadmin" and not is_super(actor):
+        raise HTTPException(403, "Superadmin akkauntini o‘zgartirib bo‘lmaydi")
+    if payload.password:
+        if len(payload.password) < 6:
+            raise HTTPException(400, "Parol kamida 6 belgi bo‘lsin")
+        row.password_hash = hash_password(payload.password)
+    if payload.is_active is not None and payload.is_active != row.is_active:
+        if row.id == actor.id:
+            raise HTTPException(400, "O‘z akkauntingizni o‘chirib bo‘lmaydi")
+        if not payload.is_active and row.role in ("admin", "superadmin") and _count_admins(db, org.id) <= 1:
+            raise HTTPException(400, "Tashkilotdagi oxirgi adminni o‘chirib bo‘lmaydi")
+        row.is_active = payload.is_active
+        if not payload.is_active:
+            db.query(SessionToken).filter(SessionToken.user_id == row.id).delete()
+    db.commit()
+    row = db.query(User).options(joinedload(User.org)).filter(User.id == row.id).first()
+    return user_payload(row)
 
 
 @router.get("/dashboard/stats")
@@ -953,7 +1095,7 @@ def set_agent_code(item_id: int, payload: AgentCodeIn, db: Session = Depends(get
     oid = org_id_of(user)
     row = get_org_row(db, Agent, item_id, user, "Agent topilmadi")
     if (row.code or "") == code:
-        if user.role != "admin" and not row.code_locked:
+        if user.role not in ("admin", "superadmin") and not row.code_locked:
             row.code_locked = True
             db.commit()
         row = q_org(db, Agent, user).options(joinedload(Agent.drivers)).filter(Agent.id == item_id).first()
@@ -963,7 +1105,7 @@ def set_agent_code(item_id: int, payload: AgentCodeIn, db: Session = Depends(get
     other = q_org(db, Agent, user).filter(Agent.code == code, Agent.id != item_id).first()
     old = row.code or ""
     if other:
-        if user.role != "admin":
+        if user.role not in ("admin", "superadmin"):
             raise HTTPException(400, f"Agent kodi {code} band")
         other.code = ""
         db.flush()
@@ -1811,7 +1953,7 @@ async def inspect_import_file(file: UploadFile = File(...), _: User = Depends(ge
 @router.post("/templates", response_model=TemplateOut)
 def submit_template(payload: TemplateIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     status = "pending"
-    if user.role == "admin":
+    if user.role in ("admin", "superadmin"):
         status = payload.status or "approved"
     row = ImportTemplate(
         org_id=org_id_of(user),

@@ -23,13 +23,15 @@ async def lifespan(_: FastAPI):
     db = SessionLocal()
     try:
         from .models import SessionToken
-        from .seed import ensure_dispatcher_perms, ensure_tenancy
+        from .seed import ensure_dispatcher_perms, ensure_org_codes, ensure_superadmin, ensure_tenancy
 
         ensure_tenancy(db)
         ensure_dispatcher_perms(db)
         db.query(SessionToken).filter(SessionToken.driver_id.is_(None)).delete()
         db.commit()
         seed_if_empty(db)
+        ensure_superadmin(db)
+        ensure_org_codes(db)
         ensure_default_templates(db)
         ensure_agents(db)
         ensure_phone_format(db)

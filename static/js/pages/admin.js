@@ -1,12 +1,15 @@
-import { api, apiDownload, apiUpload, can } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=63";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=63";
+import { api, apiDownload, apiUpload, can, isSuper, me } from "../api.js";
+import { openDriverAccess } from "../driver-access.js?v=64";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=64";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
 const ENTITY = { orders: "Buyurtmalar", drivers: "Haydovchilar" };
-const ROLE = { admin: "Administrator", dispatcher: "Dispetcher" };
+const ROLE = { superadmin: "Superadmin", admin: "Administrator", dispatcher: "Dispetcher" };
 const ADMIN_ONLY = new Set(["users.manage", "perms.manage"]);
+let superOnly = new Set();
+let orgsCache = [];
+const openOrgs = new Set();
 
 let fields = [];
 let inspectData = null;
@@ -223,16 +226,21 @@ async function loadPermsAdmin(root) {
   const box = $("#perm-list", root);
   if (!box) return;
   const [catalog, users] = await Promise.all([api("/permissions"), api("/users")]);
+  superOnly = new Set(catalog.super_only || []);
   setCount(root, "cnt-perms", users.length);
   const groups = {};
   (catalog.permissions || []).forEach((p) => {
     if (!groups[p.group]) groups[p.group] = [];
     groups[p.group].push(p);
   });
+  const superItems = (catalog.permissions || []).filter((p) => superOnly.has(p.key));
   box.innerHTML = users
     .map((u) => {
       const keys = new Set(u.permissions || []);
-      const locked = u.role === "admin";
+      const isAdminRole = u.role === "admin" || u.role === "superadmin";
+      // Admin barcha oddiy ruxsatlarga ega; superadmin unga faqat «superadmin beradigan» ruxsatlarni qo‘sha oladi
+      const superEditable = u.role === "admin" && isSuper() && superItems.length;
+      const locked = isAdminRole && !superEditable;
       const head = `<div class="perm-head">
           <span class="user-avatar">${escapeHtml(initials(u.full_name))}</span>
           <div class="perm-who">
@@ -247,8 +255,22 @@ async function loadPermsAdmin(root) {
           }
         </div>`;
       if (locked) {
+        const text =
+          u.role === "superadmin"
+            ? "Superadmin barcha tashkilot va amallarga to‘liq ruxsatga ega."
+            : "Administrator o‘z tashkilotidagi barcha bo‘lim va amallarga to‘liq ruxsatga ega.";
+        return `<div class="adm-card perm-card" data-perm-user="${u.id}">${head}<p class="perm-locked">${text}</p></div>`;
+      }
+      if (superEditable) {
+        const boxes = superItems
+          .map(
+            (p) =>
+              `<label class="chk"><input type="checkbox" data-perm-key="${p.key}" ${keys.has(p.key) ? "checked" : ""} /> ${escapeHtml(p.label)}</label>`
+          )
+          .join("");
         return `<div class="adm-card perm-card" data-perm-user="${u.id}">${head}
-          <p class="perm-locked">Administrator barcha bo‘lim va amallarga to‘liq ruxsatga ega, uni cheklab bo‘lmaydi.</p>
+          <p class="perm-locked">Administrator o‘z tashkilotidagi barcha amallarga ega. Quyidagi imkoniyatni faqat superadmin beradi.</p>
+          <div class="perm-grid"><div class="perm-group super-perm">${boxes}</div></div>
         </div>`;
       }
       const checks = Object.entries(groups)
@@ -273,6 +295,236 @@ async function loadPermsAdmin(root) {
   box.querySelectorAll(".perm-card").forEach(permCount);
 }
 
+function orgErr(root, text, ok = false) {
+  const el = $("#org-err", root);
+  if (!el) return;
+  el.classList.toggle("hidden", !text);
+  el.style.color = ok ? "var(--ok)" : "";
+  el.textContent = text || "";
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("uz-UZ");
+}
+
+function orgUsersHtml(org, users) {
+  const rows = users.length
+    ? table(
+        ["Login", "Ism", "Rol", "Holat", ""],
+        users
+          .map((u) => {
+            const locked = (u.role === "superadmin" && !isSuper()) || u.id === me?.id;
+            return `<tr>
+              <td class="nowrap"><b>${escapeHtml(u.username)}</b></td>
+              <td>${escapeHtml(u.full_name)}</td>
+              <td><span class="badge role-${escapeHtml(u.role)}">${escapeHtml(ROLE[u.role] || u.role)}</span></td>
+              <td><span class="badge ${u.is_active ? "approved" : "rejected"}">${u.is_active ? "faol" : "o‘chiq"}</span></td>
+              <td class="col-actions">${
+                locked
+                  ? `<span class="muted">${u.id === me?.id ? "siz" : ""}</span>`
+                  : `<button class="btn tiny" type="button" data-ou-pass="${u.id}">Parol</button>
+                     <button class="btn tiny" type="button" data-ou-toggle="${u.id}" data-active="${u.is_active ? "1" : "0"}">${u.is_active ? "Faolsiz" : "Yoqish"}</button>`
+              }</td>
+            </tr>`;
+          })
+          .join("")
+      )
+    : `<p class="muted adm-empty">Bu tashkilotda hali akkaunt yo‘q.</p>`;
+  return `${rows}
+    <form class="org-user-form form-grid" data-ou-form="${org.id}" autocomplete="off">
+      <input name="username" placeholder="Login" required minlength="3" autocomplete="off" />
+      <input name="full_name" placeholder="To‘liq ism" />
+      <input name="password" type="password" placeholder="Parol (kamida 6)" required minlength="6" autocomplete="new-password" />
+      <select name="role">
+        <option value="dispatcher">Dispetcher</option>
+        <option value="admin">Administrator</option>
+      </select>
+      <button class="btn primary" type="submit">Akkaunt ochish</button>
+    </form>`;
+}
+
+function orgCardHtml(org) {
+  const open = openOrgs.has(org.id);
+  return `<div class="adm-card org-card${org.is_active ? "" : " off"}" data-org="${org.id}">
+    <div class="org-head">
+      <div class="org-title">
+        <b>${escapeHtml(org.name)}</b>
+        ${org.is_own ? `<span class="badge entity">Sizning tashkilot</span>` : ""}
+        ${org.is_active ? "" : `<span class="badge rejected">Faolsiz</span>`}
+      </div>
+      <div class="org-code" title="Tizimga kirish kodi">
+        <span>Kirish kodi</span>
+        <b>${escapeHtml(org.code || "——————")}</b>
+        <button class="btn tiny" type="button" data-org-copy="${escapeHtml(org.code)}">Nusxa</button>
+      </div>
+    </div>
+    <div class="adm-summary org-meta">
+      <span class="adm-pill">Admin <b>${org.admin_count}</b></span>
+      <span class="adm-pill">Dispetcher <b>${org.dispatcher_count}</b></span>
+      <span class="adm-pill">Haydovchi <b>${org.driver_count}</b></span>
+      <span class="adm-pill">Ochilgan <b>${fmtDate(org.created_at)}</b></span>
+    </div>
+    <div class="row-actions org-actions">
+      <button class="btn tiny${open ? " primary" : ""}" type="button" data-org-users="${org.id}">Akkauntlar (${org.user_count})</button>
+      <button class="btn tiny" type="button" data-org-rename="${org.id}">Nomini o‘zgartirish</button>
+      <button class="btn tiny" type="button" data-org-code="${org.id}">Yangi kod</button>
+      ${org.is_own ? "" : `<button class="btn tiny${org.is_active ? " danger-text" : ""}" type="button" data-org-toggle="${org.id}">${org.is_active ? "Faolsizlantirish" : "Faollashtirish"}</button>`}
+    </div>
+    <div class="org-users${open ? "" : " hidden"}" data-org-box="${org.id}"></div>
+  </div>`;
+}
+
+async function loadOrgUsers(root, orgId) {
+  const box = root.querySelector(`[data-org-box="${orgId}"]`);
+  if (!box) return;
+  const org = orgsCache.find((o) => o.id === Number(orgId));
+  box.innerHTML = `<p class="muted adm-empty">Yuklanmoqda…</p>`;
+  const users = await api(`/orgs/${orgId}/users`);
+  box.innerHTML = orgUsersHtml(org, users);
+}
+
+async function loadOrgs(root) {
+  const box = $("#org-list", root);
+  if (!box) return;
+  orgsCache = await api("/orgs");
+  setCount(root, "cnt-orgs", orgsCache.length);
+  box.innerHTML = orgsCache.length ? orgsCache.map(orgCardHtml).join("") : `<p class="muted adm-empty">Hozircha tashkilot yo‘q.</p>`;
+  await Promise.all([...openOrgs].map((id) => loadOrgUsers(root, id).catch(() => {})));
+}
+
+function refreshPerms(root) {
+  if (can("perms.manage")) loadPermsAdmin(root).catch(() => {});
+}
+
+function bindOrgs(root) {
+  const form = $("#org-form", root);
+  if (!form) return;
+  $("#org-add-toggle", root).onclick = () => {
+    form.classList.toggle("hidden");
+    if (!form.classList.contains("hidden")) form.querySelector("[name=name]")?.focus();
+  };
+  $("#org-add-cancel", root).onclick = () => {
+    form.reset();
+    form.classList.add("hidden");
+  };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    orgErr(root, "");
+    const d = formData(form);
+    try {
+      const org = await api("/orgs", { method: "POST", body: d });
+      form.reset();
+      form.classList.add("hidden");
+      const done = $("#org-created", root);
+      done.innerHTML = `<div class="org-created-row">
+          <div><b>«${escapeHtml(org.name)}» tashkiloti ochildi</b>
+          <p class="muted adm-sub">Admin shu kod, «${escapeHtml(d.admin_username)}» login va siz kiritgan parol bilan kiradi.</p></div>
+          <div class="org-code big"><span>Kirish kodi</span><b>${escapeHtml(org.code)}</b>
+          <button class="btn tiny" type="button" data-org-copy="${escapeHtml(org.code)}">Nusxa</button></div>
+          <button class="icon-x-btn" type="button" data-org-created-close aria-label="Yopish">×</button>
+        </div>`;
+      done.classList.remove("hidden");
+      openOrgs.add(org.id);
+      await loadOrgs(root);
+      refreshPerms(root);
+    } catch (ex) {
+      orgErr(root, ex.message);
+    }
+  };
+
+  const section = root.querySelector('[data-admin-sec="orgs"]');
+  section.addEventListener("submit", async (e) => {
+    const f = e.target.closest("[data-ou-form]");
+    if (!f) return;
+    e.preventDefault();
+    orgErr(root, "");
+    try {
+      const u = await api(`/orgs/${f.dataset.ouForm}/users`, { method: "POST", body: formData(f) });
+      orgErr(root, `«${u.username}» akkaunti ochildi (${ROLE[u.role] || u.role}).`, true);
+      await loadOrgs(root);
+      refreshPerms(root);
+    } catch (ex) {
+      orgErr(root, ex.message);
+    }
+  });
+  section.addEventListener("click", async (e) => {
+    const t = e.target.closest("button");
+    if (!t) return;
+    const card = t.closest("[data-org]");
+    const orgId = card?.dataset.org;
+    const org = orgsCache.find((o) => String(o.id) === String(orgId));
+    try {
+      if (t.dataset.orgCreatedClose !== undefined) {
+        $("#org-created", root).classList.add("hidden");
+        return;
+      }
+      if (t.dataset.orgCopy !== undefined) {
+        await navigator.clipboard?.writeText(t.dataset.orgCopy).catch(() => {});
+        t.textContent = "Nusxalandi ✓";
+        setTimeout(() => (t.textContent = "Nusxa"), 1500);
+        return;
+      }
+      if (t.dataset.orgUsers) {
+        const id = Number(t.dataset.orgUsers);
+        if (openOrgs.has(id)) openOrgs.delete(id);
+        else openOrgs.add(id);
+        card.querySelector("[data-org-box]").classList.toggle("hidden", !openOrgs.has(id));
+        t.classList.toggle("primary", openOrgs.has(id));
+        if (openOrgs.has(id)) await loadOrgUsers(root, id);
+        return;
+      }
+      if (t.dataset.orgRename) {
+        const name = prompt("Tashkilotning yangi nomi:", org?.name || "");
+        if (!name || name.trim() === org?.name) return;
+        await api(`/orgs/${orgId}`, { method: "PUT", body: { name: name.trim() } });
+        await loadOrgs(root);
+        return;
+      }
+      if (t.dataset.orgCode) {
+        const ok = await askConfirm(
+          `«${org?.name}» uchun yangi kirish kodi beriladi. Eski kod (${org?.code}) bilan endi kirib bo‘lmaydi — xodimlarga yangi kodni yetkazing.`,
+          { title: "Yangi kod", ok: "Yangi kod berish" }
+        );
+        if (!ok) return;
+        const upd = await api(`/orgs/${orgId}/code`, { method: "POST" });
+        orgErr(root, `«${upd.name}» yangi kirish kodi: ${upd.code}`, true);
+        await loadOrgs(root);
+        return;
+      }
+      if (t.dataset.orgToggle) {
+        const next = !org?.is_active;
+        if (!next) {
+          const ok = await askConfirm(`«${org?.name}» faolsizlantirilsa, uning barcha xodimlari tizimdan chiqariladi va kira olmaydi.`, {
+            title: "Faolsizlantirish",
+            ok: "Faolsizlantirish",
+            danger: true,
+          });
+          if (!ok) return;
+        }
+        await api(`/orgs/${orgId}`, { method: "PUT", body: { is_active: next } });
+        await loadOrgs(root);
+        return;
+      }
+      if (t.dataset.ouPass) {
+        const next = prompt("Yangi parol (kamida 6 belgi):");
+        if (!next) return;
+        await api(`/orgs/${orgId}/users/${t.dataset.ouPass}`, { method: "PUT", body: { password: next } });
+        orgErr(root, "Parol yangilandi.", true);
+        return;
+      }
+      if (t.dataset.ouToggle) {
+        const active = t.dataset.active === "1";
+        await api(`/orgs/${orgId}/users/${t.dataset.ouToggle}`, { method: "PUT", body: { is_active: !active } });
+        await loadOrgUsers(root, orgId);
+      }
+    } catch (ex) {
+      orgErr(root, ex.message);
+    }
+  });
+}
+
 function markPermDirty(card) {
   card.classList.add("dirty");
   const btn = card.querySelector("[data-perm-save]");
@@ -290,7 +542,9 @@ export async function init(root) {
     if (tab) showTab(root, tab.dataset.adminTab);
   });
 
+  if (can("orgs.manage")) bindOrgs(root);
   await Promise.all([
+    can("orgs.manage") ? loadOrgs(root).catch((ex) => orgErr(root, ex.message)) : null,
     can("perms.manage") ? loadPermsAdmin(root).catch(() => {}) : null,
     can("admin.panel")
       ? loadFields($("#tpl-entity", root)?.value || "orders").then(() => loadList(root)).catch(() => {})

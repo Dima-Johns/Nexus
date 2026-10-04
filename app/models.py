@@ -29,7 +29,8 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    # Login tashkilot ichida unikal (ux_users_org_username, migrate.py)
+    username: Mapped[str] = mapped_column(String(80), index=True)
     password_hash: Mapped[str] = mapped_column(String(128))
     full_name: Mapped[str] = mapped_column(String(160))
     role: Mapped[str] = mapped_column(String(32), default="dispatcher")

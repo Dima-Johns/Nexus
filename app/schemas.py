@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 class LoginIn(BaseModel):
     username: str
     password: str
+    org_code: str = ""
 
 
 class UserOut(BaseModel):
@@ -14,6 +15,7 @@ class UserOut(BaseModel):
     is_active: bool
     org_id: int | None = None
     org_name: str = ""
+    org_code: str = ""
     idle_timeout_minutes: int = 30
     permissions: list[str] = Field(default_factory=list)
 
@@ -53,8 +55,26 @@ class MeUpdate(BaseModel):
 
 class OrgIn(BaseModel):
     name: str
-    code: str = ""
-    is_active: bool = True
+    admin_username: str = ""
+    admin_password: str = ""
+    admin_full_name: str = ""
+
+
+class OrgUpdate(BaseModel):
+    name: str | None = None
+    is_active: bool | None = None
+
+
+class OrgUserIn(BaseModel):
+    username: str
+    password: str
+    full_name: str = ""
+    role: str = "dispatcher"
+
+
+class OrgUserUpdate(BaseModel):
+    password: str | None = None
+    is_active: bool | None = None
 
 
 class OrgOut(BaseModel):
@@ -63,6 +83,11 @@ class OrgOut(BaseModel):
     code: str = ""
     is_active: bool = True
     user_count: int = 0
+    admin_count: int = 0
+    dispatcher_count: int = 0
+    driver_count: int = 0
+    is_own: bool = False
+    created_at: str | None = None
 
     class Config:
         from_attributes = True

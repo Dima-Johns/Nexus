@@ -5,6 +5,11 @@
       Dostuplar
       <span class="admin-tab-count" id="cnt-perms"></span>
     </button>
+    <button type="button" class="admin-tab" data-admin-tab="orgs" data-perm="orgs.manage">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-5h6v5" /><path d="M9 10h.01M15 10h.01M12 10h.01" /></svg>
+      Tashkilotlar
+      <span class="admin-tab-count" id="cnt-orgs"></span>
+    </button>
     <button type="button" class="admin-tab" data-admin-tab="drivers" data-perm="drivers.manage,drivers.view">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h11v10H2z" /><path d="M13 9h4l4 4v3h-8" /><circle cx="6.5" cy="17.5" r="1.8" /><circle cx="17" cy="17.5" r="1.8" /></svg>
       Haydovchilar
@@ -26,6 +31,35 @@
     </div>
     <p class="error hidden" id="perm-err"></p>
     <div id="perm-list"></div>
+  </section>
+
+  <section class="glass panel admin-sec" data-admin-sec="orgs" data-perm="orgs.manage">
+    <div class="panel-head">
+      <div>
+        <h3>Tashkilotlar</h3>
+        <p class="muted adm-sub">Har bir tashkilot alohida ishlaydi: zayavka, haydovchi, agent va skladlari boshqasiga ko‘rinmaydi. Tizimga kirishda tashkilotning 6 xonali kodi so‘raladi.</p>
+      </div>
+      <div class="row-actions">
+        <button class="btn tiny primary" type="button" id="org-add-toggle">+ Yangi tashkilot</button>
+      </div>
+    </div>
+    <p class="error hidden" id="org-err"></p>
+    <form id="org-form" class="adm-card adm-form hidden" autocomplete="off">
+      <div class="adm-card-title">Yangi tashkilot</div>
+      <div class="form-grid adm-grid-4">
+        <label class="map-row"><span>Tashkilot nomi *</span><input name="name" placeholder="Masalan: Samarqand Distribyutsiya" required minlength="2" /></label>
+        <label class="map-row"><span>Admin login *</span><input name="admin_username" placeholder="admin" required minlength="3" autocomplete="off" /></label>
+        <label class="map-row"><span>Admin ismi</span><input name="admin_full_name" placeholder="To‘liq ism" /></label>
+        <label class="map-row"><span>Admin paroli *</span><input name="admin_password" type="password" placeholder="Kamida 6 belgi" required minlength="6" autocomplete="new-password" /></label>
+      </div>
+      <p class="muted adm-sub">Tashkilot kodi tizim tomonidan avtomatik beriladi.</p>
+      <div class="row-actions adm-form-actions">
+        <button class="btn" type="button" id="org-add-cancel">Bekor qilish</button>
+        <button class="btn primary" type="submit">Tashkilot ochish</button>
+      </div>
+    </form>
+    <div id="org-created" class="adm-card org-created hidden"></div>
+    <div id="org-list"></div>
   </section>
 
   <section class="glass panel admin-sec" data-admin-sec="drivers" data-perm="drivers.manage,drivers.view">

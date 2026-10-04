@@ -142,3 +142,12 @@ def migrate_schema() -> None:
             )
         )
         conn.execute(text("DROP INDEX IF EXISTS ux_agents_code"))
+        # Eski global unique login indeksi — har tashkilotda o‘z «admin»i bo‘lishi uchun olib tashlanadi
+        legacy = conn.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE tablename = 'users' AND indexname = 'ix_users_username'")
+        ).scalar()
+        if legacy and "UNIQUE" in legacy.upper():
+            conn.execute(text("DROP INDEX ix_users_username"))
+            conn.execute(text("CREATE INDEX ix_users_username ON users (username)"))
+        conn.execute(text("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_org_username ON users (org_id, username)"))
