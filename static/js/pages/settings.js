@@ -1,6 +1,6 @@
 import { api, can, isSuper, me, setMe } from "../api.js";
-import { $, escapeHtml, formData, table } from "../ui.js?v=64";
-import { loadRemembered, saveRemembered } from "../theme.js?v=64";
+import { $, escapeHtml, formData, table } from "../ui.js?v=65";
+import { loadRemembered, saveRemembered } from "../theme.js?v=65";
 
 const ROLE = { superadmin: "Superadmin", admin: "Administrator", dispatcher: "Dispetcher" };
 

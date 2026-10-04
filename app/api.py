@@ -446,6 +446,21 @@ def _template_out(t: ImportTemplate) -> TemplateOut:
 @router.post("/auth/login")
 def login(payload: LoginIn, db: Session = Depends(get_db)):
     code = (payload.org_code or "").strip()
+    if not code:
+        candidates = (
+            db.query(User)
+            .options(joinedload(User.org))
+            .filter(User.role == "superadmin", User.username == payload.username.strip(), User.is_active.is_(True))
+            .all()
+        )
+        user = next((u for u in candidates if verify_password(payload.password, u.password_hash)), None)
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail="Login yoki parol noto‘g‘ri. Superadmin bo‘lmasangiz, tashkilot kodini kiriting",
+            )
+        token = create_token(db, user)
+        return {"token": token, "user": user_payload(user)}
     if not is_org_code(code):
         raise HTTPException(status_code=400, detail="Tashkilot kodi 6 xonali raqam bo‘lishi kerak")
     org = db.query(Organization).filter(Organization.code == code).first()

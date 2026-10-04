@@ -1,6 +1,6 @@
 import { api, setMe, setToken } from "../api.js";
-import { $ } from "../ui.js?v=64";
-import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=64";
+import { $ } from "../ui.js?v=65";
+import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=65";
 
 const ORG_KEY = "nx_org_code";
 
@@ -17,14 +17,14 @@ export async function init(root) {
     $("#login-pass", root).value = remembered.password;
     $("#login-remember", root).checked = true;
   }
-  if (!orgInput.value) orgInput.focus();
+  if (!remembered) $("#login-user", root).focus();
   const login = async () => {
     $("#login-error", root).textContent = "";
     const org_code = orgInput.value.trim();
     const username = $("#login-user", root).value.trim();
     const password = $("#login-pass", root).value;
-    if (!/^\d{6}$/.test(org_code)) {
-      $("#login-error", root).textContent = "Tashkilot kodini kiriting (6 xonali raqam)";
+    if (org_code && !/^\d{6}$/.test(org_code)) {
+      $("#login-error", root).textContent = "Tashkilot kodi 6 xonali raqam bo‘lishi kerak";
       orgInput.focus();
       return;
     }
@@ -33,7 +33,7 @@ export async function init(root) {
         method: "POST",
         body: { org_code, username, password },
       });
-      localStorage.setItem(ORG_KEY, org_code);
+      if (org_code) localStorage.setItem(ORG_KEY, org_code);
       if ($("#login-remember", root).checked) saveRemembered(username, password);
       else clearRemembered();
       setToken(data.token);

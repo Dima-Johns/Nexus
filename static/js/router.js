@@ -1,6 +1,6 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
-import { $, $$ } from "./ui.js?v=64";
-import { refreshWorkspace } from "./workspace.js?v=64";
+import { $, $$ } from "./ui.js?v=65";
+import { refreshWorkspace } from "./workspace.js?v=65";
 
 const ROUTES = {
   "/": "dashboard",
@@ -46,8 +46,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=64`),
-    import(`/static/js/pages/${name}.js?v=64`),
+    fetch(`/static/pages/${name}.html?v=65`),
+    import(`/static/js/pages/${name}.js?v=65`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;
