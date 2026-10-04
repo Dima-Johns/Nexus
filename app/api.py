@@ -1194,7 +1194,8 @@ def clients_base_export(
 ):
     rows = _client_rows(db, user, org_id, q, days=days)
     multi = len({r.org_id for r in rows}) > 1
-    headers = (["Tashkilot"] if multi else []) + [
+    headers = [
+        "Tashkilot",
         "Mijoz kodi",
         "Mijoz nomi",
         "Manzil",
@@ -1210,8 +1211,8 @@ def clients_base_export(
         "Izoh",
     ]
     data = [
-        ([r.org_name] if multi else [])
-        + [
+        [
+            r.org_name,
             r.code,
             r.name,
             r.address,
@@ -1619,7 +1620,7 @@ def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], or
     clients_created = 0
 
     def client_for(rec: dict, sales_rep: str, agent_code: str) -> Client | None:
-        """Klient bazasiga faqat yangi mijoz qo‘shiladi; mavjudining ma’lumoti importda o‘zgarmaydi."""
+        """Klient bazasiga faqat yangi mijoz qo‘shiladi; mavjudining faqat bo‘sh koordinatasi to‘ldiriladi."""
         nonlocal clients_created
         name = mapped_value(rec, mapping, "client_name").strip()[:255]
         ccode = mapped_value(rec, mapping, "client_code").strip()[:80]
@@ -1635,15 +1636,21 @@ def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], or
                 found = legacy
         else:
             found = clients_by_name.get(name_key)
+        lat = to_float(mapped_value(rec, mapping, "dropoff_lat"), 0)
+        lng = to_float(mapped_value(rec, mapping, "dropoff_lng"), 0)
+        address = (mapped_value(rec, mapping, "dropoff_address") or "")[:500]
         if found:
+            if lat and lng and not (found.lat and found.lng):
+                found.lat, found.lng = lat, lng
+                found.address = found.address or address
             return found
         client = Client(
             org_id=org_id,
             name=name or ccode,
             code=ccode,
-            address=(mapped_value(rec, mapping, "dropoff_address") or "")[:500],
-            lat=to_float(mapped_value(rec, mapping, "dropoff_lat"), 0),
-            lng=to_float(mapped_value(rec, mapping, "dropoff_lng"), 0),
+            address=address,
+            lat=lat,
+            lng=lng,
             sales_rep=sales_rep,
             agent_code=agent_code,
             source="import",

@@ -111,6 +111,12 @@ def migrate_schema() -> None:
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS agent_code VARCHAR(2) DEFAULT ''",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'manual'",
         "CREATE INDEX IF NOT EXISTS ix_clients_org_code ON clients (org_id, code)",
+        """
+        CREATE TABLE IF NOT EXISTS app_migrations (
+            key VARCHAR(80) PRIMARY KEY,
+            applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
     ]
     with engine.begin() as conn:
         clients_had_code = conn.execute(
@@ -120,6 +126,8 @@ def migrate_schema() -> None:
             conn.execute(text(sql))
         if not clients_had_code:
             _backfill_clients(conn)
+        if _claim_once(conn, "clients_rebuild_from_orders_v1"):
+            rebuild_clients(conn)
         conn.execute(
             text(
                 """
@@ -166,6 +174,81 @@ def migrate_schema() -> None:
             conn.execute(text("CREATE INDEX ix_users_username ON users (username)"))
         conn.execute(text("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_org_username ON users (org_id, username)"))
+
+
+def _claim_once(conn, key: str) -> bool:
+    return bool(
+        conn.execute(
+            text("INSERT INTO app_migrations (key) VALUES (:k) ON CONFLICT DO NOTHING RETURNING key"), {"k": key}
+        ).scalar()
+    )
+
+
+def _client_key(code: str, name: str) -> str:
+    code = (code or "").strip().lower()
+    return f"c:{code}" if code else "n:" + " ".join((name or "").lower().split())
+
+
+def rebuild_clients(conn, org_id: int | None = None) -> int:
+    """Klientlar bazasini tozalab, zayavkalardan qayta yig‘adi: tashkilot zayavkadan, koordinata oxirgi GPS'li zayavkadan."""
+    where = "WHERE o.org_id = :org" if org_id else ""
+    params = {"org": org_id} if org_id else {}
+    rows = conn.execute(
+        text(
+            f"""
+            SELECT o.id, COALESCE(o.org_id, c.org_id) AS org_id, c.name, c.code, c.phone,
+                   o.dropoff_address, o.dropoff_lat, o.dropoff_lng, o.sales_rep, o.agent_code, o.created_at
+            FROM orders o JOIN clients c ON c.id = o.client_id
+            {where}
+            ORDER BY o.id
+            """
+        ),
+        params,
+    ).all()
+    groups: dict[tuple, dict] = {}
+    for r in rows:
+        key = (r.org_id, _client_key(r.code, r.name))
+        g = groups.setdefault(key, {"org_id": r.org_id, "orders": [], "created_at": r.created_at, "phone": ""})
+        g["orders"].append(r.id)
+        g["name"], g["code"] = r.name, (r.code or "").strip()
+        g["phone"] = g["phone"] or (r.phone or "")
+        if r.created_at and (not g["created_at"] or r.created_at < g["created_at"]):
+            g["created_at"] = r.created_at
+        if (r.dropoff_lat and r.dropoff_lng) or "lat" not in g:
+            g.update(
+                address=r.dropoff_address or "",
+                lat=r.dropoff_lat or 0,
+                lng=r.dropoff_lng or 0,
+                sales_rep=r.sales_rep or "",
+                agent_code=r.agent_code or "",
+            )
+
+    if org_id:
+        conn.execute(text("UPDATE orders SET client_id = NULL WHERE org_id = :org"), params)
+        conn.execute(
+            text("UPDATE orders SET client_id = NULL WHERE client_id IN (SELECT id FROM clients WHERE org_id = :org)"),
+            params,
+        )
+        conn.execute(text("DELETE FROM clients WHERE org_id = :org"), params)
+    else:
+        conn.execute(text("UPDATE orders SET client_id = NULL WHERE client_id IS NOT NULL"))
+        conn.execute(text("DELETE FROM clients"))
+
+    for g in groups.values():
+        cid = conn.execute(
+            text(
+                """
+                INSERT INTO clients (org_id, name, code, phone, company, address, lat, lng,
+                                     sales_rep, agent_code, source, notes, created_at)
+                VALUES (:org_id, :name, :code, :phone, '', :address, :lat, :lng,
+                        :sales_rep, :agent_code, 'import', '', COALESCE(:created_at, NOW()))
+                RETURNING id
+                """
+            ),
+            {k: g[k] for k in ("org_id", "name", "code", "phone", "address", "lat", "lng", "sales_rep", "agent_code", "created_at")},
+        ).scalar()
+        conn.execute(text("UPDATE orders SET client_id = :cid WHERE id = ANY(:ids)"), {"cid": cid, "ids": g["orders"]})
+    return len(groups)
 
 
 def _backfill_clients(conn) -> None:

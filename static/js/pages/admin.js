@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=67";
-import { mountOfficePicker } from "../office-picker.js?v=67";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=67";
+import { openDriverAccess } from "../driver-access.js?v=68";
+import { mountOfficePicker } from "../office-picker.js?v=68";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=68";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -573,9 +573,11 @@ function fillClientOrgFilter(root) {
   sel.classList.toggle("hidden", !show);
   if (!show) return;
   const cur = sel.value;
+  const counts = {};
+  clientsCache.forEach((c) => (counts[c.org_id] = (counts[c.org_id] || 0) + 1));
   sel.innerHTML =
-    `<option value="">Barcha tashkilotlar</option>` +
-    orgsCache.map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("");
+    `<option value="">Barcha tashkilotlar (${clientsCache.length})</option>` +
+    orgsCache.map((o) => `<option value="${o.id}">${escapeHtml(o.name)} (${counts[o.id] || 0})</option>`).join("");
   sel.value = orgsCache.some((o) => String(o.id) === cur) ? cur : "";
 }
 
@@ -598,13 +600,15 @@ function renderClients(root) {
   if (!box) return;
   const q = ($("#cl-search", root)?.value || "").trim().toLowerCase();
   const since = addedSince($("#cl-added", root)?.value ?? "");
-  const rows = clientsCache.filter((c) => clientMatches(c, q, since));
-  const today = clientsCache.filter((c) => clientMatches(c, "", addedSince("0"))).length;
-  const noGps = clientsCache.filter((c) => !c.lat || !c.lng).length;
-  $("#cl-summary", root).innerHTML = `<span class="adm-pill">Jami <b>${clientsCache.length}</b></span>
+  const org = $("#cl-org", root)?.value || "";
+  const scoped = org ? clientsCache.filter((c) => String(c.org_id) === org) : clientsCache;
+  const rows = scoped.filter((c) => clientMatches(c, q, since));
+  const today = scoped.filter((c) => clientMatches(c, "", addedSince("0"))).length;
+  const noGps = scoped.filter((c) => !c.lat || !c.lng).length;
+  $("#cl-summary", root).innerHTML = `<span class="adm-pill">Jami <b>${scoped.length}</b></span>
     <span class="adm-pill on">Bugun qo‘shilgan <b>${today}</b></span>
     <span class="adm-pill${noGps ? " warn" : ""}">Koordinatasiz <b>${noGps}</b></span>`;
-  if (!clientsCache.length) {
+  if (!scoped.length) {
     box.innerHTML = `<p class="muted adm-empty">Hozircha klient yo‘q. Zayavkalar import qilinganda mijozlar shu yerga avtomatik tushadi.</p>`;
     return;
   }
@@ -612,7 +616,7 @@ function renderClients(root) {
     box.innerHTML = `<p class="muted adm-empty">Mos klient topilmadi.</p>`;
     return;
   }
-  const multiOrg = new Set(rows.map((c) => c.org_id)).size > 1;
+  const multiOrg = crossOrg() || new Set(rows.map((c) => c.org_id)).size > 1;
   const manage = can("clients.manage");
   const headers = ["#", "Klient", ...(multiOrg ? ["Tashkilot"] : []), "Manzil", "Agent", "Zayavkalar", "Qo‘shilgan", ...(manage ? [""] : [])];
   const body = rows
@@ -647,9 +651,9 @@ function renderClients(root) {
 
 async function loadClients(root) {
   if (!$("#cl-table", root)) return;
-  const org = $("#cl-org", root)?.value || "";
-  clientsCache = await api(`/clients/base${org ? `?org_id=${org}` : ""}`);
+  clientsCache = await api("/clients/base");
   setCount(root, "cnt-clients", clientsCache.length);
+  fillClientOrgFilter(root);
   renderClients(root);
 }
 
@@ -675,7 +679,7 @@ function bindClients(root) {
     typing = setTimeout(() => renderClients(root), 150);
   });
   $("#cl-added", root).addEventListener("change", () => renderClients(root));
-  $("#cl-org", root).addEventListener("change", () => loadClients(root).catch((ex) => clErr(root, ex.message)));
+  $("#cl-org", root).addEventListener("change", () => renderClients(root));
 
   $("#cl-export", root).onclick = async (e) => {
     const btn = e.currentTarget;
@@ -719,6 +723,7 @@ function bindClients(root) {
       await api(`/clients/base/${c.id}`, { method: "DELETE" });
       clientsCache = clientsCache.filter((x) => x.id !== c.id);
       setCount(root, "cnt-clients", clientsCache.length);
+      fillClientOrgFilter(root);
       renderClients(root);
       clErr(root, `«${c.name}» o‘chirildi.`, true);
     } catch (ex) {
