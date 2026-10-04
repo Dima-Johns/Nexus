@@ -22,6 +22,7 @@ LIVE_TTL = timedelta(seconds=90)
 ONLINE_TTL = timedelta(seconds=150)
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving/"
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
+NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 GEOCODE_MOVE_M = 60
 _geo_lock = threading.Lock()
 _geo_pending: set[int] = set()
@@ -115,11 +116,8 @@ def _short_address(data: dict) -> str:
     return (text or data.get("display_name") or "")[:500]
 
 
-def reverse_geocode(lat: float, lng: float) -> str:
+def _nominatim(url: str):
     global _geo_last_call
-    query = urllib.parse.urlencode(
-        {"lat": f"{lat:.6f}", "lon": f"{lng:.6f}", "format": "jsonv2", "zoom": 18, "accept-language": "uz,ru"}
-    )
     with _geo_lock:
         # Nominatim: sekundiga 1 so‘rovdan oshmasin
         wait = 1.1 - (time.monotonic() - _geo_last_call)
@@ -127,11 +125,35 @@ def reverse_geocode(lat: float, lng: float) -> str:
             time.sleep(wait)
         _geo_last_call = time.monotonic()
     try:
-        req = urllib.request.Request(f"{NOMINATIM_URL}?{query}", headers={"User-Agent": "NexusLogistika/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NexusLogistika/1.0"})
         with urllib.request.urlopen(req, timeout=6) as resp:
-            return _short_address(json.loads(resp.read().decode("utf-8")))
+            return json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError):
-        return ""
+        return None
+
+
+def reverse_geocode(lat: float, lng: float) -> str:
+    query = urllib.parse.urlencode(
+        {"lat": f"{lat:.6f}", "lon": f"{lng:.6f}", "format": "jsonv2", "zoom": 18, "accept-language": "uz,ru"}
+    )
+    data = _nominatim(f"{NOMINATIM_URL}?{query}")
+    return _short_address(data) if isinstance(data, dict) else ""
+
+
+def search_geocode(text: str, limit: int = 5) -> list[dict]:
+    query = urllib.parse.urlencode(
+        {"q": text, "format": "jsonv2", "addressdetails": 1, "limit": limit, "countrycodes": "uz", "accept-language": "uz,ru"}
+    )
+    data = _nominatim(f"{NOMINATIM_SEARCH_URL}?{query}")
+    if not isinstance(data, list):
+        return []
+    out = []
+    for item in data:
+        try:
+            out.append({"lat": float(item["lat"]), "lng": float(item["lon"]), "address": _short_address(item)})
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
 
 
 def _geocode_job(driver_id: int, lat: float, lng: float) -> None:

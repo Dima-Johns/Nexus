@@ -1,8 +1,6 @@
-import { api, can, isSuper, me, setMe } from "../api.js";
-import { $, escapeHtml, formData, table } from "../ui.js?v=65";
-import { loadRemembered, saveRemembered } from "../theme.js?v=65";
-
-const ROLE = { superadmin: "Superadmin", admin: "Administrator", dispatcher: "Dispetcher" };
+import { api, me, setMe } from "../api.js";
+import { $, formData } from "../ui.js?v=66";
+import { loadRemembered, saveRemembered } from "../theme.js?v=66";
 
 function loadIdle(root) {
   const sel = $("#idle-mins", root);
@@ -14,35 +12,6 @@ function loadIdle(root) {
     if (me?.org_code) parts.push(`kirish kodi: ${me.org_code}`);
     line.textContent = parts.join(" · ");
   }
-}
-
-async function loadUsers(root) {
-  const box = $("#users-table", root);
-  if (!box) return;
-  const users = await api("/users");
-  box.innerHTML = table(
-    ["Login", "Ism", "Tashkilot", "Rol", "Holat", ""],
-    users
-      .map((u) => {
-        const self = me && u.id === me.id;
-        const locked = self || (u.role === "superadmin" && !isSuper());
-        return `<tr>
-          <td>${escapeHtml(u.username)}</td>
-          <td>${escapeHtml(u.full_name)}</td>
-          <td>${escapeHtml(u.org_name || "—")}</td>
-          <td><span class="badge ${u.role === "dispatcher" ? "assigned" : "approved"}">${escapeHtml(ROLE[u.role] || u.role)}</span></td>
-          <td><span class="badge ${u.is_active ? "approved" : "rejected"}">${u.is_active ? "faol" : "o‘chiq"}</span></td>
-          <td class="row-actions">
-            ${locked ? `<span class="muted">${self ? "siz" : ""}</span>` : `
-              <button class="btn tiny" data-toggle="${u.id}" data-active="${u.is_active ? "1" : "0"}">${u.is_active ? "Faolsiz" : "Yoqish"}</button>
-              <button class="btn tiny" data-pass="${u.id}">Parol</button>
-              <button class="btn tiny" data-del="${u.id}">Olib tashlash</button>
-            `}
-          </td>
-        </tr>`;
-      })
-      .join("")
-  );
 }
 
 function showError(root, id, message) {
@@ -117,53 +86,6 @@ export async function init(root) {
       showError(root, "#idle-err", ex.message);
     }
   };
-
-  const accounts = $("#accounts-panel", root);
-  if (accounts) accounts.classList.toggle("hidden", !can("users.manage"));
-  if (!can("users.manage")) return;
-
-  $("#user-open", root).onclick = () => $("#user-form", root).classList.toggle("hidden");
-  $("#user-form", root).onsubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const d = formData(e.target);
-      d.org_id = me?.org_id || null;
-      d.idle_timeout_minutes = 30;
-      d.permissions = [];
-      await api("/users", { method: "POST", body: d });
-      e.target.reset();
-      $("#user-form", root).classList.add("hidden");
-      await loadUsers(root);
-    } catch (ex) {
-      showError(root, "#user-err", ex.message);
-    }
-  };
-  root.addEventListener("click", async (e) => {
-    const del = e.target.dataset?.del;
-    const toggle = e.target.dataset?.toggle;
-    const pass = e.target.dataset?.pass;
-    try {
-      if (del) {
-        if (!confirm("Akkauntni o‘chirasizmi?")) return;
-        await api(`/users/${del}`, { method: "DELETE" });
-        await loadUsers(root);
-      }
-      if (toggle) {
-        const active = e.target.dataset.active === "1";
-        await api(`/users/${toggle}`, { method: "PUT", body: { is_active: !active } });
-        await loadUsers(root);
-      }
-      if (pass) {
-        const next = prompt("Yangi parol (kamida 6 belgi):");
-        if (!next) return;
-        await api(`/users/${pass}`, { method: "PUT", body: { password: next } });
-        await loadUsers(root);
-      }
-    } catch (ex) {
-      showError(root, "#user-err", ex.message);
-    }
-  });
-  await loadUsers(root);
 }
 
 export function destroy() {}

@@ -35,6 +35,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    username: str | None = None
     full_name: str | None = None
     password: str | None = None
     role: str | None = None
@@ -55,6 +56,9 @@ class MeUpdate(BaseModel):
 
 class OrgIn(BaseModel):
     name: str
+    address: str = ""
+    lat: float | None = None
+    lng: float | None = None
     admin_username: str = ""
     admin_password: str = ""
     admin_full_name: str = ""
@@ -63,6 +67,9 @@ class OrgIn(BaseModel):
 class OrgUpdate(BaseModel):
     name: str | None = None
     is_active: bool | None = None
+    address: str | None = None
+    lat: float | None = None
+    lng: float | None = None
 
 
 class OrgUserIn(BaseModel):
@@ -82,6 +89,9 @@ class OrgOut(BaseModel):
     name: str
     code: str = ""
     is_active: bool = True
+    address: str = ""
+    lat: float | None = None
+    lng: float | None = None
     user_count: int = 0
     admin_count: int = 0
     dispatcher_count: int = 0

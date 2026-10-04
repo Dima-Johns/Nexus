@@ -1,6 +1,7 @@
-import { api, apiDownload, apiUpload, can, isSuper, me } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=65";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=65";
+import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
+import { openDriverAccess } from "../driver-access.js?v=66";
+import { mountOfficePicker } from "../office-picker.js?v=66";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=66";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -10,6 +11,10 @@ const ADMIN_ONLY = new Set(["users.manage", "perms.manage"]);
 let superOnly = new Set();
 let orgsCache = [];
 const openOrgs = new Set();
+let usersCache = [];
+let createPicker = null;
+let editPicker = null;
+let officeOrgId = null;
 
 let fields = [];
 let inspectData = null;
@@ -295,6 +300,264 @@ async function loadPermsAdmin(root) {
   box.querySelectorAll(".perm-card").forEach(permCount);
 }
 
+function crossOrg() {
+  return can("orgs.manage");
+}
+
+function usrErr(root, text, ok = false, id = "#usr-err") {
+  const el = $(id, root);
+  if (!el) return;
+  el.classList.toggle("hidden", !text);
+  el.style.color = ok ? "var(--ok)" : "";
+  el.textContent = text || "";
+}
+
+function orgOptions(selected) {
+  const list = crossOrg() && orgsCache.length ? orgsCache : [{ id: me?.org_id, name: me?.org_name || "Joriy tashkilot", is_active: true }];
+  return list
+    .map(
+      (o) =>
+        `<option value="${o.id}" ${String(o.id) === String(selected) ? "selected" : ""}>${escapeHtml(o.name)}${o.is_active === false ? " (faolsiz)" : ""}</option>`
+    )
+    .join("");
+}
+
+function fillOrgSelects(root) {
+  root.querySelectorAll("[data-org-select]").forEach((sel) => {
+    sel.innerHTML = orgOptions(sel.value || me?.org_id);
+    sel.disabled = !crossOrg();
+  });
+  const filter = $("#usr-org-filter", root);
+  if (!filter) return;
+  const cur = filter.value;
+  filter.classList.toggle("hidden", !(crossOrg() && orgsCache.length > 1));
+  filter.innerHTML =
+    `<option value="">Barcha tashkilotlar</option>` +
+    orgsCache.map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("");
+  filter.value = orgsCache.some((o) => String(o.id) === cur) ? cur : "";
+}
+
+function canTouchUser(u) {
+  return u.role !== "superadmin" || isSuper();
+}
+
+function renderUsers(root) {
+  const box = $("#usr-table", root);
+  if (!box) return;
+  const total = usersCache.length;
+  const active = usersCache.filter((u) => u.is_active).length;
+  $("#usr-summary", root).innerHTML = `<span class="adm-pill">Jami <b>${total}</b></span>
+    <span class="adm-pill on">Faol <b>${active}</b></span>
+    <span class="adm-pill${total - active ? " warn" : ""}">Nofaol <b>${total - active}</b></span>`;
+  if (!total) {
+    box.innerHTML = `<p class="muted adm-empty">Hozircha akkaunt yo‘q. «+ Yangi akkaunt» orqali qo‘shing.</p>`;
+    return;
+  }
+  const q = ($("#usr-search", root)?.value || "").trim().toLowerCase();
+  const org = $("#usr-org-filter", root)?.value || "";
+  const rows = usersCache.filter(
+    (u) =>
+      (!org || String(u.org_id) === org) &&
+      (!q || [u.username, u.full_name].some((v) => String(v || "").toLowerCase().includes(q)))
+  );
+  if (!rows.length) {
+    box.innerHTML = `<p class="muted adm-empty">Mos akkaunt topilmadi.</p>`;
+    return;
+  }
+  box.innerHTML = table(
+    ["#", "Akkaunt", "Tashkilot", "Rol", "Holat", ""],
+    rows
+      .map((u, i) => {
+        const self = u.id === me?.id;
+        const touch = canTouchUser(u);
+        const actions = [
+          touch ? `<button class="btn tiny" type="button" data-usr-edit="${u.id}">Tahrirlash</button>` : "",
+          touch && !self
+            ? `<button class="btn tiny" type="button" data-usr-toggle="${u.id}">${u.is_active ? "Nofaol qilish" : "Faollashtirish"}</button>
+               <button class="btn tiny danger-text" type="button" data-usr-del="${u.id}">O‘chirish</button>`
+            : "",
+          self ? `<span class="muted">siz</span>` : "",
+        ].join("");
+        return `<tr class="${u.is_active ? "" : "usr-off"}">
+          <td class="adm-num">${i + 1}</td>
+          <td><div class="drv-cell"><span class="user-avatar sm">${escapeHtml(initials(u.full_name))}</span><span><b>${escapeHtml(u.full_name)}</b><span class="drv-login">${escapeHtml(u.username)}</span></span></div></td>
+          <td><span class="usr-org">${escapeHtml(u.org_name || "—")}</span>${u.org_code ? `<span class="drv-login">kod: ${escapeHtml(u.org_code)}</span>` : ""}</td>
+          <td><span class="badge role-${escapeHtml(u.role)}">${escapeHtml(ROLE[u.role] || u.role)}</span></td>
+          <td><span class="badge ${u.is_active ? "approved" : "rejected"}">${u.is_active ? "faol" : "nofaol"}</span></td>
+          <td class="col-actions">${actions}</td>
+        </tr>`;
+      })
+      .join("")
+  );
+}
+
+async function loadUsers(root) {
+  if (!$("#usr-table", root)) return;
+  usersCache = await api("/users");
+  setCount(root, "cnt-users", usersCache.length);
+  renderUsers(root);
+}
+
+async function afterUserChange(root) {
+  await loadUsers(root);
+  refreshPerms(root);
+  if (crossOrg()) await loadOrgs(root).catch(() => {});
+}
+
+function openUserEdit(root, u) {
+  const form = $("#usr-edit-form", root);
+  if (!form) return;
+  usrErr(root, "", false, "#usr-edit-err");
+  form.reset();
+  fillOrgSelects(root);
+  const self = u.id === me?.id;
+  const isSA = u.role === "superadmin";
+  const el = form.elements;
+  el.id.value = u.id;
+  el.username.value = u.username;
+  el.full_name.value = u.full_name;
+  el.password.value = "";
+  el.role.value = u.role;
+  el.role.disabled = isSA || self;
+  el.org_id.value = String(u.org_id ?? "");
+  el.org_id.disabled = !crossOrg() || isSA || self;
+  el.is_active.checked = Boolean(u.is_active);
+  el.is_active.disabled = self;
+  const note = $("#usr-edit-note", root);
+  const text = self
+    ? "Bu sizning akkauntingiz: rol, tashkilot va holatni o‘zgartirib bo‘lmaydi."
+    : isSA
+      ? "Superadmin rolini va tashkilotini o‘zgartirib bo‘lmaydi."
+      : "";
+  note.textContent = text;
+  note.classList.toggle("hidden", !text);
+  $("#usr-modal", root).classList.remove("hidden");
+  el.username.focus();
+}
+
+function closeUserEdit(root) {
+  $("#usr-modal", root)?.classList.add("hidden");
+}
+
+function bindUsers(root) {
+  const form = $("#usr-form", root);
+  if (!form) return;
+  $("#usr-add-toggle", root).onclick = () => {
+    form.classList.toggle("hidden");
+    if (!form.classList.contains("hidden")) form.querySelector("[name=username]")?.focus();
+  };
+  $("#usr-add-cancel", root).onclick = () => {
+    form.reset();
+    form.classList.add("hidden");
+  };
+  $("#usr-search", root).addEventListener("input", () => renderUsers(root));
+  $("#usr-org-filter", root).addEventListener("change", () => renderUsers(root));
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    usrErr(root, "");
+    const d = formData(form);
+    const body = {
+      username: String(d.username || "").trim(),
+      full_name: String(d.full_name || "").trim(),
+      password: d.password || "",
+      role: d.role || "dispatcher",
+      org_id: d.org_id ? Number(d.org_id) : null,
+      is_active: form.elements.is_active.checked,
+      idle_timeout_minutes: 30,
+      permissions: [],
+    };
+    try {
+      const u = await api("/users", { method: "POST", body });
+      form.reset();
+      form.classList.add("hidden");
+      usrErr(
+        root,
+        `«${u.username}» akkaunti ochildi: ${u.org_name}${u.org_code ? `, kirish kodi ${u.org_code}` : ""}.`,
+        true
+      );
+      await afterUserChange(root);
+    } catch (ex) {
+      usrErr(root, ex.message);
+    }
+  };
+
+  $("#usr-table", root).addEventListener("click", async (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const id = Number(btn.dataset.usrEdit || btn.dataset.usrToggle || btn.dataset.usrDel);
+    const u = usersCache.find((x) => x.id === id);
+    if (!u) return;
+    usrErr(root, "");
+    try {
+      if (btn.dataset.usrEdit) {
+        openUserEdit(root, u);
+        return;
+      }
+      if (btn.dataset.usrToggle) {
+        if (u.is_active) {
+          const ok = await askConfirm(`«${u.username}» nofaol qilinsa, tizimdan chiqariladi va qayta kira olmaydi.`, {
+            title: "Nofaol qilish",
+            ok: "Nofaol qilish",
+            danger: true,
+          });
+          if (!ok) return;
+        }
+        await api(`/users/${u.id}`, { method: "PUT", body: { is_active: !u.is_active } });
+        await afterUserChange(root);
+        return;
+      }
+      if (btn.dataset.usrDel) {
+        const ok = await askConfirm(`«${u.username}» (${u.full_name}) akkaunti butunlay o‘chiriladi. Bu amalni qaytarib bo‘lmaydi.`, {
+          title: "Akkauntni o‘chirish",
+          ok: "O‘chirish",
+          danger: true,
+        });
+        if (!ok) return;
+        await api(`/users/${u.id}`, { method: "DELETE" });
+        usrErr(root, `«${u.username}» o‘chirildi.`, true);
+        await afterUserChange(root);
+      }
+    } catch (ex) {
+      usrErr(root, ex.message);
+    }
+  });
+
+  const modal = $("#usr-modal", root);
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal || e.target.closest("[data-usr-close]")) closeUserEdit(root);
+  });
+  $("#usr-edit-form", root).onsubmit = async (e) => {
+    e.preventDefault();
+    const el = e.target.elements;
+    const u = usersCache.find((x) => String(x.id) === el.id.value);
+    if (!u) return;
+    usrErr(root, "", false, "#usr-edit-err");
+    const body = { username: el.username.value.trim(), full_name: el.full_name.value.trim() };
+    if (el.password.value) body.password = el.password.value;
+    if (!el.role.disabled && el.role.value !== u.role) body.role = el.role.value;
+    if (!el.org_id.disabled && el.org_id.value && Number(el.org_id.value) !== u.org_id) body.org_id = Number(el.org_id.value);
+    if (!el.is_active.disabled && el.is_active.checked !== u.is_active) body.is_active = el.is_active.checked;
+    if (body.org_id) {
+      const target = orgsCache.find((o) => o.id === body.org_id);
+      const ok = await askConfirm(
+        `«${u.username}» «${target?.name || "boshqa"}» tashkilotiga o‘tkaziladi va tizimdan chiqariladi. Endi u ${target?.code || "yangi"} kodi bilan kiradi.`,
+        { title: "Tashkilotni o‘zgartirish", ok: "O‘tkazish" }
+      );
+      if (!ok) return;
+    }
+    try {
+      const updated = await api(`/users/${u.id}`, { method: "PUT", body });
+      if (updated.id === me?.id) setMe({ ...me, ...updated });
+      closeUserEdit(root);
+      usrErr(root, `«${updated.username}» saqlandi.`, true);
+      await afterUserChange(root);
+    } catch (ex) {
+      usrErr(root, ex.message, false, "#usr-edit-err");
+    }
+  };
+}
+
 function orgErr(root, text, ok = false) {
   const el = $("#org-err", root);
   if (!el) return;
@@ -360,6 +623,16 @@ function orgCardHtml(org) {
         <button class="btn tiny" type="button" data-org-copy="${escapeHtml(org.code)}">Nusxa</button>
       </div>
     </div>
+    <div class="org-office-line${org.lat == null ? " warn" : ""}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+      <span>${
+        org.address
+          ? escapeHtml(org.address)
+          : org.lat != null
+            ? `${Number(org.lat).toFixed(5)}, ${Number(org.lng).toFixed(5)}`
+            : "Ofis manzili kiritilmagan"
+      }</span>
+    </div>
     <div class="adm-summary org-meta">
       <span class="adm-pill">Admin <b>${org.admin_count}</b></span>
       <span class="adm-pill">Dispetcher <b>${org.dispatcher_count}</b></span>
@@ -369,6 +642,7 @@ function orgCardHtml(org) {
     <div class="row-actions org-actions">
       <button class="btn tiny${open ? " primary" : ""}" type="button" data-org-users="${org.id}">Akkauntlar (${org.user_count})</button>
       <button class="btn tiny" type="button" data-org-rename="${org.id}">Nomini o‘zgartirish</button>
+      <button class="btn tiny" type="button" data-org-office="${org.id}">Ofis manzili</button>
       <button class="btn tiny" type="button" data-org-code="${org.id}">Yangi kod</button>
       ${org.is_own ? "" : `<button class="btn tiny${org.is_active ? " danger-text" : ""}" type="button" data-org-toggle="${org.id}">${org.is_active ? "Faolsizlantirish" : "Faollashtirish"}</button>`}
     </div>
@@ -391,7 +665,53 @@ async function loadOrgs(root) {
   orgsCache = await api("/orgs");
   setCount(root, "cnt-orgs", orgsCache.length);
   box.innerHTML = orgsCache.length ? orgsCache.map(orgCardHtml).join("") : `<p class="muted adm-empty">Hozircha tashkilot yo‘q.</p>`;
+  fillOrgSelects(root);
   await Promise.all([...openOrgs].map((id) => loadOrgUsers(root, id).catch(() => {})));
+}
+
+function openOffice(root, org) {
+  if (!org) return;
+  officeOrgId = org.id;
+  orgErr(root, "");
+  usrErr(root, "", false, "#org-office-err");
+  $("#org-office-title", root).textContent = `«${org.name}» ofis manzili`;
+  $("#org-office-modal", root).classList.remove("hidden");
+  editPicker?.destroy();
+  editPicker = mountOfficePicker($("#org-office-edit", root), { address: org.address, lat: org.lat, lng: org.lng });
+}
+
+function closeOffice(root) {
+  $("#org-office-modal", root)?.classList.add("hidden");
+  editPicker?.destroy();
+  editPicker = null;
+  officeOrgId = null;
+}
+
+function bindOffice(root) {
+  const modal = $("#org-office-modal", root);
+  if (!modal) return;
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal || e.target.closest("[data-office-close]")) closeOffice(root);
+  });
+  $("#org-office-save", root).onclick = async () => {
+    const office = editPicker?.value() || {};
+    if (office.lat == null) {
+      usrErr(root, "Xaritadan ofis joylashuvini belgilang.", false, "#org-office-err");
+      return;
+    }
+    if (!office.address) {
+      usrErr(root, "Ofis manzilini kiriting.", false, "#org-office-err");
+      return;
+    }
+    try {
+      await api(`/orgs/${officeOrgId}`, { method: "PUT", body: office });
+      closeOffice(root);
+      orgErr(root, "Ofis manzili saqlandi.", true);
+      await loadOrgs(root);
+    } catch (ex) {
+      usrErr(root, ex.message, false, "#org-office-err");
+    }
+  };
 }
 
 function refreshPerms(root) {
@@ -401,22 +721,38 @@ function refreshPerms(root) {
 function bindOrgs(root) {
   const form = $("#org-form", root);
   if (!form) return;
-  $("#org-add-toggle", root).onclick = () => {
-    form.classList.toggle("hidden");
-    if (!form.classList.contains("hidden")) form.querySelector("[name=name]")?.focus();
-  };
-  $("#org-add-cancel", root).onclick = () => {
+  const closeCreate = () => {
     form.reset();
     form.classList.add("hidden");
+    createPicker?.destroy();
+    createPicker = null;
   };
+  $("#org-add-toggle", root).onclick = () => {
+    if (!form.classList.contains("hidden")) {
+      closeCreate();
+      return;
+    }
+    form.classList.remove("hidden");
+    createPicker = mountOfficePicker($("#org-office-create", root));
+    form.querySelector("[name=name]")?.focus();
+  };
+  $("#org-add-cancel", root).onclick = closeCreate;
   form.onsubmit = async (e) => {
     e.preventDefault();
     orgErr(root, "");
-    const d = formData(form);
+    const office = createPicker?.value() || {};
+    if (office.lat == null) {
+      orgErr(root, "Xaritadan ofis joylashuvini belgilang yoki manzilni qidiring.");
+      return;
+    }
+    if (!office.address) {
+      orgErr(root, "Ofis manzilini kiriting.");
+      return;
+    }
+    const d = { ...formData(form), ...office };
     try {
       const org = await api("/orgs", { method: "POST", body: d });
-      form.reset();
-      form.classList.add("hidden");
+      closeCreate();
       const done = $("#org-created", root);
       done.innerHTML = `<div class="org-created-row">
           <div><b>«${escapeHtml(org.name)}» tashkiloti ochildi</b>
@@ -473,6 +809,10 @@ function bindOrgs(root) {
         card.querySelector("[data-org-box]").classList.toggle("hidden", !openOrgs.has(id));
         t.classList.toggle("primary", openOrgs.has(id));
         if (openOrgs.has(id)) await loadOrgUsers(root, id);
+        return;
+      }
+      if (t.dataset.orgOffice) {
+        openOffice(root, org);
         return;
       }
       if (t.dataset.orgRename) {
@@ -542,9 +882,15 @@ export async function init(root) {
     if (tab) showTab(root, tab.dataset.adminTab);
   });
 
-  if (can("orgs.manage")) bindOrgs(root);
+  if (can("orgs.manage")) {
+    bindOrgs(root);
+    bindOffice(root);
+  }
+  if (can("users.manage")) bindUsers(root);
+  fillOrgSelects(root);
   await Promise.all([
     can("orgs.manage") ? loadOrgs(root).catch((ex) => orgErr(root, ex.message)) : null,
+    can("users.manage") ? loadUsers(root).catch((ex) => usrErr(root, ex.message)) : null,
     can("perms.manage") ? loadPermsAdmin(root).catch(() => {}) : null,
     can("admin.panel")
       ? loadFields($("#tpl-entity", root)?.value || "orders").then(() => loadList(root)).catch(() => {})
@@ -833,4 +1179,9 @@ export async function init(root) {
   });
 }
 
-export function destroy() {}
+export function destroy() {
+  createPicker?.destroy();
+  editPicker?.destroy();
+  createPicker = null;
+  editPicker = null;
+}

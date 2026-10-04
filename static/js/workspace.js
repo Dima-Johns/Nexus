@@ -1,5 +1,5 @@
 import { api, apiUpload } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=65";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=66";
 
 let orders = [];
 let filter = "incoming";

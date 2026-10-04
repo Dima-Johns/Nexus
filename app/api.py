@@ -131,6 +131,7 @@ from .schemas import (
     WarehouseOut,
 )
 from .tenancy import (
+    can_cross_org,
     dump_permissions,
     get_org_row,
     is_org_code,
@@ -141,7 +142,16 @@ from .tenancy import (
     user_payload,
     users_scope,
 )
-from .tracking import ONLINE_TTL, _aware, driver_active_orders, ingest_gps, route_geometry_for, tracking_payload
+from .tracking import (
+    ONLINE_TTL,
+    _aware,
+    driver_active_orders,
+    ingest_gps,
+    reverse_geocode,
+    route_geometry_for,
+    search_geocode,
+    tracking_payload,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -811,10 +821,23 @@ def list_users(db: Session = Depends(get_db), admin: User = Depends(require_admi
     return [user_payload(u) for u in rows]
 
 
+def _target_org_id(db: Session, actor: User, org_id: int | None) -> int:
+    """Akkaunt qaysi tashkilotga biriktiriladi: tashkilotlarni boshqaruvchi tanlaydi, qolganlar faqat o‘z tashkilotiga."""
+    own = org_id_of(actor)
+    if not org_id or org_id == own:
+        return own
+    if not can_cross_org(actor):
+        raise HTTPException(403, "Boshqa tashkilotga akkaunt biriktirib bo‘lmaydi")
+    if not db.query(Organization.id).filter(Organization.id == org_id).first():
+        raise HTTPException(404, "Tashkilot topilmadi")
+    return int(org_id)
+
+
 @router.post("/users", response_model=UserOut)
 def create_user(payload: UserCreate, db: Session = Depends(get_db), admin: User = Depends(require_perm("users.manage"))):
     role = payload.role if payload.role in ALLOWED_ROLES else "dispatcher"
-    row = _new_user(db, org_id_of(admin), payload.username, payload.password, payload.full_name, role)
+    org_id = _target_org_id(db, admin, payload.org_id)
+    row = _new_user(db, org_id, payload.username, payload.password, payload.full_name, role)
     row.is_active = payload.is_active
     row.idle_timeout_minutes = max(0, min(1440, int(payload.idle_timeout_minutes or 30)))
     picked = [k for k in parse_permission_list(payload.permissions) if k not in ADMIN_ONLY_KEYS | SUPER_ONLY_KEYS]
@@ -828,6 +851,25 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), admin: User 
 @router.put("/users/{item_id}", response_model=UserOut)
 def update_user(item_id: int, payload: UserUpdate, db: Session = Depends(get_db), admin: User = Depends(require_perm("users.manage"))):
     row = _scoped_user(db, admin, item_id)
+    if payload.org_id is not None and payload.org_id != row.org_id:
+        target = _target_org_id(db, admin, payload.org_id)
+        if row.role == "superadmin":
+            raise HTTPException(400, "Superadmin tashkilotini o‘zgartirib bo‘lmaydi")
+        if row.id == admin.id:
+            raise HTTPException(400, "O‘z akkauntingizni boshqa tashkilotga o‘tkazib bo‘lmaydi")
+        if row.role == "admin" and row.is_active and _count_admins(db, row.org_id) <= 1:
+            raise HTTPException(400, "Tashkilotdagi oxirgi adminni boshqa tashkilotga o‘tkazib bo‘lmaydi")
+        row.org_id = target
+        db.query(SessionToken).filter(SessionToken.user_id == row.id).delete()
+    if payload.username is not None and payload.username.strip() != row.username:
+        username = payload.username.strip()
+        if len(username) < 3:
+            raise HTTPException(400, "Login kamida 3 belgi bo‘lsin")
+        row.username = username
+    if payload.org_id is not None or payload.username is not None:
+        taken = db.query(User).filter(User.org_id == row.org_id, User.username == row.username, User.id != row.id).first()
+        if taken:
+            raise HTTPException(400, "Bu tashkilotda bu login band")
     if payload.full_name is not None:
         row.full_name = payload.full_name.strip() or row.full_name
     if payload.password:
@@ -848,8 +890,6 @@ def update_user(item_id: int, payload: UserUpdate, db: Session = Depends(get_db)
         row.is_active = payload.is_active
         if not payload.is_active:
             db.query(SessionToken).filter(SessionToken.user_id == row.id).delete()
-    if payload.org_id is not None and payload.org_id != row.org_id:
-        raise HTTPException(400, "Akkauntni boshqa tashkilotga o‘tkazib bo‘lmaydi")
     if payload.idle_timeout_minutes is not None:
         row.idle_timeout_minutes = max(0, min(1440, int(payload.idle_timeout_minutes)))
     if payload.permissions is not None:
@@ -900,6 +940,9 @@ def _org_out(db: Session, org: Organization, actor: User) -> OrgOut:
         name=org.name,
         code=org.code or "",
         is_active=org.is_active,
+        address=org.address or "",
+        lat=org.lat,
+        lng=org.lng,
         user_count=sum(roles.values()),
         admin_count=roles.get("admin", 0) + roles.get("superadmin", 0),
         dispatcher_count=roles.get("dispatcher", 0),
@@ -907,6 +950,17 @@ def _org_out(db: Session, org: Organization, actor: User) -> OrgOut:
         is_own=org.id == actor.org_id,
         created_at=org.created_at.isoformat() if org.created_at else None,
     )
+
+
+def _set_org_office(org: Organization, address: str | None, lat: float | None, lng: float | None) -> None:
+    if address is not None:
+        org.address = address.strip()[:300]
+    if lat is None and lng is None:
+        return
+    if lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise HTTPException(400, "Ofis joylashuvi noto‘g‘ri: xaritadan nuqtani tanlang")
+    org.lat = round(float(lat), 6)
+    org.lng = round(float(lng), 6)
 
 
 def _org_or_404(db: Session, item_id: int) -> Organization:
@@ -930,6 +984,7 @@ def create_org(payload: OrgIn, db: Session = Depends(get_db), actor: User = Depe
     if db.query(Organization).filter(func.lower(Organization.name) == name.lower()).first():
         raise HTTPException(400, "Bu nomdagi tashkilot bor")
     org = Organization(name=name[:160], code=new_org_code(db), is_active=True)
+    _set_org_office(org, payload.address, payload.lat, payload.lng)
     db.add(org)
     db.flush()
     if payload.admin_username.strip():
@@ -950,6 +1005,7 @@ def update_org(item_id: int, payload: OrgUpdate, db: Session = Depends(get_db), 
         if clash:
             raise HTTPException(400, "Bu nomdagi tashkilot bor")
         org.name = name[:160]
+    _set_org_office(org, payload.address, payload.lat, payload.lng)
     if payload.is_active is not None and payload.is_active != org.is_active:
         if org.id == actor.org_id:
             raise HTTPException(400, "O‘z tashkilotingizni faolsizlantirib bo‘lmaydi")
@@ -1017,6 +1073,19 @@ def update_org_user(
     db.commit()
     row = db.query(User).options(joinedload(User.org)).filter(User.id == row.id).first()
     return user_payload(row)
+
+
+@router.get("/geo/search")
+def geo_search(q: str = Query("", max_length=200), _: User = Depends(get_current_user)):
+    text = q.strip()
+    if len(text) < 3:
+        return []
+    return search_geocode(text)
+
+
+@router.get("/geo/reverse")
+def geo_reverse(lat: float, lng: float, _: User = Depends(get_current_user)):
+    return {"address": reverse_geocode(lat, lng)}
 
 
 @router.get("/dashboard/stats")

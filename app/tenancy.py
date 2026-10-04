@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .auth import get_current_user, require_admin
 from .models import Organization, User
-from .permissions import ADMIN_ONLY_KEYS, has_perm, is_super, permissions_of
+from .permissions import ADMIN_ONLY_KEYS, has_perm, permissions_of
 
 ORG_CODE_RE = re.compile(r"^\d{6}$")
 
@@ -59,10 +59,14 @@ def new_org_code(db: Session) -> str:
     raise HTTPException(500, "Tashkilot kodi yaratilmadi, qayta urinib ko‘ring")
 
 
+def can_cross_org(actor: User) -> bool:
+    """Tashkilotlarni boshqaradigan (superadmin yoki orgs.manage berilgan) akkaunt hamma tashkilot akkauntlari bilan ishlaydi."""
+    return has_perm(actor, "orgs.manage")
+
+
 def users_scope(db: Session, actor: User):
-    """Superadmin hamma tashkilot akkauntlarini ko‘radi, qolganlar faqat o‘z tashkilotinikini."""
     q = db.query(User)
-    if not is_super(actor):
+    if not can_cross_org(actor):
         q = q.filter(User.org_id == org_id_of(actor))
     return q
 

@@ -1,8 +1,8 @@
-import { bindNavigation, render } from "./router.js?v=65";
-import { bindWorkspace } from "./workspace.js?v=65";
-import { bindDriverAccessModal } from "./driver-access.js?v=65";
+import { bindNavigation, render } from "./router.js?v=66";
+import { bindWorkspace } from "./workspace.js?v=66";
+import { bindDriverAccessModal } from "./driver-access.js?v=66";
 import { me, setMe, setToken, token } from "./api.js";
-import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=65";
+import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=66";
 
 applyTheme(currentTheme());
 

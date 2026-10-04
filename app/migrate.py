@@ -37,6 +37,9 @@ def migrate_schema() -> None:
             created_at TIMESTAMPTZ DEFAULT NOW()
         )
         """,
+        "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS address VARCHAR(300) DEFAULT ''",
+        "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION",
+        "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id INTEGER",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS idle_timeout_minutes INTEGER DEFAULT 30",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions_json TEXT DEFAULT '[]'",

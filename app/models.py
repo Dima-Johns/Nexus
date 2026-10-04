@@ -21,6 +21,9 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(160))
     code: Mapped[str] = mapped_column(String(32), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    address: Mapped[str] = mapped_column(String(300), default="")
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lng: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     users: Mapped[list["User"]] = relationship(back_populates="org")
 
