@@ -62,11 +62,18 @@ class Client(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     org_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[str] = mapped_column(String(80), default="", index=True)
     phone: Mapped[str] = mapped_column(String(40), default="")
     company: Mapped[str] = mapped_column(String(255), default="")
     address: Mapped[str] = mapped_column(String(500), default="")
+    lat: Mapped[float] = mapped_column(Float, default=0.0)
+    lng: Mapped[float] = mapped_column(Float, default=0.0)
+    sales_rep: Mapped[str] = mapped_column(String(160), default="")
+    agent_code: Mapped[str] = mapped_column(String(2), default="")
+    source: Mapped[str] = mapped_column(String(20), default="manual")
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    org: Mapped[Organization | None] = relationship()
     orders: Mapped[list["Order"]] = relationship(back_populates="client")
 
 

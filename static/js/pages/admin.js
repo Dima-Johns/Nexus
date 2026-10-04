@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=66";
-import { mountOfficePicker } from "../office-picker.js?v=66";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=66";
+import { openDriverAccess } from "../driver-access.js?v=67";
+import { mountOfficePicker } from "../office-picker.js?v=67";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=67";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -12,6 +12,7 @@ let superOnly = new Set();
 let orgsCache = [];
 const openOrgs = new Set();
 let usersCache = [];
+let clientsCache = [];
 let createPicker = null;
 let editPicker = null;
 let officeOrgId = null;
@@ -323,6 +324,7 @@ function orgOptions(selected) {
 }
 
 function fillOrgSelects(root) {
+  fillClientOrgFilter(root);
   root.querySelectorAll("[data-org-select]").forEach((sel) => {
     sel.innerHTML = orgOptions(sel.value || me?.org_id);
     sel.disabled = !crossOrg();
@@ -380,8 +382,8 @@ function renderUsers(root) {
         ].join("");
         return `<tr class="${u.is_active ? "" : "usr-off"}">
           <td class="adm-num">${i + 1}</td>
-          <td><div class="drv-cell"><span class="user-avatar sm">${escapeHtml(initials(u.full_name))}</span><span><b>${escapeHtml(u.full_name)}</b><span class="drv-login">${escapeHtml(u.username)}</span></span></div></td>
-          <td><span class="usr-org">${escapeHtml(u.org_name || "—")}</span>${u.org_code ? `<span class="drv-login">kod: ${escapeHtml(u.org_code)}</span>` : ""}</td>
+          <td class="cell-main"><div class="drv-cell"><span class="user-avatar sm">${escapeHtml(initials(u.full_name))}</span><span><b>${escapeHtml(u.full_name)}</b><span class="drv-login">${escapeHtml(u.username)}</span></span></div></td>
+          <td class="cell-inline"><span class="usr-org">${escapeHtml(u.org_name || "—")}</span>${u.org_code ? `<span class="drv-login">kod: ${escapeHtml(u.org_code)}</span>` : ""}</td>
           <td><span class="badge role-${escapeHtml(u.role)}">${escapeHtml(ROLE[u.role] || u.role)}</span></td>
           <td><span class="badge ${u.is_active ? "approved" : "rejected"}">${u.is_active ? "faol" : "nofaol"}</span></td>
           <td class="col-actions">${actions}</td>
@@ -554,6 +556,202 @@ function bindUsers(root) {
       await afterUserChange(root);
     } catch (ex) {
       usrErr(root, ex.message, false, "#usr-edit-err");
+    }
+  };
+}
+
+const CL_LIMIT = 300;
+
+function clErr(root, text, ok = false) {
+  usrErr(root, text, ok, "#cl-err");
+}
+
+function fillClientOrgFilter(root) {
+  const sel = $("#cl-org", root);
+  if (!sel) return;
+  const show = crossOrg() && orgsCache.length > 1;
+  sel.classList.toggle("hidden", !show);
+  if (!show) return;
+  const cur = sel.value;
+  sel.innerHTML =
+    `<option value="">Barcha tashkilotlar</option>` +
+    orgsCache.map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("");
+  sel.value = orgsCache.some((o) => String(o.id) === cur) ? cur : "";
+}
+
+function addedSince(days) {
+  if (days === "") return null;
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  since.setDate(since.getDate() - Number(days));
+  return since;
+}
+
+function clientMatches(c, q, since) {
+  if (since && (!c.created_at || new Date(c.created_at) < since)) return false;
+  if (!q) return true;
+  return [c.name, c.code, c.address, c.sales_rep, c.agent_code, c.phone].some((v) => String(v || "").toLowerCase().includes(q));
+}
+
+function renderClients(root) {
+  const box = $("#cl-table", root);
+  if (!box) return;
+  const q = ($("#cl-search", root)?.value || "").trim().toLowerCase();
+  const since = addedSince($("#cl-added", root)?.value ?? "");
+  const rows = clientsCache.filter((c) => clientMatches(c, q, since));
+  const today = clientsCache.filter((c) => clientMatches(c, "", addedSince("0"))).length;
+  const noGps = clientsCache.filter((c) => !c.lat || !c.lng).length;
+  $("#cl-summary", root).innerHTML = `<span class="adm-pill">Jami <b>${clientsCache.length}</b></span>
+    <span class="adm-pill on">Bugun qo‘shilgan <b>${today}</b></span>
+    <span class="adm-pill${noGps ? " warn" : ""}">Koordinatasiz <b>${noGps}</b></span>`;
+  if (!clientsCache.length) {
+    box.innerHTML = `<p class="muted adm-empty">Hozircha klient yo‘q. Zayavkalar import qilinganda mijozlar shu yerga avtomatik tushadi.</p>`;
+    return;
+  }
+  if (!rows.length) {
+    box.innerHTML = `<p class="muted adm-empty">Mos klient topilmadi.</p>`;
+    return;
+  }
+  const multiOrg = new Set(rows.map((c) => c.org_id)).size > 1;
+  const manage = can("clients.manage");
+  const headers = ["#", "Klient", ...(multiOrg ? ["Tashkilot"] : []), "Manzil", "Agent", "Zayavkalar", "Qo‘shilgan", ...(manage ? [""] : [])];
+  const body = rows
+    .slice(0, CL_LIMIT)
+    .map((c, i) => {
+      const gps = c.lat && c.lng ? `${Number(c.lat).toFixed(5)}, ${Number(c.lng).toFixed(5)}` : "koordinata yo‘q";
+      return `<tr>
+        <td class="adm-num">${i + 1}</td>
+        <td class="cell-main"><b>${escapeHtml(c.name)}</b><span class="cl-sub">${c.code ? `kod: ${escapeHtml(c.code)}` : "kodsiz"}${c.phone ? ` · ${escapeHtml(c.phone)}` : ""}</span></td>
+        ${multiOrg ? `<td class="cell-inline"><span class="usr-org">${escapeHtml(c.org_name || "—")}</span></td>` : ""}
+        <td class="cell-wide"><span class="cl-addr">${escapeHtml(c.address || "—")}</span><span class="cl-sub">${gps}</span></td>
+        <td class="cell-inline">${c.agent_code ? `<b>${escapeHtml(c.agent_code)}</b> · ` : ""}${escapeHtml(c.sales_rep || (c.agent_code ? "" : "—"))}</td>
+        <td class="cell-inline nowrap">${c.orders_count} ta${c.last_order_date ? `<span class="cl-sub">oxirgi: ${escapeHtml(c.last_order_date)}</span>` : ""}</td>
+        <td class="cell-inline nowrap">${fmtDate(c.created_at)} <span class="badge ${c.source === "import" ? "src-import" : "entity"}">${c.source === "import" ? "import" : "qo‘lda"}</span></td>
+        ${
+          manage
+            ? `<td class="col-actions">
+                <button class="btn tiny" type="button" data-cl-edit="${c.id}">Tahrirlash</button>
+                <button class="btn tiny danger-text" type="button" data-cl-del="${c.id}">O‘chirish</button>
+              </td>`
+            : ""
+        }
+      </tr>`;
+    })
+    .join("");
+  const more =
+    rows.length > CL_LIMIT
+      ? `<p class="muted cl-more">Birinchi ${CL_LIMIT} tasi ko‘rsatildi (topilgan: ${rows.length}). Qidiruvdan foydalaning yoki to‘liq ro‘yxatni Excel'da yuklab oling.</p>`
+      : "";
+  box.innerHTML = table(headers, body) + more;
+}
+
+async function loadClients(root) {
+  if (!$("#cl-table", root)) return;
+  const org = $("#cl-org", root)?.value || "";
+  clientsCache = await api(`/clients/base${org ? `?org_id=${org}` : ""}`);
+  setCount(root, "cnt-clients", clientsCache.length);
+  renderClients(root);
+}
+
+function openClientEdit(root, c) {
+  const form = $("#cl-edit-form", root);
+  usrErr(root, "", false, "#cl-edit-err");
+  form.reset();
+  const el = form.elements;
+  el.id.value = c.id;
+  ["name", "code", "phone", "address", "agent_code", "sales_rep", "notes"].forEach((k) => (el[k].value = c[k] || ""));
+  el.lat.value = c.lat || "";
+  el.lng.value = c.lng || "";
+  $("#cl-modal", root).classList.remove("hidden");
+  el.name.focus();
+}
+
+function bindClients(root) {
+  const box = $("#cl-table", root);
+  if (!box) return;
+  let typing = null;
+  $("#cl-search", root).addEventListener("input", () => {
+    clearTimeout(typing);
+    typing = setTimeout(() => renderClients(root), 150);
+  });
+  $("#cl-added", root).addEventListener("change", () => renderClients(root));
+  $("#cl-org", root).addEventListener("change", () => loadClients(root).catch((ex) => clErr(root, ex.message)));
+
+  $("#cl-export", root).onclick = async (e) => {
+    const btn = e.currentTarget;
+    clErr(root, "");
+    const org = $("#cl-org", root)?.value || "";
+    const params = new URLSearchParams();
+    if (org) params.set("org_id", org);
+    const q = $("#cl-search", root).value.trim();
+    if (q) params.set("q", q);
+    const days = $("#cl-added", root).value;
+    if (days !== "") params.set("days", days);
+    const orgName = org ? orgsCache.find((o) => String(o.id) === org)?.name : crossOrg() ? "barcha" : me?.org_name;
+    const stamp = new Date().toISOString().slice(0, 10);
+    btn.disabled = true;
+    try {
+      await apiDownload(`/clients/base/export?${params}`, `Klientlar_${orgName || "baza"}_${stamp}.xlsx`);
+    } catch (ex) {
+      clErr(root, ex.message);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  box.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const id = Number(btn.dataset.clEdit || btn.dataset.clDel);
+    const c = clientsCache.find((x) => x.id === id);
+    if (!c) return;
+    clErr(root, "");
+    if (btn.dataset.clEdit) {
+      openClientEdit(root, c);
+      return;
+    }
+    const ok = await askConfirm(
+      `«${c.name}» klient bazasidan o‘chiriladi. Zayavkalar o‘chmaydi, faqat klientga bog‘lanishi uziladi. Keyingi importda u yana yangi klient sifatida qo‘shilishi mumkin.`,
+      { title: "Klientni o‘chirish", ok: "O‘chirish", danger: true }
+    );
+    if (!ok) return;
+    try {
+      await api(`/clients/base/${c.id}`, { method: "DELETE" });
+      clientsCache = clientsCache.filter((x) => x.id !== c.id);
+      setCount(root, "cnt-clients", clientsCache.length);
+      renderClients(root);
+      clErr(root, `«${c.name}» o‘chirildi.`, true);
+    } catch (ex) {
+      clErr(root, ex.message);
+    }
+  });
+
+  const modal = $("#cl-modal", root);
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal || e.target.closest("[data-cl-close]")) modal.classList.add("hidden");
+  });
+  $("#cl-edit-form", root).onsubmit = async (e) => {
+    e.preventDefault();
+    const el = e.target.elements;
+    const body = {
+      name: el.name.value.trim(),
+      code: el.code.value.trim(),
+      phone: el.phone.value.trim(),
+      address: el.address.value.trim(),
+      lat: el.lat.value === "" ? 0 : Number(el.lat.value),
+      lng: el.lng.value === "" ? 0 : Number(el.lng.value),
+      agent_code: el.agent_code.value.trim(),
+      sales_rep: el.sales_rep.value.trim(),
+      notes: el.notes.value.trim(),
+    };
+    try {
+      const updated = await api(`/clients/base/${el.id.value}`, { method: "PUT", body });
+      clientsCache = clientsCache.map((x) => (x.id === updated.id ? updated : x));
+      modal.classList.add("hidden");
+      renderClients(root);
+      clErr(root, `«${updated.name}» saqlandi.`, true);
+    } catch (ex) {
+      usrErr(root, ex.message, false, "#cl-edit-err");
     }
   };
 }
@@ -887,10 +1085,12 @@ export async function init(root) {
     bindOffice(root);
   }
   if (can("users.manage")) bindUsers(root);
+  if (can("clients.view")) bindClients(root);
   fillOrgSelects(root);
   await Promise.all([
     can("orgs.manage") ? loadOrgs(root).catch((ex) => orgErr(root, ex.message)) : null,
     can("users.manage") ? loadUsers(root).catch((ex) => usrErr(root, ex.message)) : null,
+    can("clients.view") ? loadClients(root).catch((ex) => clErr(root, ex.message)) : null,
     can("perms.manage") ? loadPermsAdmin(root).catch(() => {}) : null,
     can("admin.panel")
       ? loadFields($("#tpl-entity", root)?.value || "orders").then(() => loadList(root)).catch(() => {})

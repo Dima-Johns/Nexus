@@ -129,6 +129,29 @@ def build_excel_bytes(headers: list[str], sheet_name: str = "Shablon", sample_ro
     return buf.getvalue()
 
 
+def build_table_xlsx(headers: list[str], rows: list[list], sheet_name: str = "Ro‘yxat") -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = (sheet_name or "Ro‘yxat")[:31]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="1F3A5F")
+    widths = [len(str(h)) for h in headers]
+    for row in rows:
+        ws.append(row)
+        for i, value in enumerate(row):
+            widths[i] = max(widths[i], len(str(value if value is not None else "")))
+    for idx, width in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(idx)].width = max(10, min(48, width + 2))
+    ws.freeze_panes = "A2"
+    if rows:
+        ws.auto_filter.ref = ws.dimensions
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def headers_from_mapping(mapping: dict[str, str], entity: str = "orders") -> list[str]:
     fields = fields_for(entity)
     headers = []

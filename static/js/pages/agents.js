@@ -1,5 +1,5 @@
 import { api, can, me } from "../api.js";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs } from "../ui.js?v=66";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs } from "../ui.js?v=67";
 
 let bound = false;
 let paneRoot = null;

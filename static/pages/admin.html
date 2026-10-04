@@ -5,6 +5,11 @@
       Foydalanuvchilar
       <span class="admin-tab-count" id="cnt-users"></span>
     </button>
+    <button type="button" class="admin-tab" data-admin-tab="clients" data-perm="clients.view">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z" /><path d="M8 7V4h8v3" /><path d="M4 12h16" /><path d="M10 12v2h4v-2" /></svg>
+      Klientlar
+      <span class="admin-tab-count" id="cnt-clients"></span>
+    </button>
     <button type="button" class="admin-tab" data-admin-tab="perms" data-perm="perms.manage">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6L12 3Z" /><path d="m9 12 2 2 4-4" /></svg>
       Dostuplar
@@ -63,7 +68,32 @@
       <select id="usr-org-filter" class="usr-filter hidden"></select>
       <div class="adm-summary" id="usr-summary"></div>
     </div>
-    <div id="usr-table"></div>
+    <div id="usr-table" class="adm-cards"></div>
+  </section>
+
+  <section class="glass panel admin-sec" data-admin-sec="clients" data-perm="clients.view">
+    <div class="panel-head">
+      <div>
+        <h3>Klientlar</h3>
+        <p class="muted adm-sub">Import qilingan zayavkalardagi mijozlar avtomatik shu bazaga tushadi. Keyingi importlarda faqat bazada yo‘q mijozlar qo‘shiladi: mijoz kodi bo‘yicha, kod bo‘lmasa nomi bo‘yicha tekshiriladi.</p>
+      </div>
+      <div class="row-actions">
+        <button class="btn tiny primary" type="button" id="cl-export">Excel yuklab olish</button>
+      </div>
+    </div>
+    <p class="error hidden" id="cl-err"></p>
+    <div class="adm-toolbar">
+      <input type="search" id="cl-search" class="adm-search" placeholder="Qidirish: nom, kod, manzil, agent" />
+      <select id="cl-org" class="usr-filter hidden"></select>
+      <select id="cl-added" class="usr-filter">
+        <option value="">Qo‘shilgan: hammasi</option>
+        <option value="0">Bugun</option>
+        <option value="7">Oxirgi 7 kun</option>
+        <option value="30">Oxirgi 30 kun</option>
+      </select>
+      <div class="adm-summary" id="cl-summary"></div>
+    </div>
+    <div id="cl-table" class="adm-cards"></div>
   </section>
 
   <section class="glass panel admin-sec" data-admin-sec="perms" data-perm="perms.manage">
@@ -215,6 +245,38 @@
       <p class="muted adm-sub hidden" id="usr-edit-note"></p>
       <div class="row-actions adm-form-actions">
         <button class="btn" type="button" data-usr-close>Bekor qilish</button>
+        <button class="btn primary" type="submit">Saqlash</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="cl-modal" class="modal-overlay hidden">
+  <div class="glass panel modal-card usr-modal-card">
+    <div class="panel-head">
+      <h3>Klientni tahrirlash</h3>
+      <button class="icon-btn" type="button" data-cl-close title="Yopish">×</button>
+    </div>
+    <p class="error hidden" id="cl-edit-err"></p>
+    <form id="cl-edit-form" class="usr-edit-form" autocomplete="off">
+      <input type="hidden" name="id" />
+      <label class="map-row"><span>Mijoz nomi *</span><input name="name" required /></label>
+      <div class="cl-pair">
+        <label class="map-row"><span>Mijoz kodi</span><input name="code" maxlength="80" /></label>
+        <label class="map-row"><span>Telefon</span><input name="phone" maxlength="17" placeholder="+998 90 123 45 67" /></label>
+      </div>
+      <label class="map-row"><span>Manzil</span><input name="address" maxlength="500" /></label>
+      <div class="cl-pair">
+        <label class="map-row"><span>Latitude (Y)</span><input name="lat" type="number" step="0.000001" /></label>
+        <label class="map-row"><span>Longitude (X)</span><input name="lng" type="number" step="0.000001" /></label>
+      </div>
+      <div class="cl-pair">
+        <label class="map-row"><span>Agent kodi</span><input name="agent_code" maxlength="2" /></label>
+        <label class="map-row"><span>Agent</span><input name="sales_rep" maxlength="160" /></label>
+      </div>
+      <label class="map-row"><span>Izoh</span><input name="notes" /></label>
+      <div class="row-actions adm-form-actions">
+        <button class="btn" type="button" data-cl-close>Bekor qilish</button>
         <button class="btn primary" type="submit">Saqlash</button>
       </div>
     </form>

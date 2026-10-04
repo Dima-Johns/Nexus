@@ -16,6 +16,8 @@ PERMISSIONS = [
     {"key": "agents.code.set", "group": "Agentlar", "label": "Agent kodini bir marta kiritish"},
     {"key": "warehouses.view", "group": "Sklad", "label": "Skladlarni ko‘rish"},
     {"key": "warehouses.manage", "group": "Sklad", "label": "Sklad qo‘shish / tahrirlash"},
+    {"key": "clients.view", "group": "Klientlar", "label": "Klientlar bazasini ko‘rish va Excel yuklash"},
+    {"key": "clients.manage", "group": "Klientlar", "label": "Klientni tahrirlash / o‘chirish"},
     {"key": "admin.panel", "group": "Admin", "label": "Admin panel (shablonlar)"},
     {"key": "users.manage", "group": "Admin", "label": "Akkauntlar"},
     {"key": "perms.manage", "group": "Admin", "label": "Dostuplar"},

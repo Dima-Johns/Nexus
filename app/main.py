@@ -1,9 +1,10 @@
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import UPLOAD_DIR, router
@@ -65,6 +66,13 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 RESERVED = {"docs", "redoc", "openapi.json", "uploads"}
+_build = re.search(r"app\.js\?v=(\d+)", (STATIC_DIR / "index.html").read_text(encoding="utf-8"))
+FRONTEND_VERSION = f"v={_build.group(1)}" if _build else ""
+
+
+@app.get("/api/version")
+def frontend_version():
+    return JSONResponse({"version": FRONTEND_VERSION}, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/driver")

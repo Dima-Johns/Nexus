@@ -1,6 +1,6 @@
 import { api, can } from "../api.js";
-import { escapeHtml } from "../ui.js?v=66";
-import * as wsModule from "../workspace.js?v=66";
+import { escapeHtml } from "../ui.js?v=67";
+import * as wsModule from "../workspace.js?v=67";
 
 // Har doim bindWorkspace() chaqirilgan (zayavkalar yuklangan) nusxadan o'qiymiz.
 function ws() {

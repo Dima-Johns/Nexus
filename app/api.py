@@ -2,7 +2,7 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -52,6 +52,7 @@ from .importer import (
     RELOG_MAPPING,
     auto_read_order_records,
     build_excel_bytes,
+    build_table_xlsx,
     build_template_json,
     driver_value,
     fields_for,
@@ -94,8 +95,10 @@ from .schemas import (
     BulkDateIn,
     BulkIdsIn,
     BulkStatusIn,
+    ClientBaseOut,
     ClientIn,
     ClientOut,
+    ClientUpdate,
     DayPlanIn,
     DayPlanOut,
     DriverAccessIn,
@@ -1106,6 +1109,187 @@ def live_tracking(db: Session = Depends(get_db), user: User = Depends(require_pe
     return tracking_payload(db, org_id_of(user))
 
 
+def _clients_scope(db: Session, user: User, org_id: int | None):
+    """Tashkilotlarni boshqaruvchi istalgan (yoki barcha) tashkilot bazasini ko‘radi, qolganlar faqat o‘zinikini."""
+    q = db.query(Client).options(joinedload(Client.org))
+    if can_cross_org(user):
+        return q.filter(Client.org_id == org_id) if org_id else q
+    own = org_id_of(user)
+    if org_id and org_id != own:
+        raise HTTPException(403, "Boshqa tashkilot klientlarini ko‘rib bo‘lmaydi")
+    return q.filter(Client.org_id == own)
+
+
+def _client_rows(
+    db: Session,
+    user: User,
+    org_id: int | None,
+    q: str = "",
+    only_id: int | None = None,
+    days: int | None = None,
+) -> list[ClientBaseOut]:
+    query = _clients_scope(db, user, org_id)
+    if only_id:
+        query = query.filter(Client.id == only_id)
+    if days is not None:
+        since = local_now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=max(0, days))
+        query = query.filter(Client.created_at >= since)
+    rows = query.order_by(Client.org_id.asc(), Client.name.asc()).all()
+    text = _client_name_key(q)
+    if text:
+        rows = [
+            c
+            for c in rows
+            if any(text in _client_name_key(v) for v in (c.name, c.code, c.address, c.sales_rep, c.agent_code, c.phone))
+        ]
+    stats: dict[int, tuple[int, str]] = {}
+    ids = [c.id for c in rows]
+    if ids:
+        for cid, cnt, last in (
+            db.query(Order.client_id, func.count(Order.id), func.max(Order.delivery_date))
+            .filter(Order.client_id.in_(ids))
+            .group_by(Order.client_id)
+            .all()
+        ):
+            stats[cid] = (int(cnt), last or "")
+    return [
+        ClientBaseOut(
+            id=c.id,
+            org_id=c.org_id,
+            org_name=c.org.name if c.org else "",
+            code=c.code or "",
+            name=c.name,
+            phone=format_uz_phone(c.phone or ""),
+            address=c.address or "",
+            lat=c.lat or 0,
+            lng=c.lng or 0,
+            sales_rep=c.sales_rep or "",
+            agent_code=c.agent_code or "",
+            source=c.source or "manual",
+            notes=c.notes or "",
+            orders_count=stats.get(c.id, (0, ""))[0],
+            last_order_date=stats.get(c.id, (0, ""))[1],
+            created_at=c.created_at.isoformat() if c.created_at else None,
+        )
+        for c in rows
+    ]
+
+
+@router.get("/clients/base", response_model=list[ClientBaseOut])
+def clients_base(
+    org_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("clients.view")),
+):
+    return _client_rows(db, user, org_id)
+
+
+@router.get("/clients/base/export")
+def clients_base_export(
+    org_id: int | None = None,
+    q: str = Query("", max_length=200),
+    days: int | None = Query(None, ge=0, le=3650),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("clients.view")),
+):
+    rows = _client_rows(db, user, org_id, q, days=days)
+    multi = len({r.org_id for r in rows}) > 1
+    headers = (["Tashkilot"] if multi else []) + [
+        "Mijoz kodi",
+        "Mijoz nomi",
+        "Manzil",
+        "Telefon",
+        "Latitude (Y)",
+        "Longitude (X)",
+        "Agent kodi",
+        "Agent",
+        "Zayavkalar soni",
+        "Oxirgi yetkazish",
+        "Bazaga qo‘shilgan",
+        "Manba",
+        "Izoh",
+    ]
+    data = [
+        ([r.org_name] if multi else [])
+        + [
+            r.code,
+            r.name,
+            r.address,
+            r.phone,
+            r.lat or "",
+            r.lng or "",
+            r.agent_code,
+            r.sales_rep,
+            r.orders_count,
+            r.last_order_date,
+            (r.created_at or "")[:10],
+            "Import" if r.source == "import" else "Qo‘lda",
+            r.notes,
+        ]
+        for r in rows
+    ]
+    org_part = rows[0].org_name if rows and not multi else "barcha"
+    stamp = local_now().strftime("%Y-%m-%d")
+    return _excel_file(build_table_xlsx(headers, data, "Klientlar"), f"Klientlar_{org_part}_{stamp}.xlsx")
+
+
+def _client_for_edit(db: Session, user: User, item_id: int) -> Client:
+    row = _clients_scope(db, user, None).filter(Client.id == item_id).first()
+    if not row:
+        raise HTTPException(404, "Klient topilmadi")
+    return row
+
+
+@router.put("/clients/base/{item_id}", response_model=ClientBaseOut)
+def update_client_base(
+    item_id: int,
+    payload: ClientUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("clients.manage")),
+):
+    row = _client_for_edit(db, user, item_id)
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise HTTPException(400, "Klient nomi bo‘sh bo‘lmasin")
+        row.name = name[:255]
+    if "code" in data:
+        code = (data["code"] or "").strip()[:80]
+        if code:
+            clash = (
+                db.query(Client.id)
+                .filter(Client.org_id == row.org_id, func.lower(Client.code) == code.lower(), Client.id != row.id)
+                .first()
+            )
+            if clash:
+                raise HTTPException(400, "Bu tashkilotda shu kodli klient bor")
+        row.code = code
+    if "phone" in data:
+        row.phone = format_uz_phone(data["phone"] or "")
+    for key, limit in (("address", 500), ("sales_rep", 160), ("agent_code", 2)):
+        if key in data:
+            setattr(row, key, (data[key] or "").strip()[:limit])
+    if "notes" in data:
+        row.notes = (data["notes"] or "").strip()
+    if "lat" in data or "lng" in data:
+        lat, lng = data.get("lat", row.lat) or 0, data.get("lng", row.lng) or 0
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            raise HTTPException(400, "Koordinata noto‘g‘ri")
+        row.lat, row.lng = lat, lng
+    db.commit()
+    return _client_rows(db, user, row.org_id, only_id=row.id)[0]
+
+
+@router.delete("/clients/base/{item_id}")
+def delete_client_base(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("clients.manage"))):
+    row = _client_for_edit(db, user, item_id)
+    db.query(Order).filter(Order.client_id == row.id).update({Order.client_id: None}, synchronize_session=False)
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/clients", response_model=list[ClientOut])
 def list_clients(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return [_client_out(c) for c in q_org(db, Client, user).order_by(Client.id.desc()).all()]
@@ -1424,8 +1608,54 @@ def delete_all_orders(db: Session = Depends(get_db), user: User = Depends(requir
     return {"ok": True, "deleted": n}
 
 
+def _client_name_key(name: str) -> str:
+    return " ".join((name or "").lower().split())
+
+
 def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], org_id: int) -> dict:
-    clients_by_name = {c.name: c for c in db.query(Client).filter(Client.org_id == org_id).all()}
+    org_clients = db.query(Client).filter(Client.org_id == org_id).all()
+    clients_by_code = {c.code.strip().lower(): c for c in org_clients if (c.code or "").strip()}
+    clients_by_name = {_client_name_key(c.name): c for c in org_clients}
+    clients_created = 0
+
+    def client_for(rec: dict, sales_rep: str, agent_code: str) -> Client | None:
+        """Klient bazasiga faqat yangi mijoz qo‘shiladi; mavjudining ma’lumoti importda o‘zgarmaydi."""
+        nonlocal clients_created
+        name = mapped_value(rec, mapping, "client_name").strip()[:255]
+        ccode = mapped_value(rec, mapping, "client_code").strip()[:80]
+        if not name and not ccode:
+            return None
+        name_key = _client_name_key(name)
+        if ccode:
+            found = clients_by_code.get(ccode.lower())
+            legacy = clients_by_name.get(name_key) if name else None
+            if not found and legacy and not (legacy.code or "").strip():
+                legacy.code = ccode
+                clients_by_code[ccode.lower()] = legacy
+                found = legacy
+        else:
+            found = clients_by_name.get(name_key)
+        if found:
+            return found
+        client = Client(
+            org_id=org_id,
+            name=name or ccode,
+            code=ccode,
+            address=(mapped_value(rec, mapping, "dropoff_address") or "")[:500],
+            lat=to_float(mapped_value(rec, mapping, "dropoff_lat"), 0),
+            lng=to_float(mapped_value(rec, mapping, "dropoff_lng"), 0),
+            sales_rep=sales_rep,
+            agent_code=agent_code,
+            source="import",
+        )
+        db.add(client)
+        db.flush()
+        if ccode:
+            clients_by_code[ccode.lower()] = client
+        clients_by_name.setdefault(name_key, client)
+        clients_created += 1
+        return client
+
     created = 0
     skipped = 0
     existing = {"faol": 0, "done": 0, "incoming": 0}
@@ -1476,9 +1706,12 @@ def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], or
             skipped += 1
             continue
         seen.add(code)
+        client = client_for(rec, sales_rep, agent_code)
         row = existing_rows.get(code)
         if row:
             skipped += 1
+            if client and not row.client_id:
+                row.client_id = client.id
             try:
                 old = json.loads(row.extra_json or "{}")
                 if not isinstance(old, dict):
@@ -1503,17 +1736,6 @@ def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], or
             touched.append(row)
             continue
         client_name = mapped_value(rec, mapping, "client_name")
-        client = clients_by_name.get(client_name) if client_name else None
-        if client_name and not client:
-            client = Client(
-                org_id=org_id,
-                name=client_name,
-                company=mapped_value(rec, mapping, "client_code") or "",
-                address=mapped_value(rec, mapping, "dropoff_address") or "",
-            )
-            db.add(client)
-            db.flush()
-            clients_by_name[client_name] = client
         lat = to_float(mapped_value(rec, mapping, "dropoff_lat"), 0)
         lng = to_float(mapped_value(rec, mapping, "dropoff_lng"), 0)
         new_orders.append(
@@ -1574,6 +1796,7 @@ def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], or
         "delivery_date": incoming_day,
         "agents_created": agents_sync.get("created", 0),
         "drivers_created": drivers_sync.get("created", 0),
+        "clients_created": clients_created,
         "errors": errors[:20],
         "rows": len(records),
         "existing_faol": existing["faol"],

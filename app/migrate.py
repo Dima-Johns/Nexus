@@ -104,10 +104,22 @@ def migrate_schema() -> None:
         )
         """,
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_day_plans_org_date ON day_plans (org_id, plan_date)",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS code VARCHAR(80) DEFAULT ''",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION DEFAULT 0",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION DEFAULT 0",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS sales_rep VARCHAR(160) DEFAULT ''",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS agent_code VARCHAR(2) DEFAULT ''",
+        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'manual'",
+        "CREATE INDEX IF NOT EXISTS ix_clients_org_code ON clients (org_id, code)",
     ]
     with engine.begin() as conn:
+        clients_had_code = conn.execute(
+            text("SELECT 1 FROM information_schema.columns WHERE table_name = 'clients' AND column_name = 'code'")
+        ).scalar()
         for sql in statements:
             conn.execute(text(sql))
+        if not clients_had_code:
+            _backfill_clients(conn)
         conn.execute(
             text(
                 """
@@ -154,3 +166,34 @@ def migrate_schema() -> None:
             conn.execute(text("CREATE INDEX ix_users_username ON users (username)"))
         conn.execute(text("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_org_username ON users (org_id, username)"))
+
+
+def _backfill_clients(conn) -> None:
+    """Bir martalik: avval importda mijoz kodi «company»ga yozilgan; koordinata va agentni oxirgi zayavkadan olamiz."""
+    conn.execute(
+        text(
+            """
+            UPDATE clients
+            SET code = LEFT(company, 80), company = '', source = 'import'
+            WHERE COALESCE(company, '') <> ''
+              AND id IN (SELECT client_id FROM orders WHERE client_id IS NOT NULL)
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            UPDATE clients c
+            SET lat = o.dropoff_lat, lng = o.dropoff_lng,
+                sales_rep = COALESCE(o.sales_rep, ''), agent_code = COALESCE(o.agent_code, ''),
+                source = 'import'
+            FROM (
+                SELECT DISTINCT ON (client_id) client_id, dropoff_lat, dropoff_lng, sales_rep, agent_code
+                FROM orders
+                WHERE client_id IS NOT NULL
+                ORDER BY client_id, (dropoff_lat <> 0) DESC, id DESC
+            ) o
+            WHERE c.id = o.client_id
+            """
+        )
+    )

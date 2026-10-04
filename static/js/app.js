@@ -1,8 +1,8 @@
-import { bindNavigation, render } from "./router.js?v=66";
-import { bindWorkspace } from "./workspace.js?v=66";
-import { bindDriverAccessModal } from "./driver-access.js?v=66";
+import { bindNavigation, render } from "./router.js?v=67";
+import { bindWorkspace } from "./workspace.js?v=67";
+import { bindDriverAccessModal } from "./driver-access.js?v=67";
 import { me, setMe, setToken, token } from "./api.js";
-import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=66";
+import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=67";
 
 applyTheme(currentTheme());
 
@@ -25,6 +25,26 @@ function bindIdleWatch() {
     }
   }, 10000);
 }
+
+// index.html dagi app.js?v= bilan bir xil bo‘lishi shart — server /api/version shundan oladi
+const BUILD = "v=67";
+let reloading = false;
+async function checkBuild() {
+  if (reloading || document.hidden) return;
+  try {
+    const res = await fetch("/api/version", { cache: "no-store" });
+    const { version } = await res.json();
+    if (version && version !== BUILD) {
+      reloading = true;
+      location.reload();
+    }
+  } catch {
+    // tarmoq uzilgan bo‘lsa keyingi tekshiruvda qayta urinadi
+  }
+}
+document.addEventListener("visibilitychange", checkBuild);
+window.addEventListener("popstate", checkBuild);
+setInterval(checkBuild, 5 * 60 * 1000);
 
 bindNavigation();
 bindWorkspace();

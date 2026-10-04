@@ -126,6 +126,37 @@ class ClientOut(ClientIn):
         from_attributes = True
 
 
+class ClientUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    sales_rep: str | None = None
+    agent_code: str | None = None
+    notes: str | None = None
+
+
+class ClientBaseOut(BaseModel):
+    id: int
+    org_id: int | None = None
+    org_name: str = ""
+    code: str = ""
+    name: str
+    phone: str = ""
+    address: str = ""
+    lat: float = 0
+    lng: float = 0
+    sales_rep: str = ""
+    agent_code: str = ""
+    source: str = "manual"
+    notes: str = ""
+    orders_count: int = 0
+    last_order_date: str = ""
+    created_at: str | None = None
+
+
 class AgentIn(BaseModel):
     name: str
     code: str

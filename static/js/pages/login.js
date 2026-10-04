@@ -1,6 +1,6 @@
 import { api, setMe, setToken } from "../api.js";
-import { $ } from "../ui.js?v=66";
-import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=66";
+import { $ } from "../ui.js?v=67";
+import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=67";
 
 const ORG_KEY = "nx_org_code";
 

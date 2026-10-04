@@ -1,5 +1,5 @@
 import { api, apiUpload } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=66";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=67";
 
 let orders = [];
 let filter = "incoming";
@@ -1251,6 +1251,7 @@ export function bindWorkspace() {
       if (already.length) parts.push(`Fayldagi zayavkalardan ${already.join(", ")} turibdi, ular o‘zgartirilmadi.`);
       if (data.agents_created) parts.push(`${data.agents_created} agent ochildi.`);
       if (data.drivers_created) parts.push(`${data.drivers_created} haydovchi ochildi.`);
+      if (data.clients_created) parts.push(`${data.clients_created} ta yangi klient bazaga qo‘shildi.`);
       const errs = Array.isArray(data.errors) ? data.errors : [];
       if (errs.length) parts.push(`Diqqat: ${errs.slice(0, 4).join("; ")}`);
       msg.textContent = parts.join(" ");

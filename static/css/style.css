@@ -1210,24 +1210,29 @@ th { color: var(--muted); font-weight: 500; }
 .usr-org { display: block; font-weight: 550; }
 tr.usr-off td { opacity: 0.62; }
 tr.usr-off td.col-actions { opacity: 1; }
-#usr-table { container-type: inline-size; }
+.adm-cards { container-type: inline-size; }
 @container (max-width: 640px) {
-  #usr-table .table-wrap { overflow: visible; }
-  #usr-table table, #usr-table tbody { display: block; width: 100%; }
-  #usr-table thead { display: none; }
-  #usr-table tr {
+  .adm-cards .table-wrap { overflow: visible; }
+  .adm-cards table, .adm-cards tbody { display: block; width: 100%; }
+  .adm-cards thead { display: none; }
+  .adm-cards tr {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
     padding: 12px 2px; border-bottom: 1px solid var(--stroke-soft);
   }
-  #usr-table td { display: block; padding: 0; border: 0; }
-  #usr-table td.adm-num { display: none; }
-  #usr-table td:nth-child(2) { flex: 1 1 100%; }
-  #usr-table td:nth-child(3) { flex: 1 1 auto; }
-  #usr-table td:nth-child(3) .drv-login { display: inline; margin-left: 6px; }
-  #usr-table td:nth-child(3) .usr-org { display: inline; }
-  #usr-table td.col-actions { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
-  #usr-table td.col-actions .btn { margin: 0; }
+  .adm-cards td { display: block; padding: 0; border: 0; }
+  .adm-cards td.adm-num { display: none; }
+  .adm-cards td.cell-main, .adm-cards td.cell-wide { flex: 1 1 100%; }
+  .adm-cards td.cell-inline { flex: 1 1 auto; }
+  .adm-cards td.cell-inline .drv-login, .adm-cards td.cell-inline .usr-org { display: inline; margin-left: 6px; }
+  .adm-cards td.cell-inline .usr-org { margin-left: 0; }
+  .adm-cards td.col-actions { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+  .adm-cards td.col-actions .btn { margin: 0; }
 }
+.cl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cl-addr { display: block; max-width: 340px; }
+.cl-sub { display: block; font-size: 11px; color: var(--muted); }
+.cl-more { margin: 10px 0 0; font-size: 12px; }
+.badge.src-import { color: var(--accent-2); }
 .usr-modal-card { width: min(460px, 96vw); max-height: 94vh; overflow: auto; }
 .usr-edit-form { display: grid; gap: 10px; }
 .usr-edit-form .map-row { margin: 0; }
