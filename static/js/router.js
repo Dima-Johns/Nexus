@@ -1,6 +1,6 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
-import { $, $$ } from "./ui.js?v=69";
-import { refreshWorkspace, syncWorkspace } from "./workspace.js?v=69";
+import { $, $$ } from "./ui.js?v=70";
+import { refreshWorkspace, syncWorkspace } from "./workspace.js?v=70";
 
 const ROUTES = {
   "/": "dashboard",
@@ -46,8 +46,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=69`),
-    import(`/static/js/pages/${name}.js?v=69`),
+    fetch(`/static/pages/${name}.html?v=70`),
+    import(`/static/js/pages/${name}.js?v=70`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;
@@ -137,7 +137,7 @@ export async function render() {
     go("/dashboard", true);
     return;
   }
-  if (name === "admin" && !["admin.panel", "perms.manage", "orgs.manage", "users.manage", "clients.view"].some((k) => can(k))) {
+  if (name === "admin" && !["admin.panel", "perms.manage", "orgs.manage", "users.manage", "clients.view", "trash.view"].some((k) => can(k))) {
     go("/settings", true);
     return;
   }

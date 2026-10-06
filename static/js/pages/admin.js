@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=69";
-import { mountOfficePicker } from "../office-picker.js?v=69";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=69";
+import { openDriverAccess } from "../driver-access.js?v=70";
+import { mountOfficePicker } from "../office-picker.js?v=70";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=70";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -520,6 +520,7 @@ function bindUsers(root) {
         await api(`/users/${u.id}`, { method: "DELETE" });
         usrErr(root, `«${u.username}» o‘chirildi.`, true);
         await afterUserChange(root);
+        loadTrash(root).catch(() => {});
       }
     } catch (ex) {
       usrErr(root, ex.message);
@@ -725,6 +726,7 @@ function bindClients(root) {
       clientsCache = clientsCache.filter((x) => x.id !== c.id);
       setCount(root, "cnt-clients", clientsCache.length);
       fillClientOrgFilter(root);
+      loadTrash(root).catch(() => {});
       renderClients(root);
       clErr(root, `«${c.name}» o‘chirildi.`, true);
     } catch (ex) {
@@ -760,6 +762,131 @@ function bindClients(root) {
       usrErr(root, ex.message, false, "#cl-edit-err");
     }
   };
+}
+
+const TR_FIELDS = {
+  name: "Nomi",
+  full_name: "To‘liq ism",
+  username: "Login",
+  role: "Rol",
+  code: "Kod",
+  phone: "Telefon",
+  address: "Manzil",
+  vehicle_plate: "Davlat raqami",
+  vehicle_type: "Transport turi",
+  agent_name: "Agent",
+  region: "Hudud",
+  commission_pct: "Komissiya, %",
+  agent_code: "Agent kodi",
+  sales_rep: "Agent (savdo vakili)",
+  company: "Kompaniya",
+  lat: "Latitude",
+  lng: "Longitude",
+  is_default: "Asosiy sklad",
+  is_active: "Faol",
+  source: "Manba",
+  notes: "Izoh",
+  created_at: "Yaratilgan",
+};
+let trashTotal = 0;
+
+function trErr(root, text) {
+  usrErr(root, text, false, "#tr-err");
+}
+
+function trashValue(key, v) {
+  if (v === true) return "ha";
+  if (v === false) return "yo‘q";
+  if (key === "created_at") return fmtDate(v);
+  if (key === "role") return ROLE[v] || v;
+  if (key === "source") return v === "import" ? "Import" : "Qo‘lda";
+  return String(v);
+}
+
+function trashDataHtml(data) {
+  const rows = Object.entries(TR_FIELDS)
+    .filter(([k]) => data[k] !== undefined && data[k] !== null && data[k] !== "" && !((k === "lat" || k === "lng") && !data[k]))
+    .map(([k, label]) => `<dt>${label}</dt><dd>${escapeHtml(trashValue(k, data[k]))}</dd>`)
+    .join("");
+  return rows ? `<dl class="tr-data">${rows}</dl>` : `<p class="muted">Qo‘shimcha ma’lumot yo‘q</p>`;
+}
+
+function fillTrashFilters(root, res) {
+  const ent = $("#tr-entity", root);
+  const cur = ent.value;
+  const counts = res.counts || {};
+  const all = Object.values(counts).reduce((a, b) => a + b, 0);
+  ent.innerHTML =
+    `<option value="">Turi: hammasi (${all})</option>` +
+    res.entities.map((e) => `<option value="${e.key}">${escapeHtml(e.label)} (${counts[e.key] || 0})</option>`).join("");
+  ent.value = cur;
+  const org = $("#tr-org", root);
+  const show = crossOrg() && orgsCache.length > 1;
+  org.classList.toggle("hidden", !show);
+  if (show) {
+    const oc = org.value;
+    org.innerHTML =
+      `<option value="">Barcha tashkilotlar</option>` +
+      orgsCache.map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("");
+    org.value = orgsCache.some((o) => String(o.id) === oc) ? oc : "";
+  }
+}
+
+function renderTrash(root, res) {
+  fillTrashFilters(root, res);
+  const items = res.items || [];
+  $("#tr-summary", root).innerHTML =
+    `<span class="adm-pill">Topildi <b>${res.total}</b></span>` +
+    (items.length < res.total ? `<span class="adm-pill">Ko‘rsatildi <b>${items.length}</b></span>` : "");
+  const box = $("#tr-list", root);
+  if (!items.length) {
+    box.innerHTML = `<p class="muted adm-empty">O‘chirilgan ma’lumot topilmadi.</p>`;
+    return;
+  }
+  const showOrg = crossOrg();
+  box.innerHTML = items
+    .map((it) => {
+      const when = it.deleted_at ? new Date(it.deleted_at).toLocaleString("uz-UZ") : "—";
+      return `<article class="tr-item">
+        <div class="tr-head">
+          <span class="badge tr-ent tr-${escapeHtml(it.entity)}">${escapeHtml(it.entity_label)}</span>
+          <b class="tr-title">${escapeHtml(it.title || "—")}</b>
+          ${showOrg && it.org_name ? `<span class="usr-org">${escapeHtml(it.org_name)}</span>` : ""}
+        </div>
+        <div class="tr-meta">O‘chirdi: <b>${escapeHtml(it.deleted_by || "—")}</b> · ${escapeHtml(when)}</div>
+        <details class="tr-more"><summary>O‘chirilgan paytdagi ma’lumot</summary>${trashDataHtml(it.data || {})}</details>
+      </article>`;
+    })
+    .join("");
+}
+
+async function loadTrash(root) {
+  if (!$("#tr-list", root) || !can("trash.view")) return;
+  const params = new URLSearchParams();
+  const q = $("#tr-search", root).value.trim();
+  const entity = $("#tr-entity", root).value;
+  const org = $("#tr-org", root).value;
+  const days = $("#tr-days", root).value;
+  if (q) params.set("q", q);
+  if (entity) params.set("entity", entity);
+  if (org) params.set("org_id", org);
+  if (days !== "") params.set("days", days);
+  const res = await api(`/trash?${params}`);
+  if (!q && !entity && !org && days === "") trashTotal = res.total;
+  setCount(root, "cnt-trash", trashTotal);
+  trErr(root, "");
+  renderTrash(root, res);
+}
+
+function bindTrash(root) {
+  const reload = () => loadTrash(root).catch((ex) => trErr(root, ex.message));
+  let typing = null;
+  $("#tr-search", root).addEventListener("input", () => {
+    clearTimeout(typing);
+    typing = setTimeout(reload, 300);
+  });
+  ["#tr-entity", "#tr-org", "#tr-days"].forEach((id) => $(id, root).addEventListener("change", reload));
+  $("#tr-refresh", root).onclick = reload;
 }
 
 function orgErr(root, text, ok = false) {
@@ -1093,6 +1220,7 @@ export async function init(root) {
   }
   if (can("users.manage")) bindUsers(root);
   if (can("clients.view")) bindClients(root);
+  if (can("trash.view")) bindTrash(root);
   fillOrgSelects(root);
   await Promise.all([
     can("orgs.manage") ? loadOrgs(root).catch((ex) => orgErr(root, ex.message)) : null,
@@ -1104,6 +1232,7 @@ export async function init(root) {
       : null,
     can("drivers.view") || can("drivers.manage") ? loadDrivers(root).catch(() => {}) : null,
   ]);
+  await loadTrash(root).catch((ex) => trErr(root, ex.message));
   bindPhoneInputs(root);
 
   $("#drv-search", root)?.addEventListener("input", () => renderDrivers(root));
@@ -1340,6 +1469,7 @@ export async function init(root) {
       if (!(await askConfirm("Haydovchini o‘chirasizmi?", { title: "O‘chirish", ok: "O‘chirish", danger: true }))) return;
       await api(`/drivers/${drvDel}`, { method: "DELETE" });
       await loadDrivers(root);
+      loadTrash(root).catch(() => {});
       return;
     }
     const excelId = e.target.dataset?.excel;
@@ -1395,6 +1525,7 @@ export async function show() {
     can("clients.view") ? loadClients(root).catch(() => {}) : null,
     can("drivers.view") || can("drivers.manage") ? loadDrivers(root).catch(() => {}) : null,
   ]);
+  await loadTrash(root).catch(() => {});
 }
 
 export function destroy() {

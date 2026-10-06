@@ -57,8 +57,8 @@
       <h1>Xush kelibsiz</h1>
       <p class="sub">Login/parol yoki QR kod bilan kiring. Marshrut internet bo‘lganida yuklanadi, keyin offline ham ochiladi.</p>
       <form id="login-form">
-        <input id="login-user" name="username" autocomplete="username" placeholder="Login" required />
-        <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Parol" required />
+        <input id="login-user" name="username" autocomplete="username" placeholder="Login" maxlength="80" required />
+        <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Parol" maxlength="128" required />
         <p class="err" id="login-err"></p>
         <button class="btn primary full" type="submit">Kirish</button>
         <button class="btn full" id="btn-qr" type="button">QR kodni skanerlash</button>

@@ -19,6 +19,7 @@ PERMISSIONS = [
     {"key": "clients.view", "group": "Klientlar", "label": "Klientlar bazasini ko‘rish va Excel yuklash"},
     {"key": "clients.manage", "group": "Klientlar", "label": "Klientni tahrirlash / o‘chirish"},
     {"key": "admin.panel", "group": "Admin", "label": "Admin panel (shablonlar)"},
+    {"key": "trash.view", "group": "Admin", "label": "O‘chirilgan ma’lumotlarni ko‘rish"},
     {"key": "users.manage", "group": "Admin", "label": "Akkauntlar"},
     {"key": "perms.manage", "group": "Admin", "label": "Dostuplar"},
     {"key": "orgs.manage", "group": "Tashkilotlar", "label": "Tashkilot ochish va akkaunt berish"},

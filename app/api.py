@@ -1,7 +1,9 @@
+import io
 import json
 import os
 import re
 import uuid
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -70,6 +72,7 @@ from .models import (
     Agent,
     Client,
     DayPlan,
+    DeletedRecord,
     Driver,
     ImportTemplate,
     Order,
@@ -155,6 +158,7 @@ from .tracking import (
     search_geocode,
     tracking_payload,
 )
+from .trash import ENTITY_LABELS, archive_deleted
 
 router = APIRouter(prefix="/api")
 
@@ -712,13 +716,46 @@ PROOF_REASONS = {
     "returned": {""},
 }
 MAX_PROOF_BYTES = 12 * 1024 * 1024
+MAX_TABLE_BYTES = 15 * 1024 * 1024
+# xlsx — zip arxiv: kichik fayl ochilganda xotirani to‘ldirib yubormasligi uchun
+MAX_TABLE_UNPACKED_BYTES = 250 * 1024 * 1024
+MAX_IMPORT_ROWS = 20000
+
+
+async def read_upload(file: UploadFile, max_bytes: int, empty_msg: str = "Fayl bo‘sh") -> bytes:
+    data = await file.read(max_bytes + 1)
+    if not data:
+        raise HTTPException(400, empty_msg)
+    if len(data) > max_bytes:
+        raise HTTPException(413, f"Fayl juda katta (ko‘pi bilan {max_bytes // (1024 * 1024)} MB)")
+    return data
+
+
+async def read_table_upload(file: UploadFile) -> bytes:
+    data = await read_upload(file, MAX_TABLE_BYTES)
+    if data[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                unpacked = sum(i.file_size for i in zf.infolist())
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(400, "Fayl buzilgan yoki Excel emas") from exc
+        if unpacked > MAX_TABLE_UNPACKED_BYTES:
+            raise HTTPException(413, "Excel fayl ichidagi ma’lumot juda katta. Faylni bo‘lib yuklang")
+    return data
+
+
+def check_import_rows(records: list) -> None:
+    if len(records) > MAX_IMPORT_ROWS:
+        raise HTTPException(
+            400, f"Faylda qator juda ko‘p ({len(records)}). Bir martada ko‘pi bilan {MAX_IMPORT_ROWS} qator yuklang"
+        )
 
 
 @router.post("/driver/orders/{item_id}/proof")
 async def driver_order_proof(
     item_id: int,
-    result: str = Form(...),
-    reason: str = Form(""),
+    result: str = Form(..., max_length=40),
+    reason: str = Form("", max_length=40),
     photo: UploadFile = File(...),
     db: Session = Depends(get_db),
     driver: Driver = Depends(get_current_driver),
@@ -733,11 +770,7 @@ async def driver_order_proof(
     row = db.query(Order).filter(Order.id == item_id, Order.driver_id == driver.id).first()
     if not row:
         raise HTTPException(404, "Zayavka topilmadi")
-    data = await photo.read()
-    if not data:
-        raise HTTPException(400, "Rasm tushirilmagan")
-    if len(data) > MAX_PROOF_BYTES:
-        raise HTTPException(400, "Rasm juda katta")
+    data = await read_upload(photo, MAX_PROOF_BYTES, "Rasm tushirilmagan")
     if not (photo.content_type or "").startswith("image/"):
         raise HTTPException(400, "Faqat rasm yuklash mumkin")
     now = local_now()
@@ -910,6 +943,7 @@ def delete_user(item_id: int, db: Session = Depends(get_db), admin: User = Depen
     if row.role in ("admin", "superadmin") and row.is_active and _count_admins(db, row.org_id) <= 1:
         raise HTTPException(400, "Tashkilotdagi oxirgi adminni o‘chirib bo‘lmaydi")
     db.query(SessionToken).filter(SessionToken.user_id == item_id).delete()
+    archive_deleted(db, admin, "user", row, f"{row.full_name or row.username} · {row.username}")
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -1285,10 +1319,76 @@ def update_client_base(
 @router.delete("/clients/base/{item_id}")
 def delete_client_base(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("clients.manage"))):
     row = _client_for_edit(db, user, item_id)
+    archive_deleted(db, user, "client", row, f"{row.name}{f' · {row.code}' if row.code else ''}")
     db.query(Order).filter(Order.client_id == row.id).update({Order.client_id: None}, synchronize_session=False)
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/trash")
+def list_trash(
+    org_id: int | None = None,
+    entity: str = Query("", max_length=40),
+    q: str = Query("", max_length=200),
+    days: int | None = Query(None, ge=0, le=3650),
+    limit: int = Query(300, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("trash.view")),
+):
+    """Akkauntlar o‘chirgan yozuvlar (zayavkalardan tashqari): eng yangisi birinchi."""
+    base = db.query(DeletedRecord)
+    if can_cross_org(user):
+        if org_id:
+            base = base.filter(DeletedRecord.org_id == org_id)
+    else:
+        own = org_id_of(user)
+        if org_id and org_id != own:
+            raise HTTPException(403, "Boshqa tashkilot ma’lumotlarini ko‘rib bo‘lmaydi")
+        base = base.filter(DeletedRecord.org_id == own)
+    if days is not None:
+        since = local_now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days)
+        base = base.filter(DeletedRecord.deleted_at >= since)
+    text = q.replace("\x00", "").strip()
+    if text:
+        escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
+        base = base.filter(
+            DeletedRecord.title.ilike(like, escape="\\")
+            | DeletedRecord.deleted_by_name.ilike(like, escape="\\")
+            | DeletedRecord.data_json.ilike(like, escape="\\")
+        )
+    counts = dict(base.with_entities(DeletedRecord.entity, func.count(DeletedRecord.id)).group_by(DeletedRecord.entity).all())
+    query = base.filter(DeletedRecord.entity == entity) if entity else base
+    total = query.count()
+    rows = query.order_by(DeletedRecord.deleted_at.desc(), DeletedRecord.id.desc()).limit(limit).all()
+    org_names = dict(db.query(Organization.id, Organization.name).all())
+    items = []
+    for r in rows:
+        try:
+            data = json.loads(r.data_json or "{}")
+        except ValueError:
+            data = {}
+        items.append(
+            {
+                "id": r.id,
+                "entity": r.entity,
+                "entity_label": ENTITY_LABELS.get(r.entity, r.entity),
+                "entity_id": r.entity_id,
+                "title": r.title,
+                "org_id": r.org_id,
+                "org_name": org_names.get(r.org_id, ""),
+                "deleted_by": r.deleted_by_name,
+                "deleted_at": r.deleted_at.isoformat() if r.deleted_at else None,
+                "data": data,
+            }
+        )
+    return {
+        "total": total,
+        "items": items,
+        "counts": counts,
+        "entities": [{"key": k, "label": v} for k, v in ENTITY_LABELS.items()],
+    }
 
 
 @router.get("/clients", response_model=list[ClientOut])
@@ -1323,6 +1423,8 @@ def update_client(item_id: int, payload: ClientIn, db: Session = Depends(get_db)
 @router.delete("/clients/{item_id}")
 def delete_client(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("orders.delete"))):
     row = get_org_row(db, Client, item_id, user, "Mijoz topilmadi")
+    archive_deleted(db, user, "client", row, f"{row.name}{f' · {row.code}' if row.code else ''}")
+    db.query(Order).filter(Order.client_id == row.id).update({Order.client_id: None}, synchronize_session=False)
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -1398,6 +1500,7 @@ def set_agent_code(item_id: int, payload: AgentCodeIn, db: Session = Depends(get
 @router.delete("/agents/{item_id}")
 def delete_agent(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("agents.manage"))):
     row = get_org_row(db, Agent, item_id, user, "Agent topilmadi")
+    archive_deleted(db, user, "agent", row, f"{row.code or '—'} · {row.name}")
     db.query(Driver).filter(Driver.org_id == org_id_of(user), Driver.agent_id == item_id).update({Driver.agent_id: None})
     db.delete(row)
     db.commit()
@@ -1470,6 +1573,7 @@ def delete_warehouse(item_id: int, db: Session = Depends(get_db), user: User = D
     row = get_org_row(db, Warehouse, item_id, user, "Sklad topilmadi")
     oid = org_id_of(user)
     was_default = bool(row.is_default)
+    archive_deleted(db, user, "warehouse", row, row.name)
     db.query(Order).filter(Order.org_id == oid, Order.warehouse_id == row.id).update({Order.warehouse_id: None}, synchronize_session=False)
     db.delete(row)
     db.flush()
@@ -1535,13 +1639,12 @@ async def import_drivers_excel(
     db: Session = Depends(get_db),
     user: User = Depends(require_perm("drivers.manage")),
 ):
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(400, "Fayl bo‘sh")
+    raw = await read_table_upload(file)
     try:
         records = read_driver_records(raw, file.filename or "drivers.xlsx", 1)
     except Exception as exc:
         raise HTTPException(400, f"Fayl o‘qilmadi: {exc}") from exc
+    check_import_rows(records)
     if not records:
         raise HTTPException(
             400,
@@ -1580,10 +1683,17 @@ def set_driver_agent(item_id: int, payload: DriverAgentIn, db: Session = Depends
     return _driver_out(row)
 
 
+def _driver_title(d: Driver) -> str:
+    return " · ".join(x for x in (d.name, d.vehicle_plate) if x)
+
+
 @router.delete("/drivers/all")
 def delete_all_drivers(db: Session = Depends(get_db), user: User = Depends(require_perm("drivers.manage"))):
     oid = org_id_of(user)
-    ids = [d.id for d in db.query(Driver.id).filter(Driver.org_id == oid).all()]
+    rows = db.query(Driver).options(joinedload(Driver.agent)).filter(Driver.org_id == oid).all()
+    ids = [d.id for d in rows]
+    for d in rows:
+        archive_deleted(db, user, "driver", d, _driver_title(d), {"agent_name": d.agent.name if d.agent else ""})
     db.query(Order).filter(Order.org_id == oid).update({Order.driver_id: None})
     if ids:
         db.query(SessionToken).filter(SessionToken.driver_id.in_(ids)).delete(synchronize_session=False)
@@ -1595,6 +1705,7 @@ def delete_all_drivers(db: Session = Depends(get_db), user: User = Depends(requi
 @router.delete("/drivers/{item_id}")
 def delete_driver(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("drivers.manage"))):
     row = get_org_row(db, Driver, item_id, user, "Haydovchi topilmadi")
+    archive_deleted(db, user, "driver", row, _driver_title(row), {"agent_name": row.agent.name if row.agent else ""})
     db.query(Order).filter(Order.org_id == org_id_of(user), Order.driver_id == item_id).update({Order.driver_id: None})
     db.query(SessionToken).filter(SessionToken.driver_id == item_id).delete(synchronize_session=False)
     db.delete(row)
@@ -1818,9 +1929,7 @@ async def import_orders_file(
     db: Session = Depends(get_db),
     user: User = Depends(require_perm("orders.import")),
 ):
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(400, "Fayl bo‘sh")
+    raw = await read_table_upload(file)
     mappings = [RELOG_MAPPING]
     for tpl in (
         q_org(db, ImportTemplate, user)
@@ -1839,6 +1948,7 @@ async def import_orders_file(
             400,
             "Fayl ustunlari mos kelmadi. RELOG Excel yoki tasdiqlangan shablon formatida yuklang.",
         )
+    check_import_rows(records)
     result = _import_orders(db, records, mapping, org_id_of(user))
     result["template"] = "avto"
     result["sheet"] = meta.get("sheet")
@@ -2084,7 +2194,7 @@ def _active_plan_stats(db: Session, oid: int | None) -> tuple[int, float]:
 
 @router.get("/day-plan", response_model=DayPlanOut)
 def get_day_plan(
-    plan_date: str = Query(""),
+    plan_date: str = Query("", max_length=40),
     db: Session = Depends(get_db),
     user: User = Depends(require_perm("orders.routes")),
 ):
@@ -2228,12 +2338,12 @@ def bulk_status(payload: BulkStatusIn, db: Session = Depends(get_db), user: User
 
 
 @router.get("/templates/fields")
-def template_fields(entity: str = Query("orders"), _: User = Depends(get_current_user)):
+def template_fields(entity: str = Query("orders", max_length=40), _: User = Depends(get_current_user)):
     return {"fields": fields_for(entity), "entity": entity}
 
 
 @router.get("/templates/excel")
-def download_blank_excel(entity: str = Query("drivers"), _: User = Depends(get_current_user)):
+def download_blank_excel(entity: str = Query("drivers", max_length=40), _: User = Depends(get_current_user)):
     mapping = DRIVER_MAPPING if entity == "drivers" else {}
     headers = headers_from_mapping(mapping, entity)
     sheet = "Haydovchilar" if entity == "drivers" else "Buyurtmalar"
@@ -2257,7 +2367,7 @@ def list_templates(db: Session = Depends(get_db), user: User = Depends(get_curre
 
 @router.post("/templates/inspect")
 async def inspect_import_file(file: UploadFile = File(...), _: User = Depends(get_current_user)):
-    raw = await file.read()
+    raw = await read_table_upload(file)
     try:
         return inspect_table(raw, file.filename or "")
     except Exception as exc:
@@ -2360,7 +2470,7 @@ async def import_with_template(
     if row.status != "approved":
         raise HTTPException(400, "Faqat tasdiqlangan shablon bilan import qilish mumkin")
     sheet, header_row, mapping = parse_template_config(row.mapping_json)
-    raw = await file.read()
+    raw = await read_table_upload(file)
     try:
         use_sheet = None if row.entity == "drivers" else sheet
         if row.entity == "drivers":
@@ -2369,6 +2479,7 @@ async def import_with_template(
             records = read_records(raw, file.filename or "", use_sheet, header_row)
     except Exception as exc:
         raise HTTPException(400, f"Fayl o‘qilmadi: {exc}") from exc
+    check_import_rows(records)
     if row.entity == "drivers":
         result = _import_drivers(db, records, mapping or DRIVER_MAPPING, org_id_of(user))
         result["template"] = row.name

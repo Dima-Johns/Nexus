@@ -299,7 +299,7 @@ def read_driver_records(raw: bytes, filename: str, header_row: int = 1) -> list[
         rows = [list(row) for row in ws.iter_rows(values_only=True)]
         wb.close()
         return _rows_to_driver_records(rows, header_row)
-    text = raw.decode("utf-8-sig")
+    text = csv_text(raw)
     rows = list(csv.reader(io.StringIO(text)))
     return _rows_to_driver_records(rows, header_row)
 
@@ -312,7 +312,7 @@ def inspect_table(raw: bytes, filename: str) -> dict:
 
 
 def _inspect_csv(raw: bytes) -> dict:
-    text = raw.decode("utf-8-sig")
+    text = csv_text(raw)
     reader = csv.reader(io.StringIO(text))
     rows = [list(r) for r in reader]
     headers = [normalize_header(h) for h in (rows[0] if rows else [])]
@@ -364,7 +364,7 @@ def read_records(raw: bytes, filename: str, sheet, header_row: int) -> list[dict
 
 
 def _read_csv(raw: bytes, header_row: int) -> list[dict[str, str]]:
-    text = raw.decode("utf-8-sig")
+    text = csv_text(raw)
     rows = list(csv.reader(io.StringIO(text)))
     idx = max(header_row - 1, 0)
     if idx >= len(rows):
@@ -503,11 +503,7 @@ def _sheet_rows(raw: bytes, filename: str) -> list[tuple[str, list[list]]]:
             return out
         finally:
             wb.close()
-    try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw.decode("cp1251", errors="replace")
-    return [("CSV", list(csv.reader(io.StringIO(text))))]
+    return [("CSV", list(csv.reader(io.StringIO(csv_text(raw)))))]
 
 
 def auto_read_order_records(
@@ -544,3 +540,12 @@ def auto_read_order_records(
         raise ValueError("Jadvalda ustunlar topilmadi")
     records = _rows_to_order_records(best["rows"], best["header_idx"])
     return records, best["mapping"], {"sheet": best["sheet"], "header_row": best["header_idx"] + 1, "score": best["score"]}
+
+
+def csv_text(raw: bytes) -> str:
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1251", errors="replace")
+    # NUL belgisini PostgreSQL qabul qilmaydi
+    return text.replace("\x00", "")

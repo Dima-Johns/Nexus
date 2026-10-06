@@ -217,3 +217,19 @@ class GpsPing(Base):
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     driver: Mapped[Driver] = relationship(back_populates="gps_pings")
+
+
+class DeletedRecord(Base):
+    """Akkauntlar o‘chirgan yozuvlarning nusxasi (zayavkalar bundan mustasno)."""
+
+    __tablename__ = "deleted_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    entity: Mapped[str] = mapped_column(String(40), index=True)
+    entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    data_json: Mapped[str] = mapped_column(Text, default="{}")
+    deleted_by_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deleted_by_name: Mapped[str] = mapped_column(String(160), default="")
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

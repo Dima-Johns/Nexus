@@ -30,6 +30,11 @@
       Import shablonlari
       <span class="admin-tab-count" id="cnt-templates"></span>
     </button>
+    <button type="button" class="admin-tab" data-admin-tab="trash" data-perm="trash.view">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6 7l1 13h10l1-13" /><path d="M10 11v6M14 11v6" /></svg>
+      O‘chirilganlar
+      <span class="admin-tab-count" id="cnt-trash"></span>
+    </button>
   </div>
 
   <section class="glass panel admin-sec" data-admin-sec="users" data-perm="users.manage">
@@ -94,6 +99,32 @@
       <div class="adm-summary" id="cl-summary"></div>
     </div>
     <div id="cl-table" class="adm-cards"></div>
+  </section>
+
+  <section class="glass panel admin-sec" data-admin-sec="trash" data-perm="trash.view">
+    <div class="panel-head">
+      <div>
+        <h3>O‘chirilganlar</h3>
+        <p class="muted adm-sub">Akkauntlar o‘chirgan foydalanuvchi, klient, agent, haydovchi va skladlar shu yerda saqlanadi: kim, qachon o‘chirgani va o‘chirilgan paytdagi ma’lumoti. Zayavkalar bu ro‘yxatga kirmaydi.</p>
+      </div>
+      <div class="row-actions">
+        <button class="btn tiny" type="button" id="tr-refresh">Yangilash</button>
+      </div>
+    </div>
+    <p class="error hidden" id="tr-err"></p>
+    <div class="adm-toolbar">
+      <input type="search" id="tr-search" class="adm-search" placeholder="Qidirish: nom, kod, telefon, kim o‘chirgan" maxlength="200" />
+      <select id="tr-entity" class="usr-filter"></select>
+      <select id="tr-org" class="usr-filter hidden"></select>
+      <select id="tr-days" class="usr-filter">
+        <option value="">Davr: hammasi</option>
+        <option value="0">Bugun</option>
+        <option value="7">Oxirgi 7 kun</option>
+        <option value="30">Oxirgi 30 kun</option>
+      </select>
+      <div class="adm-summary" id="tr-summary"></div>
+    </div>
+    <div id="tr-list" class="tr-list"></div>
   </section>
 
   <section class="glass panel admin-sec" data-admin-sec="perms" data-perm="perms.manage">
@@ -260,7 +291,7 @@
     <p class="error hidden" id="cl-edit-err"></p>
     <form id="cl-edit-form" class="usr-edit-form" autocomplete="off">
       <input type="hidden" name="id" />
-      <label class="map-row"><span>Mijoz nomi *</span><input name="name" required /></label>
+      <label class="map-row"><span>Mijoz nomi *</span><input name="name" maxlength="255" required /></label>
       <div class="cl-pair">
         <label class="map-row"><span>Mijoz kodi</span><input name="code" maxlength="80" /></label>
         <label class="map-row"><span>Telefon</span><input name="phone" maxlength="17" placeholder="+998 90 123 45 67" /></label>

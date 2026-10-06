@@ -1,4 +1,4 @@
-const CACHE = "nexus-driver-v16";
+const CACHE = "nexus-driver-v17";
 const SHELL = [
   "/driver/",
   "/static/css/driver.css?v=16",
