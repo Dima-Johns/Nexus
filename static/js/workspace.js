@@ -1,5 +1,5 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=70";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=71";
 
 let orders = [];
 let filter = "incoming";
@@ -428,6 +428,7 @@ function proofHtml(o) {
         ? `<a class="proof-thumb" href="${escapeHtml(o.proof_photo)}" target="_blank" rel="noopener" title="Rasmni ochish"><img src="${escapeHtml(o.proof_photo)}" alt="" loading="lazy" /></a>`
         : ""
     }
+    ${o.proof_comment ? `<span class="proof-comment" title="Haydovchi izohi">«${escapeHtml(o.proof_comment)}»</span>` : ""}
   </div>`;
 }
 

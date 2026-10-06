@@ -1,6 +1,6 @@
 import { api, me, setMe } from "../api.js";
-import { $, formData } from "../ui.js?v=70";
-import { loadRemembered, saveRemembered } from "../theme.js?v=70";
+import { $, formData } from "../ui.js?v=71";
+import { loadRemembered, saveRemembered } from "../theme.js?v=71";
 
 function loadIdle(root) {
   const sel = $("#idle-mins", root);

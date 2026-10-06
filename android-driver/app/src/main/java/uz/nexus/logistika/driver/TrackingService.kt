@@ -83,7 +83,7 @@ class TrackingService : Service() {
         val n: Notification = NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("Nexus Haydovchi")
             .setContentText("Joylashuv dispetcherga yuborilmoqda")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_stat_nexus)
             .setOngoing(true)
             .setContentIntent(open)
             .build()

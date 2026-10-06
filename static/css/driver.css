@@ -127,6 +127,34 @@ input {
 }
 .proof-tag:empty { display: none; }
 #proof-sheet.returned .proof-tag { background: rgba(217, 119, 6, 0.92); }
+.proof-card { max-height: 92vh; overflow-y: auto; }
+#proof-sheet.returned .proof-photo img { max-height: 30vh; }
+.proof-comment { margin-bottom: 10px; }
+.proof-comment .proof-ask { display: block; margin-bottom: 8px; }
+.proof-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.proof-chip {
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: var(--input);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.proof-chip.on { border-color: var(--warn); color: var(--warn); background: rgba(251, 191, 36, 0.12); }
+#proof-comment {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: var(--input);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+}
+#proof-comment:focus { outline: none; border-color: var(--warn); }
 .proof-actions { display: flex; gap: 8px; }
 .proof-actions .btn { flex: 1; }
 .proof-card .err { margin-top: 8px; }

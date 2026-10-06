@@ -179,6 +179,7 @@ class Order(Base):
     eta_minutes: Mapped[int] = mapped_column(Integer, default=30)
     proof_reason: Mapped[str] = mapped_column(String(40), default="")
     proof_photo: Mapped[str] = mapped_column(String(300), default="")
+    proof_comment: Mapped[str] = mapped_column(String(500), default="")
     proof_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     client: Mapped[Client | None] = relationship(back_populates="orders")

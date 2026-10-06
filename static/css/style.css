@@ -976,6 +976,7 @@ body.resizing { cursor: col-resize; user-select: none; }
   flex: 0 0 auto;
 }
 .proof-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.proof-comment { flex-basis: 100%; color: var(--ink); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
 
 .panel { border-radius: 22px; padding: 18px; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }

@@ -441,6 +441,7 @@ class OrderOut(Schema):
     warehouse_lng: float | None = None
     proof_reason: str = ""
     proof_photo: str = ""
+    proof_comment: str = ""
     proof_at: str | None = None
 
     class Config:

@@ -127,6 +127,7 @@ FIELD_LABELS = {
     "permissions": "Dostuplar",
     "mapping": "Ustunlar moslamasi",
     "q": "Qidiruv",
+    "comment": "Izoh",
 }
 
 

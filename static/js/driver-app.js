@@ -892,10 +892,26 @@ const PROOF_REASONS = {
 };
 let proof = { id: null, result: "", reason: "", blob: null, url: "" };
 
+const MIN_COMMENT = 3;
+
 function proofStep(step) {
   $("proof-reasons")?.classList.toggle("hidden", step !== "reason");
   $("proof-shoot")?.classList.toggle("hidden", step !== "shoot");
   $("proof-preview")?.classList.toggle("hidden", step !== "preview");
+  $("proof-comment-box")?.classList.toggle("hidden", !(step === "preview" && proof.result === "returned"));
+  syncProofSend();
+}
+
+function proofComment() {
+  return ($("proof-comment")?.value || "").trim();
+}
+
+function syncProofSend() {
+  const btn = $("proof-send");
+  if (!btn) return;
+  btn.disabled = proof.result === "returned" && proofComment().length < MIN_COMMENT;
+  const typed = proofComment();
+  document.querySelectorAll("#proof-chips .proof-chip").forEach((c) => c.classList.toggle("on", c.textContent.trim() === typed));
 }
 
 function proofErr(text) {
@@ -911,6 +927,7 @@ function openProof(id, result) {
   const o = allOrders().find((x) => Number(x.id) === Number(id));
   if (proof.url) URL.revokeObjectURL(proof.url);
   proof = { id: Number(id), result, reason: "", blob: null, url: "" };
+  if ($("proof-comment")) $("proof-comment").value = "";
   $("proof-title").textContent = result === "delivered" ? "Yetkazildi" : "Qaytarildi";
   $("proof-sheet").classList.toggle("returned", result === "returned");
   $("proof-sub").textContent = o ? `${o.client_name || o.code || "Do‘kon"}${o.dropoff_address ? " · " + o.dropoff_address : ""}` : "";
@@ -968,6 +985,7 @@ async function onProofFile() {
     $("proof-img").src = proof.url;
     $("proof-tag").textContent = proof.result === "delivered" ? PROOF_REASONS[proof.reason] || "" : "Qaytarildi";
     proofStep("preview");
+    if (proof.result === "returned" && !proofComment()) setTimeout(() => $("proof-comment")?.focus(), 150);
   } catch (err) {
     proofErr(err.message || "Rasm o‘qilmadi");
   }
@@ -975,6 +993,12 @@ async function onProofFile() {
 
 async function sendProof() {
   if (!proof.id || !proof.blob) return;
+  const comment = proofComment();
+  if (proof.result === "returned" && comment.length < MIN_COMMENT) {
+    proofErr("Qaytarish sababini izohda yozing");
+    $("proof-comment")?.focus();
+    return;
+  }
   const btn = $("proof-send");
   if (btn) btn.disabled = true;
   proofErr("");
@@ -982,6 +1006,7 @@ async function sendProof() {
     const form = new FormData();
     form.append("result", proof.result);
     form.append("reason", proof.result === "delivered" ? proof.reason : "");
+    form.append("comment", proof.result === "returned" ? comment : "");
     form.append("photo", proof.blob, `proof_${proof.id}.jpg`);
     const id = proof.id;
     const result = proof.result;
@@ -993,7 +1018,7 @@ async function sendProof() {
   } catch (err) {
     proofErr(err.message || "Yuborilmadi");
   } finally {
-    if (btn) btn.disabled = false;
+    syncProofSend();
   }
 }
 
@@ -1672,6 +1697,18 @@ function bind() {
   $("proof-camera")?.addEventListener("click", takeProofPhoto);
   $("proof-retake")?.addEventListener("click", takeProofPhoto);
   $("proof-send")?.addEventListener("click", sendProof);
+  $("proof-comment")?.addEventListener("input", () => {
+    proofErr("");
+    syncProofSend();
+  });
+  $("proof-chips")?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".proof-chip");
+    const box = $("proof-comment");
+    if (!chip || !box) return;
+    box.value = chip.textContent.trim();
+    proofErr("");
+    syncProofSend();
+  });
   $("proof-file")?.addEventListener("change", onProofFile);
   window.addEventListener("online", () => {
     setNet();

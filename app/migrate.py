@@ -58,6 +58,7 @@ def migrate_schema() -> None:
         "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS seen_at TIMESTAMPTZ",
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS proof_reason VARCHAR(40) DEFAULT ''",
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS proof_photo VARCHAR(300) DEFAULT ''",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS proof_comment VARCHAR(500) DEFAULT ''",
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS proof_at TIMESTAMPTZ",
         "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS gps_address VARCHAR(500) DEFAULT ''",
         "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS geo_lat DOUBLE PRECISION DEFAULT 0",

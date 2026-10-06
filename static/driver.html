@@ -7,9 +7,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Nexus Haydovchi</title>
   <link rel="manifest" href="/static/driver-manifest.json" />
-  <link rel="icon" href="/static/driver-icon.svg" />
+  <link rel="icon" href="/static/brand-icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=16" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=17" />
 </head>
 <body>
   <div id="intro" class="intro" aria-hidden="true">
@@ -77,10 +78,7 @@
   <section id="view-app" class="view hidden">
     <header class="app-head">
       <div class="head-brand">
-        <svg class="nx-mark xs" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-          <rect x="2" y="2" width="60" height="60" rx="18" stroke="#7aa2ff" stroke-width="3" />
-          <path d="M20 44V20l24 24V20" stroke="#5eead4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
+        <img class="nx-mark xs" src="/static/brand-icon.svg" alt="" aria-hidden="true" />
         <span class="nx-word xs">NEXUS</span>
       </div>
       <div class="head-actions">
@@ -197,6 +195,17 @@
           <img id="proof-img" alt="Rasm" />
           <span class="proof-tag" id="proof-tag"></span>
         </div>
+        <div id="proof-comment-box" class="proof-comment hidden">
+          <label class="proof-ask" for="proof-comment">Izoh: nima uchun qaytarildi? *</label>
+          <div class="proof-chips" id="proof-chips">
+            <button type="button" class="proof-chip">Do‘kon yopiq</button>
+            <button type="button" class="proof-chip">Pul yo‘q</button>
+            <button type="button" class="proof-chip">Buyurtmadan voz kechdi</button>
+            <button type="button" class="proof-chip">Mahsulot shikastlangan</button>
+            <button type="button" class="proof-chip">Muddati o‘tgan</button>
+          </div>
+          <textarea id="proof-comment" rows="3" maxlength="500" placeholder="Qisqacha yozing yoki yuqoridan tanlang"></textarea>
+        </div>
         <div class="proof-actions">
           <button type="button" class="btn" id="proof-retake">Qayta tushirish</button>
           <button type="button" class="btn primary" id="proof-send">Yuborish</button>
@@ -238,6 +247,6 @@
   <input type="file" id="proof-file" accept="image/*" capture="environment" hidden />
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/driver-app.js?v=16"></script>
+  <script src="/static/js/driver-app.js?v=17"></script>
 </body>
 </html>

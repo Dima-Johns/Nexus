@@ -345,6 +345,7 @@ def _order_out(o: Order) -> OrderOut:
         warehouse_lng=float(w.lng) if w else None,
         proof_reason=getattr(o, "proof_reason", "") or "",
         proof_photo=getattr(o, "proof_photo", "") or "",
+        proof_comment=getattr(o, "proof_comment", "") or "",
         proof_at=o.proof_at.isoformat() if getattr(o, "proof_at", None) else None,
     )
 
@@ -756,17 +757,23 @@ async def driver_order_proof(
     item_id: int,
     result: str = Form(..., max_length=40),
     reason: str = Form("", max_length=40),
+    comment: str | None = Form(None, max_length=500),
     photo: UploadFile = File(...),
     db: Session = Depends(get_db),
     driver: Driver = Depends(get_current_driver),
 ):
-    """Yetkazildi / Qaytarildi — rasm bilan tasdiqlash."""
+    """Yetkazildi / Qaytarildi — rasm bilan tasdiqlash; qaytarishda izoh majburiy."""
     result = (result or "").strip()
     reason = (reason or "").strip()
+    # Eski ilova «comment» maydonini umuman yubormaydi — u ishlashda davom etsin
+    asked = comment is not None
+    comment = " ".join((comment or "").replace("\x00", "").split())
     if result not in PROOF_REASONS:
         raise HTTPException(400, "Noto‘g‘ri natija")
     if reason not in PROOF_REASONS[result]:
         raise HTTPException(400, "Sababni tanlang")
+    if result == "returned" and asked and len(comment) < 3:
+        raise HTTPException(400, "Qaytarish sababini izohda yozing")
     row = db.query(Order).filter(Order.id == item_id, Order.driver_id == driver.id).first()
     if not row:
         raise HTTPException(404, "Zayavka topilmadi")
@@ -780,6 +787,7 @@ async def driver_order_proof(
     (folder / name).write_bytes(data)
     row.proof_photo = f"/uploads/proofs/{now.strftime('%Y-%m-%d')}/{name}"
     row.proof_reason = reason or result
+    row.proof_comment = comment
     row.proof_at = now
     row.status = result
     left = (
