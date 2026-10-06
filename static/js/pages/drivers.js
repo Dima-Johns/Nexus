@@ -1,12 +1,13 @@
-import { api, apiDownload, apiUpload, me } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=71";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=71";
+import { api, apiDownload, apiUpload, can } from "../api.js";
+import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=72";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=72";
 
 const REFRESH_MS = 60000;
 
 let bound = false;
 let paneRoot = null;
 let refreshTimer = null;
+let offAccessChange = null;
 
 function clockNow() {
   return new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -80,32 +81,34 @@ async function load(root) {
     if (agentSel) {
       agentSel.innerHTML = agentOptions(agents, "");
     }
-    const isAdmin = me?.role === "admin";
+    const manage = can("drivers.manage");
+    const access = can("drivers.access");
     if (!drivers.length) {
-      box.innerHTML = `<div class="empty-list">Haydovchi yo‘q. ${isAdmin ? "Yuqoridan qo‘shing yoki Excel import qiling." : "Admin qo‘shishi kerak."}</div>`;
+      box.innerHTML = `<div class="empty-list">Haydovchi yo‘q. ${manage ? "Yuqoridan qo‘shing yoki Excel import qiling." : "Qo‘shish uchun dostup kerak."}</div>`;
       return;
     }
+    const loginCell = (d) =>
+      d.username
+        ? `${escapeHtml(d.username)}${d.has_password ? "" : ` <span class="adm-pill warn">parol yo‘q</span>`}`
+        : `<span class="muted">berilmagan</span>`;
     box.innerHTML = table(
-      ["Ism", "Login", "Telefon", "Raqam", "Holat", "Agent", ""],
+      ["Ism", ...(access ? ["Login"] : []), "Telefon", "Raqam", "Holat", "Agent", ""],
       drivers
         .map(
           (d) => `<tr>
           <td>${escapeHtml(d.name)}</td>
-          <td>${escapeHtml(d.username || "—")}</td>
+          ${access ? `<td>${loginCell(d)}</td>` : ""}
           <td>${escapeHtml(d.phone || "—")}</td>
           <td>${escapeHtml(d.vehicle_plate || "—")}</td>
           <td data-status-drv="${d.id}">${driverStatusHtml(d)}</td>
           <td>${
-            isAdmin
+            manage
               ? `<select class="agent-pick" data-agent-drv="${d.id}">${agentOptions(agents, d.agent_id)}</select>`
               : escapeHtml(d.agent_code ? `${d.agent_code} · ${d.agent_name}` : d.agent_name || "—")
           }</td>
-          <td>${
-            isAdmin
-              ? `<button class="btn tiny" type="button" data-access="${d.id}">Kirish</button>
-                 <button class="btn tiny" type="button" data-del="${d.id}">O‘chirish</button>`
-              : ""
-          }</td>
+          <td class="col-actions">${
+            access ? `<button class="btn tiny" type="button" data-access="${d.id}" title="Ilovaga kirish: login, parol, QR">Kirish</button>` : ""
+          }${manage ? ` <button class="btn tiny" type="button" data-del="${d.id}">O‘chirish</button>` : ""}</td>
         </tr>`
         )
         .join("")
@@ -125,6 +128,18 @@ async function driverTplId() {
   return tpls.find((t) => t.entity === "drivers" && t.status === "approved")?.id;
 }
 
+function applyDriverPerms(root) {
+  const manage = can("drivers.manage");
+  const access = can("drivers.access");
+  root.querySelectorAll(".admin-only").forEach((el) => el.classList.toggle("hidden", !manage));
+  const hint = $("#driver-hint", root);
+  if (!hint) return;
+  if (manage && access) hint.textContent = "Haydovchiga agent biriktiring; «Kirish» orqali ilovaga login, parol yoki QR bering.";
+  else if (access) hint.textContent = "«Kirish» tugmasi orqali haydovchiga ilovaga login, parol yoki QR bering.";
+  else if (manage) hint.textContent = "Har bir haydovchiga istalgan agent kodini ro‘yxatdan tanlab biriktiring.";
+  else hint.textContent = "Ro‘yxatni ko‘rish rejimi: qo‘shish va kirish berish uchun dostup kerak.";
+}
+
 function showMsg(root, text, ok = false) {
   const err = $("#driver-err", root);
   if (!err) return;
@@ -135,16 +150,10 @@ function showMsg(root, text, ok = false) {
 
 export async function init(root) {
   paneRoot = root;
-  const isAdmin = me?.role === "admin";
-  root.querySelectorAll(".admin-only").forEach((el) => el.classList.toggle("hidden", !isAdmin));
-  const hint = $("#driver-hint", root);
-  if (hint) {
-    hint.textContent = isAdmin
-      ? "Har bir haydovchiga istalgan agent kodini ro‘yxatdan tanlab biriktiring."
-      : "Haydovchilarni faqat administrator qo‘shadi.";
-  }
+  applyDriverPerms(root);
   if (!bound) {
     bound = true;
+    offAccessChange = onDriverAccessChange(() => paneRoot && load(paneRoot));
     const openBtn = root.querySelector("[data-open]");
     if (openBtn) {
       openBtn.onclick = () => $("#driver-form", root)?.classList.toggle("hidden");
@@ -197,9 +206,16 @@ export async function init(root) {
           const created = await api("/drivers", { method: "POST", body: d });
           e.target.reset();
           form.classList.add("hidden");
-          showMsg(root, `Haydovchi qo‘shildi. Login: ${created.username || "—"} · Parol: ${created.password || "—"}`, true);
+          const canAccess = can("drivers.access");
+          showMsg(
+            root,
+            canAccess
+              ? `Haydovchi qo‘shildi. Login: ${created.username || "—"} · Parol: ${created.password || "—"}`
+              : "Haydovchi qo‘shildi. Ilovaga kirishni dostupi bor akkaunt beradi.",
+            true
+          );
           await load(root);
-          if (created.id) openDriverAccess(created.id, created.password).catch(() => {});
+          if (created.id && canAccess) openDriverAccess(created.id, created.password).catch(() => {});
         } catch (ex) {
           showMsg(root, ex.message);
         }
@@ -251,6 +267,7 @@ export async function init(root) {
 
 export async function show() {
   if (!paneRoot) return;
+  applyDriverPerms(paneRoot);
   startRefresh();
   await load(paneRoot);
 }
@@ -261,6 +278,8 @@ export function hide() {
 
 export function destroy() {
   stopRefresh();
+  offAccessChange?.();
+  offAccessChange = null;
   bound = false;
   paneRoot = null;
 }

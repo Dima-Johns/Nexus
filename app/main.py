@@ -9,13 +9,14 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import UPLOAD_DIR, router
+from .reports_api import router as reports_router
 from .database import Base, SessionLocal, engine
 from .migrate import migrate_schema
 from .seed import ensure_agents, ensure_default_templates, ensure_driver_logins, ensure_phone_format, seed_if_empty
 from .tracking import start_simulator, stop_simulator
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-SPA_ROUTES = {"", "login", "dashboard", "orders", "drivers", "agents", "warehouses", "settings", "admin"}
+SPA_ROUTES = {"", "login", "dashboard", "orders", "drivers", "agents", "warehouses", "settings", "admin", "reports"}
 
 
 @asynccontextmanager
@@ -156,6 +157,7 @@ async def validation_error(_: Request, exc: RequestValidationError):
     return JSONResponse({"detail": "; ".join(messages[:3])}, status_code=422)
 
 app.include_router(router)
+app.include_router(reports_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")

@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/style.css?v=59" />
+  <link rel="stylesheet" href="/static/css/style.css?v=60" />
 </head>
 <body>
   <div class="bg-orb orb-a"></div>
@@ -46,6 +46,9 @@
         </a>
         <a class="icon-btn nav-ico" href="/agents" data-link data-perm="agents.view" title="Agentlar">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8" /><path d="M18.5 14.2A6.5 6.5 0 0 1 21.5 20" /></svg>
+        </a>
+        <a class="icon-btn nav-ico" href="/reports" data-link data-perm="reports.view" title="Hisobotlar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4" /><path d="M4 20h16" /><path d="M8 16v-5" /><path d="M12 16V8" /><path d="M16 16v-3" /><path d="M20 16V6" /></svg>
         </a>
         <a class="icon-btn nav-ico" href="/settings" data-link title="Sozlamalar">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10" /><path d="M18 7h2" /><circle cx="16" cy="7" r="2" /><path d="M4 17h2" /><path d="M10 17h10" /><circle cx="8" cy="17" r="2" /></svg>
@@ -203,11 +206,18 @@
       <p id="drv-access-name" class="muted"></p>
       <div class="access-row"><span>Login</span><b id="drv-access-user"></b></div>
       <div class="access-row"><span>Parol</span><b id="drv-access-pass"></b></div>
+      <form id="drv-access-form" class="access-edit" autocomplete="off">
+        <label>Login<input id="drv-access-login" maxlength="40" spellcheck="false" placeholder="masalan: sardor.a" /></label>
+        <label>Yangi parol<input id="drv-access-newpass" maxlength="64" placeholder="o‘zgartirmaslik uchun bo‘sh qoldiring" /></label>
+        <button class="btn primary" type="submit" id="drv-access-save">Saqlash</button>
+      </form>
+      <p class="error hidden" id="drv-access-err"></p>
       <div id="drv-access-qr" class="qr-box"></div>
       <p class="muted">Haydovchi ilovaga login/parol yoki shu QR kod bilan kiradi. Manzil: <b id="drv-access-url"></b></p>
       <div class="row-actions">
-        <button class="btn" id="drv-access-reset-pass" type="button">Yangi parol</button>
+        <button class="btn" id="drv-access-reset-pass" type="button">Parolni avtomatik yaratish</button>
         <button class="btn" id="drv-access-reset-qr" type="button">QR yangilash</button>
+        <button class="btn" id="drv-access-copy" type="button">Nusxa olish</button>
       </div>
     </div>
   </div>
@@ -274,6 +284,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script type="module" src="/static/js/app.js?v=71"></script>
+  <script type="module" src="/static/js/app.js?v=72"></script>
 </body>
 </html>

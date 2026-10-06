@@ -162,6 +162,8 @@ from .trash import ENTITY_LABELS, archive_deleted
 
 router = APIRouter(prefix="/api")
 
+DRIVER_LOGIN_RE = re.compile(r"^[a-z0-9._-]{3,40}$")
+
 
 def _excel_file(content: bytes, filename: str) -> Response:
     safe = quote(filename)
@@ -541,7 +543,10 @@ def update_me(payload: MeUpdate, db: Session = Depends(get_db), user: User = Dep
 
 @router.post("/auth/driver-login")
 def driver_login(payload: LoginIn, db: Session = Depends(get_db)):
-    row = db.query(Driver).filter(Driver.username == payload.username.strip()).first()
+    login = payload.username.strip()
+    row = db.query(Driver).filter(Driver.username == login).first() or (
+        db.query(Driver).filter(func.lower(Driver.username) == login.lower()).first()
+    )
     if (
         not row
         or not row.is_active
@@ -1596,7 +1601,11 @@ def delete_warehouse(item_id: int, db: Session = Depends(get_db), user: User = D
 
 @router.get("/drivers", response_model=list[DriverOut])
 def list_drivers(db: Session = Depends(get_db), user: User = Depends(require_perm("drivers.view"))):
-    return [_driver_out(d) for d in q_org(db, Driver, user).options(joinedload(Driver.agent)).order_by(Driver.id.desc()).all()]
+    rows = [_driver_out(d) for d in q_org(db, Driver, user).options(joinedload(Driver.agent)).order_by(Driver.id.desc()).all()]
+    if not has_perm(user, "drivers.access"):
+        for r in rows:
+            r.username = ""
+    return rows
 
 
 @router.post("/drivers", response_model=DriverAccessOut)
@@ -1612,6 +1621,8 @@ def create_driver(payload: DriverIn, db: Session = Depends(get_db), user: User =
     info = issue_driver_credentials(db, row, reset_password=True, reset_qr=True)
     db.commit()
     db.refresh(row)
+    if not has_perm(user, "drivers.access"):
+        info.update(username="", password=None, qr_payload="", qr_svg="")
     return DriverAccessOut(**info)
 
 
@@ -1631,12 +1642,32 @@ def reset_driver_access(
     user: User = Depends(require_perm("drivers.access")),
 ):
     row = get_org_row(db, Driver, item_id, user, "Haydovchi topilmadi")
+    if payload.username is not None:
+        login = payload.username.strip().lower()
+        if not DRIVER_LOGIN_RE.match(login):
+            raise HTTPException(400, "Login 3–40 belgi: lotin harflari, raqam, nuqta, chiziqcha yoki pastki chiziq")
+        taken = (
+            db.query(Driver.id)
+            .filter(func.lower(Driver.username) == login, Driver.id != row.id)
+            .first()
+        )
+        if taken:
+            raise HTTPException(400, "Bu login band — boshqasini kiriting")
+        row.username = login
+    password = None
+    if payload.password is not None:
+        password = payload.password.strip()
+        if len(password) < 4:
+            raise HTTPException(400, "Parol kamida 4 belgi bo‘lsin")
+        row.password_hash = hash_password(password)
     info = issue_driver_credentials(
         db,
         row,
-        reset_password=payload.reset_password,
+        reset_password=payload.reset_password and password is None,
         reset_qr=payload.reset_qr,
     )
+    if password:
+        info["password"] = password
     db.commit()
     return DriverAccessOut(**info)
 
@@ -1660,6 +1691,8 @@ async def import_drivers_excel(
         )
     result = _import_drivers(db, records, DRIVER_MAPPING, org_id_of(user))
     result["template"] = "Haydovchilar Excel"
+    if not has_perm(user, "drivers.access"):
+        result["logins"] = []
     return result
 
 

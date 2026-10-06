@@ -283,6 +283,8 @@ class DriverAccessOut(Schema):
 class DriverAccessIn(Schema):
     reset_password: bool = False
     reset_qr: bool = False
+    username: Annotated[str, Field(max_length=40)] | None = None
+    password: Annotated[str, Field(max_length=64)] | None = None
 
 
 class DriverQrIn(Schema):

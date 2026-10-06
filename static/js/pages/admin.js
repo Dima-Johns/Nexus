@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=71";
-import { mountOfficePicker } from "../office-picker.js?v=71";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=71";
+import { openDriverAccess } from "../driver-access.js?v=72";
+import { mountOfficePicker } from "../office-picker.js?v=72";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=72";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -192,10 +192,14 @@ function renderDrivers(root) {
           <td class="nowrap">${escapeHtml(d.phone || "—")}</td>
           <td class="nowrap">${escapeHtml(d.vehicle_plate || "—")}</td>
           <td>${driverStatusHtml(d)}</td>
-          <td><select class="agent-pick" data-agent-drv="${d.id}">${agentOptions(agentsCache, d.agent_id)}</select></td>
+          <td>${
+            can("drivers.manage")
+              ? `<select class="agent-pick" data-agent-drv="${d.id}">${agentOptions(agentsCache, d.agent_id)}</select>`
+              : escapeHtml(d.agent_code ? `${d.agent_code} · ${d.agent_name}` : d.agent_name || "—")
+          }</td>
           <td class="col-actions">
-            <button class="btn tiny" data-drv-access="${d.id}">Kirish</button>
-            <button class="btn tiny danger-text" data-drv-del="${d.id}">O‘chirish</button>
+            ${can("drivers.access") ? `<button class="btn tiny" data-drv-access="${d.id}">Kirish</button>` : ""}
+            ${can("drivers.manage") ? `<button class="btn tiny danger-text" data-drv-del="${d.id}">O‘chirish</button>` : ""}
           </td>
         </tr>`
       )
@@ -1324,7 +1328,7 @@ export async function init(root) {
       e.target.reset();
       drvForm.classList.add("hidden");
       await loadDrivers(root);
-      if (created.id) openDriverAccess(created.id, created.password).catch(() => {});
+      if (created.id && can("drivers.access")) openDriverAccess(created.id, created.password).catch(() => {});
     } catch (ex) {
       err.classList.remove("hidden");
       err.style.color = "";

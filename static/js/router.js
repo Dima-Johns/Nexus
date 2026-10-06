@@ -1,6 +1,6 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
-import { $, $$ } from "./ui.js?v=71";
-import { refreshWorkspace, syncWorkspace } from "./workspace.js?v=71";
+import { $, $$ } from "./ui.js?v=72";
+import { refreshWorkspace, syncWorkspace } from "./workspace.js?v=72";
 
 const ROUTES = {
   "/": "dashboard",
@@ -11,6 +11,7 @@ const ROUTES = {
   "/warehouses": "warehouses",
   "/settings": "settings",
   "/admin": "admin",
+  "/reports": "reports",
   "/login": "login",
 };
 
@@ -46,8 +47,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=71`),
-    import(`/static/js/pages/${name}.js?v=71`),
+    fetch(`/static/pages/${name}.html?v=72`),
+    import(`/static/js/pages/${name}.js?v=72`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;
@@ -62,7 +63,7 @@ async function loadPage(name) {
 }
 
 function prefetchPages() {
-  ["dashboard", "drivers", "agents", "warehouses", "settings", "admin"].forEach((name) => {
+  ["dashboard", "drivers", "agents", "warehouses", "settings", "admin", ...(can("reports.view") ? ["reports"] : [])].forEach((name) => {
     loadPage(name).catch(() => {});
   });
 }
@@ -139,6 +140,10 @@ export async function render() {
   }
   if (name === "admin" && !["admin.panel", "perms.manage", "orgs.manage", "users.manage", "clients.view", "trash.view"].some((k) => can(k))) {
     go("/settings", true);
+    return;
+  }
+  if (name === "reports" && !can("reports.view")) {
+    go("/dashboard", true);
     return;
   }
 

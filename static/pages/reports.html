@@ -1,0 +1,67 @@
+<div class="glass panel rep-page">
+  <div class="panel-head">
+    <h3>Hisobotlar</h3>
+    <div class="row-actions rep-export hidden" id="rep-export-box">
+      <button class="btn" type="button" id="rep-export-tab" title="Ochiq bo‘limni Excel’ga yuklab olish">Excel: joriy bo‘lim</button>
+      <button class="btn" type="button" id="rep-export-all" title="Barcha bo‘limlar bitta faylda">Excel: to‘liq hisobot</button>
+      <select id="rep-gps" title="Barcha ma’lumotga GPS nuqtalarini qo‘shish">
+        <option value="0">GPS’siz</option>
+        <option value="1">GPS: 1 kun</option>
+        <option value="7">GPS: 7 kun</option>
+      </select>
+      <button class="btn primary" type="button" id="rep-full" title="Tizimdagi barcha jadvallar (parol va tokenlarsiz)">Barcha ma’lumot</button>
+    </div>
+  </div>
+
+  <div class="rep-presets" id="rep-presets">
+    <button type="button" class="rep-chip" data-preset="today">Bugun</button>
+    <button type="button" class="rep-chip" data-preset="yesterday">Kecha</button>
+    <button type="button" class="rep-chip" data-preset="7">7 kun</button>
+    <button type="button" class="rep-chip" data-preset="30">30 kun</button>
+    <button type="button" class="rep-chip" data-preset="month">Bu oy</button>
+    <button type="button" class="rep-chip" data-preset="prev-month">O‘tgan oy</button>
+    <button type="button" class="rep-chip" data-preset="all">Hammasi</button>
+  </div>
+
+  <div class="rep-filters" id="rep-filters">
+    <label>Dan<input type="date" id="rep-from" /></label>
+    <label>Gacha<input type="date" id="rep-to" /></label>
+    <label class="hidden" id="rep-org-box">Tashkilot<select id="rep-org"></select></label>
+    <label>Agent<select id="rep-agent"></select></label>
+    <label>Haydovchi<select id="rep-driver"></select></label>
+    <label>Sklad<select id="rep-wh"></select></label>
+    <label>Holat<select id="rep-status"></select></label>
+    <label>To‘lov<select id="rep-payment"></select></label>
+    <label class="rep-q">Qidiruv<input id="rep-q" maxlength="120" placeholder="Klient, kod, manzil, zayavka" /></label>
+    <button type="button" class="btn" id="rep-reset">Tozalash</button>
+  </div>
+  <div class="rep-active hidden" id="rep-client-chip"></div>
+  <p class="error hidden" id="rep-err"></p>
+
+  <div class="rep-kpis" id="rep-kpis"></div>
+  <div class="rep-chart-box">
+    <div class="rep-chart-head">
+      <b id="rep-chart-title">Savdo dinamikasi</b>
+      <span class="rep-legend"><i class="lg-ok"></i>Yetkazildi <i class="lg-ret"></i>Qaytarildi <i class="lg-pend"></i>Jarayonda</span>
+    </div>
+    <div class="rep-chart" id="rep-chart"></div>
+  </div>
+
+  <div class="rep-tabs" id="rep-tabs">
+    <button type="button" class="rep-tab active" data-tab="clients">Klientlar savdosi</button>
+    <button type="button" class="rep-tab" data-tab="returned_clients">Qaytargan klientlar</button>
+    <button type="button" class="rep-tab" data-tab="returns">Qaytarishlar</button>
+    <button type="button" class="rep-tab" data-tab="drivers">Haydovchilar</button>
+    <button type="button" class="rep-tab" data-tab="agents">Agentlar</button>
+    <button type="button" class="rep-tab" data-tab="warehouses">Skladlar</button>
+    <button type="button" class="rep-tab" data-tab="days">Kunlar</button>
+    <button type="button" class="rep-tab" data-tab="payments">To‘lov holati</button>
+    <button type="button" class="rep-tab hidden" data-tab="orgs" id="rep-tab-orgs">Tashkilotlar</button>
+    <button type="button" class="rep-tab" data-tab="orders">Zayavkalar</button>
+  </div>
+  <div class="rep-tab-tools">
+    <input id="rep-tab-q" maxlength="80" placeholder="Jadvaldan qidirish" />
+    <span class="muted" id="rep-tab-info"></span>
+  </div>
+  <div class="rep-table" id="rep-table"></div>
+</div>

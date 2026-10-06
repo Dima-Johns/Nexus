@@ -1,9 +1,9 @@
-import { bindNavigation, render } from "./router.js?v=71";
-import { bindWorkspace } from "./workspace.js?v=71";
-import { bindDriverAccessModal } from "./driver-access.js?v=71";
+import { bindNavigation, render } from "./router.js?v=72";
+import { bindWorkspace } from "./workspace.js?v=72";
+import { bindDriverAccessModal } from "./driver-access.js?v=72";
 import { me, setMe, setToken, token } from "./api.js";
-import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=71";
-import { watchInputLimits } from "./input-limits.js?v=71";
+import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=72";
+import { watchInputLimits } from "./input-limits.js?v=72";
 
 applyTheme(currentTheme());
 
@@ -28,7 +28,7 @@ function bindIdleWatch() {
 }
 
 // index.html dagi app.js?v= bilan bir xil bo‘lishi shart — server /api/version shundan oladi
-const BUILD = "v=71";
+const BUILD = "v=72";
 let reloading = false;
 async function checkBuild() {
   if (reloading || document.hidden) return;
