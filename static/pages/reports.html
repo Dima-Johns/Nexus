@@ -1,7 +1,13 @@
 <div class="glass panel rep-page">
   <div class="panel-head">
-    <h3>Hisobotlar</h3>
-    <div class="row-actions rep-export hidden" id="rep-export-box">
+    <div class="rep-title">
+      <h3>Hisobotlar</h3>
+      <div class="rep-mode" id="rep-mode">
+        <button type="button" data-rep-mode="ready" class="on">Tayyor hisobotlar</button>
+        <button type="button" data-rep-mode="pivot">Konstruktor (pivot)</button>
+      </div>
+    </div>
+    <div class="row-actions rep-export rep-ready-only hidden" id="rep-export-box">
       <button class="btn" type="button" id="rep-export-tab" title="Ochiq bo‘limni Excel’ga yuklab olish">Excel: joriy bo‘lim</button>
       <button class="btn" type="button" id="rep-export-all" title="Barcha bo‘limlar bitta faylda">Excel: to‘liq hisobot</button>
       <select id="rep-gps" title="Barcha ma’lumotga GPS nuqtalarini qo‘shish">
@@ -38,30 +44,82 @@
   <div class="rep-active hidden" id="rep-client-chip"></div>
   <p class="error hidden" id="rep-err"></p>
 
-  <div class="rep-kpis" id="rep-kpis"></div>
-  <div class="rep-chart-box">
-    <div class="rep-chart-head">
-      <b id="rep-chart-title">Savdo dinamikasi</b>
-      <span class="rep-legend"><i class="lg-ok"></i>Yetkazildi <i class="lg-ret"></i>Qaytarildi <i class="lg-pend"></i>Jarayonda</span>
+  <div class="rep-ready-only" id="rep-ready">
+    <div class="rep-kpis" id="rep-kpis"></div>
+    <div class="rep-chart-box">
+      <div class="rep-chart-head">
+        <b id="rep-chart-title">Savdo dinamikasi</b>
+        <span class="rep-legend"><i class="lg-ok"></i>Yetkazildi <i class="lg-ret"></i>Qaytarildi <i class="lg-pend"></i>Jarayonda</span>
+      </div>
+      <div class="rep-chart" id="rep-chart"></div>
     </div>
-    <div class="rep-chart" id="rep-chart"></div>
+
+    <div class="rep-tabs" id="rep-tabs">
+      <button type="button" class="rep-tab active" data-tab="clients">Klientlar savdosi</button>
+      <button type="button" class="rep-tab" data-tab="returned_clients">Qaytargan klientlar</button>
+      <button type="button" class="rep-tab" data-tab="returns">Qaytarishlar</button>
+      <button type="button" class="rep-tab" data-tab="drivers">Haydovchilar</button>
+      <button type="button" class="rep-tab" data-tab="agents">Agentlar</button>
+      <button type="button" class="rep-tab" data-tab="warehouses">Skladlar</button>
+      <button type="button" class="rep-tab" data-tab="days">Kunlar</button>
+      <button type="button" class="rep-tab" data-tab="payments">To‘lov holati</button>
+      <button type="button" class="rep-tab hidden" data-tab="orgs" id="rep-tab-orgs">Tashkilotlar</button>
+      <button type="button" class="rep-tab" data-tab="orders">Zayavkalar</button>
+    </div>
+    <div class="rep-tab-tools">
+      <input id="rep-tab-q" maxlength="80" placeholder="Jadvaldan qidirish" />
+      <span class="muted" id="rep-tab-info"></span>
+    </div>
+    <div class="rep-table" id="rep-table"></div>
   </div>
 
-  <div class="rep-tabs" id="rep-tabs">
-    <button type="button" class="rep-tab active" data-tab="clients">Klientlar savdosi</button>
-    <button type="button" class="rep-tab" data-tab="returned_clients">Qaytargan klientlar</button>
-    <button type="button" class="rep-tab" data-tab="returns">Qaytarishlar</button>
-    <button type="button" class="rep-tab" data-tab="drivers">Haydovchilar</button>
-    <button type="button" class="rep-tab" data-tab="agents">Agentlar</button>
-    <button type="button" class="rep-tab" data-tab="warehouses">Skladlar</button>
-    <button type="button" class="rep-tab" data-tab="days">Kunlar</button>
-    <button type="button" class="rep-tab" data-tab="payments">To‘lov holati</button>
-    <button type="button" class="rep-tab hidden" data-tab="orgs" id="rep-tab-orgs">Tashkilotlar</button>
-    <button type="button" class="rep-tab" data-tab="orders">Zayavkalar</button>
+  <div class="pv rep-pivot-only" id="rep-builder">
+    <div class="pv-bar">
+      <select id="pv-layout" title="Namuna yoki saqlangan hisobotni ochish"></select>
+      <input id="pv-name" maxlength="120" placeholder="Hisobot nomi" />
+      <label class="pv-check" title="Tashkilotingizdagi boshqa foydalanuvchilar ham ko‘radi"><input type="checkbox" id="pv-shared" />Ulashish</label>
+      <button class="btn" type="button" id="pv-save">Saqlash</button>
+      <button class="btn" type="button" id="pv-save-new" title="Joriy tuzilmani yangi nom bilan saqlash">Nusxa sifatida</button>
+      <button class="btn danger-text" type="button" id="pv-delete">O‘chirish</button>
+      <span class="pv-spacer"></span>
+      <label class="pv-check"><input type="checkbox" id="pv-subtotals" />Oraliq jami</label>
+      <button class="btn" type="button" id="pv-clear">Tuzilmani tozalash</button>
+      <button class="btn primary" type="button" id="pv-excel">Excel’ga yuklash</button>
+    </div>
+    <div class="pv-grid">
+      <aside class="pv-fields">
+        <input id="pv-field-q" maxlength="40" placeholder="Maydon qidirish" />
+        <div class="pv-field-list" id="pv-field-list"></div>
+        <p class="pv-hint">Maydonni zonaga sudrang yoki bosing: ma’lumot maydoni qatorlarga, Σ ko‘rsatkich qiymatlarga tushadi.</p>
+      </aside>
+      <div class="pv-main">
+        <div class="pv-zones">
+          <div class="pv-zone" data-zone="filters"><b>Filtrlar</b><div class="pv-drop" data-zone="filters"></div></div>
+          <div class="pv-zone" data-zone="cols"><b>Ustunlar</b><div class="pv-drop" data-zone="cols"></div></div>
+          <div class="pv-zone" data-zone="rows"><b>Qatorlar</b><div class="pv-drop" data-zone="rows"></div></div>
+          <div class="pv-zone" data-zone="values"><b>Qiymatlar (Σ)</b><div class="pv-drop" data-zone="values"></div></div>
+        </div>
+        <div class="pv-info muted" id="pv-info"></div>
+        <div class="pv-result" id="pv-result"></div>
+      </div>
+    </div>
   </div>
-  <div class="rep-tab-tools">
-    <input id="rep-tab-q" maxlength="80" placeholder="Jadvaldan qidirish" />
-    <span class="muted" id="rep-tab-info"></span>
+
+  <div id="pv-values-modal" class="modal-overlay hidden">
+    <div class="glass panel modal-card pv-values-card">
+      <h3 id="pv-values-title">Qiymatlarni tanlash</h3>
+      <input id="pv-values-q" maxlength="80" placeholder="Qidirish" />
+      <div class="pv-values-tools">
+        <button type="button" class="btn tiny" id="pv-values-all">Hammasini belgilash</button>
+        <button type="button" class="btn tiny" id="pv-values-none">Belgini olib tashlash</button>
+        <span class="muted" id="pv-values-info"></span>
+      </div>
+      <div class="pv-values-list" id="pv-values-list"></div>
+      <p class="error hidden" id="pv-values-err"></p>
+      <div class="confirm-actions">
+        <button type="button" id="pv-values-cancel">Bekor qilish</button>
+        <button type="button" class="btn primary" id="pv-values-ok">Qo‘llash</button>
+      </div>
+    </div>
   </div>
-  <div class="rep-table" id="rep-table"></div>
 </div>

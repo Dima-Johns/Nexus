@@ -1,5 +1,6 @@
 import { api, apiDownload } from "../api.js";
-import { $, escapeHtml } from "../ui.js?v=72";
+import { $, escapeHtml } from "../ui.js?v=73";
+import * as pivot from "./pivot.js?v=73";
 
 const PAGE = 300;
 const fmtMoney = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
@@ -18,6 +19,8 @@ let loadSeq = 0;
 let qTimer = null;
 let preset = "30";
 let lastLoaded = 0;
+let mode = localStorage.getItem("nx_rep_mode") === "pivot" ? "pivot" : "ready";
+const PRESETS = ["today", "yesterday", "7", "30", "month", "prev-month", "all"];
 const sortBy = {};
 const paymentsSeen = new Set();
 
@@ -185,6 +188,87 @@ function params(extra = {}) {
   if (clientFilter) p.set("client_id", clientFilter.id);
   for (const [k, v] of Object.entries(extra)) if (v !== "" && v != null) p.set(k, v);
   return p.toString();
+}
+
+function filterObject() {
+  const num = (sel) => Number(val(sel)) || null;
+  return {
+    date_from: val("#rep-from"),
+    date_to: val("#rep-to"),
+    org_id: num("#rep-org"),
+    agent_code: val("#rep-agent"),
+    driver_id: num("#rep-driver"),
+    warehouse_id: num("#rep-wh"),
+    client_id: clientFilter ? Number(clientFilter.id) || null : null,
+    status: val("#rep-status"),
+    payment: val("#rep-payment"),
+    q: val("#rep-q"),
+  };
+}
+
+function globalState() {
+  const f = filterObject();
+  delete f.client_id;
+  if (preset) {
+    f.date_from = "";
+    f.date_to = "";
+  }
+  return { ...f, preset };
+}
+
+async function applyFilters(g) {
+  if (!root || !g || typeof g !== "object") return;
+  const setVal = (sel, v) => {
+    const el = $(sel, root);
+    if (!el) return;
+    const want = v == null ? "" : String(v);
+    el.value = want;
+    if (el.value !== want) el.value = "";
+  };
+  if (options?.cross_org && val("#rep-org") !== String(g.org_id || "")) {
+    setVal("#rep-org", g.org_id);
+    try {
+      await loadOptions();
+    } catch (ex) {
+      errMsg(ex.message);
+    }
+  }
+  if (g.payment) fillPayments([String(g.payment)]);
+  setVal("#rep-agent", g.agent_code);
+  setVal("#rep-driver", g.driver_id);
+  setVal("#rep-wh", g.warehouse_id);
+  setVal("#rep-status", g.status);
+  setVal("#rep-payment", g.payment);
+  setVal("#rep-q", g.q);
+  clientFilter = null;
+  renderClientChip();
+  if (PRESETS.includes(g.preset)) {
+    const [from, to] = presetRange(g.preset);
+    setVal("#rep-from", from);
+    setVal("#rep-to", to);
+    preset = g.preset;
+  } else {
+    setVal("#rep-from", g.date_from);
+    setVal("#rep-to", g.date_to);
+    preset = "";
+  }
+  markPreset();
+  await load();
+}
+
+async function setMode(next) {
+  mode = next === "pivot" ? "pivot" : "ready";
+  localStorage.setItem("nx_rep_mode", mode);
+  $(".rep-page", root)?.classList.toggle("mode-pivot", mode === "pivot");
+  root.querySelectorAll("[data-rep-mode]").forEach((b) => b.classList.toggle("on", b.dataset.repMode === mode));
+  if (mode === "pivot") {
+    try {
+      await pivot.activate();
+    } catch (ex) {
+      errMsg(ex.message || "Konstruktor yuklanmadi");
+      return;
+    }
+  }
 }
 
 function fillSelect(sel, items, allLabel, keep = true) {
@@ -429,6 +513,13 @@ function switchTab(name, render = true) {
 }
 
 async function load({ quiet = false } = {}) {
+  if (mode === "pivot") {
+    ++loadSeq;
+    root.classList.remove("rep-loading");
+    await pivot.run();
+    lastLoaded = Date.now();
+    return;
+  }
   const seq = ++loadSeq;
   root.classList.toggle("rep-loading", !quiet);
   try {
@@ -476,7 +567,14 @@ function periodTag() {
 }
 
 function bind() {
-  root.addEventListener("click", (e) => {
+  root.addEventListener("click", async (e) => {
+    const modeBtn = e.target.closest("[data-rep-mode]");
+    if (modeBtn) {
+      if (modeBtn.dataset.repMode === mode) return;
+      await setMode(modeBtn.dataset.repMode);
+      load();
+      return;
+    }
     const presetBtn = e.target.closest("[data-preset]");
     if (presetBtn) {
       const [from, to] = presetRange(presetBtn.dataset.preset);
@@ -589,6 +687,15 @@ export async function init(pane) {
   if (!bound) {
     bound = true;
     bind();
+    pivot.setup({
+      root,
+      errMsg,
+      filters: filterObject,
+      globalState,
+      applyFilters,
+      canExport: () => Boolean(options?.can_export),
+      onPayments: fillPayments,
+    });
   }
   try {
     await loadOptions();
@@ -601,6 +708,7 @@ export async function init(pane) {
   $("#rep-to", root).value = to;
   markPreset();
   renderClientChip();
+  await setMode(mode);
   await load();
 }
 
@@ -614,6 +722,7 @@ export async function refresh() {
 
 export function destroy() {
   clearTimeout(qTimer);
+  pivot.destroy();
   root = null;
   bound = false;
   data = null;

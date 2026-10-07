@@ -898,7 +898,13 @@ function proofStep(step) {
   $("proof-reasons")?.classList.toggle("hidden", step !== "reason");
   $("proof-shoot")?.classList.toggle("hidden", step !== "shoot");
   $("proof-preview")?.classList.toggle("hidden", step !== "preview");
-  $("proof-comment-box")?.classList.toggle("hidden", !(step === "preview" && proof.result === "returned"));
+  const returned = proof.result === "returned";
+  $("proof-comment-box")?.classList.toggle("hidden", step !== "preview");
+  $("proof-chips")?.classList.toggle("hidden", !returned);
+  const label = $("proof-comment-label");
+  if (label) label.textContent = returned ? "Izoh: nima uchun qaytarildi? *" : "Izoh (ixtiyoriy)";
+  const area = $("proof-comment");
+  if (area) area.placeholder = returned ? "Qisqacha yozing yoki yuqoridan tanlang" : "Masalan: pulni ertaga beradi, mahsulot omborga qo‘yildi";
   syncProofSend();
 }
 
@@ -1006,7 +1012,7 @@ async function sendProof() {
     const form = new FormData();
     form.append("result", proof.result);
     form.append("reason", proof.result === "delivered" ? proof.reason : "");
-    form.append("comment", proof.result === "returned" ? comment : "");
+    form.append("comment", comment);
     form.append("photo", proof.blob, `proof_${proof.id}.jpg`);
     const id = proof.id;
     const result = proof.result;

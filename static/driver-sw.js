@@ -1,8 +1,8 @@
-const CACHE = "nexus-driver-v18";
+const CACHE = "nexus-driver-v19";
 const SHELL = [
   "/driver/",
-  "/static/css/driver.css?v=17",
-  "/static/js/driver-app.js?v=17",
+  "/static/css/driver.css?v=18",
+  "/static/js/driver-app.js?v=18",
   "/static/driver-manifest.json",
   "/static/brand-icon.svg",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",

@@ -220,6 +220,22 @@ class GpsPing(Base):
     driver: Mapped[Driver] = relationship(back_populates="gps_pings")
 
 
+class ReportLayout(Base):
+    """Pivot-hisobotning saqlangan tuzilmasi (qatorlar, ustunlar, qiymatlar, filtrlar)."""
+
+    __tablename__ = "report_layouts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    user_name: Mapped[str] = mapped_column(String(160), default="")
+    name: Mapped[str] = mapped_column(String(120))
+    config_json: Mapped[str] = mapped_column(Text, default="{}")
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class DeletedRecord(Base):
     """Akkauntlar o‘chirgan yozuvlarning nusxasi (zayavkalar bundan mustasno)."""
 

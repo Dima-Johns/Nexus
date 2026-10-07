@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { $ } from "./ui.js?v=72";
+import { $ } from "./ui.js?v=73";
 
 let currentId = null;
 let bound = false;

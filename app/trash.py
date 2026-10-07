@@ -12,6 +12,7 @@ ENTITY_LABELS = {
     "agent": "Agent",
     "driver": "Haydovchi",
     "warehouse": "Sklad",
+    "report_layout": "Hisobot shabloni",
 }
 
 SECRET_FIELDS = {"password_hash", "qr_token"}
