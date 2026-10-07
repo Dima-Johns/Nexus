@@ -1,5 +1,5 @@
 import { api, token } from "../api.js";
-import { $, askConfirm, escapeHtml } from "../ui.js?v=73";
+import { $, askConfirm, escapeHtml } from "../ui.js?v=74";
 
 const LIMITS = { rows: 8, cols: 2, filters: 20, values: 12 };
 const ZONE_NAMES = { rows: "Qatorlar", cols: "Ustunlar", filters: "Filtrlar", values: "Qiymatlar" };
@@ -44,6 +44,17 @@ let runTimer = null;
 let dragging = null;
 let picker = null;
 let ready = false;
+let drawer = null;
+let modalEl = null;
+const byId = (id) => document.getElementById(id);
+
+function err(text) {
+  ctx?.errMsg(text);
+  const el = byId("pv-drawer-err");
+  if (!el) return;
+  el.textContent = text || "";
+  el.classList.toggle("hidden", !text);
+}
 
 function blankState() {
   return { rows: [], cols: [], filters: [], values: ["count"], vf: {}, subtotals: false, sort_by: "", sort_dir: "desc" };
@@ -102,9 +113,9 @@ function body(extra = {}) {
 // ---------- maydonlar va zonalar ----------
 
 function renderFields() {
-  const box = $("#pv-field-list", root);
+  const box = byId("pv-field-list");
   if (!box || !fields) return;
-  const q = ($("#pv-field-q", root)?.value || "").trim().toLowerCase();
+  const q = (byId("pv-field-q")?.value || "").trim().toLowerCase();
   const used = new Set(usedDims());
   const match = (label) => !q || label.toLowerCase().includes(q);
   const groups = new Map();
@@ -153,14 +164,14 @@ function zoneChip(key, zone, i) {
 }
 
 function renderZones() {
-  root.querySelectorAll(".pv-drop").forEach((drop) => {
+  drawer.querySelectorAll(".pv-drop").forEach((drop) => {
     const zone = drop.dataset.zone;
     const items = state[zone];
     drop.innerHTML = items.length
       ? items.map((k, i) => zoneChip(k, zone, i)).join("")
       : `<span class="pv-empty">${zone === "values" ? "Σ ko‘rsatkichni shu yerga torting" : "Maydonni shu yerga torting"}</span>`;
   });
-  const sub = $("#pv-subtotals", root);
+  const sub = byId("pv-subtotals");
   if (sub) {
     sub.checked = state.subtotals;
     sub.disabled = state.rows.length < 2;
@@ -171,6 +182,7 @@ function renderAll() {
   renderFields();
   renderZones();
   renderLayoutBar();
+  renderSummary();
 }
 
 function place(key, kind, zone, index = -1) {
@@ -181,7 +193,7 @@ function place(key, kind, zone, index = -1) {
       state.values.splice(from, 1);
       if (index > from) index -= 1;
     } else if (state.values.length >= LIMITS.values) {
-      ctx.errMsg(`Qiymatlar: ko‘pi bilan ${LIMITS.values} ta`);
+      err(`Qiymatlar: ko‘pi bilan ${LIMITS.values} ta`);
       return false;
     }
     const at = index < 0 || index > state.values.length ? state.values.length : index;
@@ -191,7 +203,7 @@ function place(key, kind, zone, index = -1) {
   if (!DIM_ZONES.includes(zone)) return false;
   const fromZone = zoneOf(key);
   if (fromZone !== zone && state[zone].length >= LIMITS[zone]) {
-    ctx.errMsg(`${ZONE_NAMES[zone]}: ko‘pi bilan ${LIMITS[zone]} ta maydon`);
+    err(`${ZONE_NAMES[zone]}: ko‘pi bilan ${LIMITS[zone]} ta maydon`);
     return false;
   }
   if (fromZone) {
@@ -216,7 +228,7 @@ function removeField(key, zone) {
 }
 
 function changed({ run = true } = {}) {
-  ctx.errMsg("");
+  err("");
   if (state.rows.length < 2) state.subtotals = false;
   renderAll();
   if (run) scheduleRun();
@@ -240,9 +252,9 @@ export async function run() {
     result = res;
     ctx.onPayments?.(res.payment_options);
     renderResult();
-    ctx.errMsg("");
+    err("");
   } catch (ex) {
-    if (seq === runSeq) ctx.errMsg(ex.message || "Pivot hisoblanmadi");
+    if (seq === runSeq) err(ex.message || "Pivot hisoblanmadi");
   } finally {
     if (seq === runSeq) root?.classList.remove("pv-busy");
   }
@@ -253,8 +265,8 @@ function sortMark(key) {
 }
 
 function renderResult() {
-  const box = $("#pv-result", root);
-  const info = $("#pv-info", root);
+  const box = byId("pv-result");
+  const info = byId("pv-info");
   if (!box || !result) return;
   const dims = result.row_fields;
   const vals = result.values;
@@ -331,13 +343,13 @@ function renderResult() {
 // ---------- qiymat filtri oynasi ----------
 
 async function openPicker(key) {
-  const modal = $("#pv-values-modal", root);
+  const modal = byId("pv-values-modal");
   if (!modal) return;
   picker = { key, values: [], selected: new Set(state.vf[key] || []), all: !(state.vf[key] || []).length };
-  $("#pv-values-title", root).textContent = `${labelOf(key, "dim")}: qiymatlarni tanlash`;
-  $("#pv-values-q", root).value = "";
-  $("#pv-values-list", root).innerHTML = `<p class="muted">Yuklanmoqda…</p>`;
-  $("#pv-values-info", root).textContent = "";
+  byId("pv-values-title").textContent = `${labelOf(key, "dim")}: qiymatlarni tanlash`;
+  byId("pv-values-q").value = "";
+  byId("pv-values-list").innerHTML = `<p class="muted">Yuklanmoqda…</p>`;
+  byId("pv-values-info").textContent = "";
   pickerErr("");
   modal.classList.remove("hidden");
   try {
@@ -354,21 +366,21 @@ async function openPicker(key) {
 }
 
 function pickerErr(text) {
-  const el = $("#pv-values-err", root);
+  const el = byId("pv-values-err");
   if (!el) return;
   el.textContent = text || "";
   el.classList.toggle("hidden", !text);
 }
 
 function pickerVisible() {
-  const q = ($("#pv-values-q", root)?.value || "").trim().toLowerCase();
+  const q = (byId("pv-values-q")?.value || "").trim().toLowerCase();
   return q ? picker.values.filter((v) => v.value.toLowerCase().includes(q)) : picker.values;
 }
 
 function renderPicker() {
   if (!picker) return;
   const list = pickerVisible();
-  $("#pv-values-list", root).innerHTML = list.length
+  byId("pv-values-list").innerHTML = list.length
     ? list
         .map(
           (v) =>
@@ -376,12 +388,12 @@ function renderPicker() {
         )
         .join("")
     : `<p class="muted">Qiymat topilmadi</p>`;
-  $("#pv-values-info", root).textContent = `Tanlangan: ${picker.selected.size} / ${picker.values.length}`;
+  byId("pv-values-info").textContent = `Tanlangan: ${picker.selected.size} / ${picker.values.length}`;
 }
 
 function closePicker() {
   picker = null;
-  $("#pv-values-modal", root)?.classList.add("hidden");
+  byId("pv-values-modal")?.classList.add("hidden");
 }
 
 function applyPicker() {
@@ -403,7 +415,7 @@ function selectedLayout() {
 }
 
 function renderLayoutBar() {
-  const sel = $("#pv-layout", root);
+  const sel = byId("pv-layout");
   if (!sel) return;
   const opt = (value, label) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
   const mine = layouts.filter((l) => l.mine);
@@ -419,12 +431,12 @@ function renderLayoutBar() {
     sel.value = "";
   }
   const lay = selectedLayout();
-  const del = $("#pv-delete", root);
+  const del = byId("pv-delete");
   if (del) del.classList.toggle("hidden", !lay?.can_edit);
-  const save = $("#pv-save", root);
+  const save = byId("pv-save");
   if (save) save.textContent = lay?.can_edit ? "Saqlash" : "Saqlash (yangi)";
-  $("#pv-save-new", root)?.classList.toggle("hidden", !lay);
-  const excel = $("#pv-excel", root);
+  byId("pv-save-new")?.classList.toggle("hidden", !lay);
+  const excel = byId("pv-excel");
   if (excel) excel.classList.toggle("hidden", !ctx.canExport());
 }
 
@@ -437,39 +449,40 @@ function openLayout(value) {
   if (value.startsWith("tpl:")) {
     const tpl = TEMPLATES[Number(value.slice(4))];
     state = cleanState(tpl);
-    $("#pv-name", root).value = tpl.name;
-    $("#pv-shared", root).checked = false;
+    byId("pv-name").value = tpl.name;
+    byId("pv-shared").checked = false;
     changed();
     return;
   }
   const lay = selectedLayout();
   if (!lay) {
     state = blankState();
-    $("#pv-name", root).value = "";
-    $("#pv-shared", root).checked = false;
+    byId("pv-name").value = "";
+    byId("pv-shared").checked = false;
     changed();
+    toggleDrawer(true);
     return;
   }
   state = cleanState(lay.config?.pivot);
-  $("#pv-name", root).value = lay.name;
-  $("#pv-shared", root).checked = Boolean(lay.shared);
+  byId("pv-name").value = lay.name;
+  byId("pv-shared").checked = Boolean(lay.shared);
   changed({ run: false });
   if (lay.config?.global) ctx.applyFilters(lay.config.global);
   else run();
 }
 
 async function saveLayout(asNew) {
-  const nameEl = $("#pv-name", root);
+  const nameEl = byId("pv-name");
   const name = (nameEl?.value || "").trim();
   if (!name) {
-    ctx.errMsg("Hisobotga nom bering");
+    err("Hisobotga nom bering");
     nameEl?.focus();
     return;
   }
   const lay = selectedLayout();
   const payload = {
     name,
-    shared: Boolean($("#pv-shared", root)?.checked),
+    shared: Boolean(byId("pv-shared")?.checked),
     config: { v: 1, pivot: { ...state }, global: ctx.globalState() },
   };
   try {
@@ -482,7 +495,7 @@ async function saveLayout(asNew) {
     renderLayoutBar();
     flash(`«${saved.name}» saqlandi`);
   } catch (ex) {
-    ctx.errMsg(ex.message || "Saqlab bo‘lmadi");
+    err(ex.message || "Saqlab bo‘lmadi");
   }
 }
 
@@ -498,12 +511,12 @@ async function deleteLayout() {
     renderLayoutBar();
     flash("Shablon o‘chirildi");
   } catch (ex) {
-    ctx.errMsg(ex.message || "O‘chirib bo‘lmadi");
+    err(ex.message || "O‘chirib bo‘lmadi");
   }
 }
 
 function flash(text) {
-  const info = $("#pv-info", root);
+  const info = byId("pv-info");
   if (!info) return;
   const prev = info.textContent;
   info.textContent = `✓ ${text}`;
@@ -518,7 +531,7 @@ function flash(text) {
 // ---------- Excel ----------
 
 async function exportExcel(btn) {
-  const title = ($("#pv-name", root)?.value || "").trim() || "Pivot hisobot";
+  const title = (byId("pv-name")?.value || "").trim() || "Pivot hisobot";
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Tayyorlanmoqda…";
@@ -545,7 +558,7 @@ async function exportExcel(btn) {
     a.remove();
     URL.revokeObjectURL(url);
   } catch (ex) {
-    ctx.errMsg(ex.message || "Yuklab bo‘lmadi");
+    err(ex.message || "Yuklab bo‘lmadi");
   } finally {
     btn.disabled = false;
     btn.textContent = label;
@@ -564,60 +577,95 @@ function dropIndex(drop, e) {
   return chips.length;
 }
 
+// ---------- sozlash paneli ----------
+
+function renderSummary() {
+  const box = byId("pv-summary");
+  if (!box || !fields) return;
+  const names = (keys) => keys.map((k) => labelOf(k, "dim")).join(", ");
+  const parts = [];
+  if (state.rows.length) parts.push(`Qatorlar: ${names(state.rows)}`);
+  if (state.cols.length) parts.push(`Ustunlar: ${names(state.cols)}`);
+  parts.push(`Σ ${state.values.map((k) => labelOf(k, "measure")).join(", ")}`);
+  const filtered = usedDims().filter((k) => state.vf[k]?.length);
+  if (filtered.length) parts.push(`Filtr: ${filtered.map((k) => `${labelOf(k, "dim")} (${state.vf[k].length})`).join(", ")}`);
+  box.textContent = parts.join(" · ");
+  box.title = box.textContent;
+}
+
+function toggleDrawer(open) {
+  if (!drawer) return;
+  const show = open ?? drawer.classList.contains("hidden");
+  drawer.classList.toggle("hidden", !show);
+  byId("pv-config-open")?.classList.toggle("on", show);
+  document.body.classList.toggle("pv-drawer-open", show);
+  if (!show) err("");
+}
+
+function onClick(e) {
+  const act = e.target.closest("[data-pv-act]");
+  if (act) {
+    const chip = act.closest(".pv-chip");
+    const key = chip.dataset.pvField;
+    const zone = chip.dataset.pvZone;
+    const i = Number(chip.dataset.pvI);
+    const a = act.dataset.pvAct;
+    if (a === "remove") removeField(key, zone);
+    else if (a === "filter") return openPicker(key);
+    else if (a === "left" && i > 0) [state[zone][i - 1], state[zone][i]] = [state[zone][i], state[zone][i - 1]];
+    else if (a === "right" && i < state[zone].length - 1) [state[zone][i + 1], state[zone][i]] = [state[zone][i], state[zone][i + 1]];
+    else if (a === "move") {
+      const order = ["rows", "cols", "filters"];
+      let next = order[(order.indexOf(zone) + 1) % 3];
+      if (state[next].length >= LIMITS[next]) next = order[(order.indexOf(next) + 1) % 3];
+      if (!place(key, "dim", next)) return;
+    } else return;
+    changed();
+    return;
+  }
+  const chip = e.target.closest(".pv-fields .pv-chip");
+  if (chip) {
+    const key = chip.dataset.pvField;
+    if (chip.dataset.pvKind === "measure") {
+      if (state.values.includes(key)) removeField(key, "values");
+      else if (!place(key, "measure", "values")) return;
+    } else {
+      const z = zoneOf(key);
+      if (z) removeField(key, z);
+      else if (!place(key, "dim", "rows")) return;
+    }
+    changed();
+    return;
+  }
+  const sortTh = e.target.closest("th[data-pv-sort]");
+  if (sortTh) {
+    const key = sortTh.dataset.pvSort;
+    if (state.sort_by === key) state.sort_dir = state.sort_dir === "desc" ? "asc" : "desc";
+    else Object.assign(state, { sort_by: key, sort_dir: "desc" });
+    scheduleRun(0);
+    return;
+  }
+  if (e.target.closest("th[data-pv-sort-dim]")) {
+    state.sort_by = "";
+    scheduleRun(0);
+  }
+}
+
+function onKey(e) {
+  if (e.key !== "Escape") return;
+  if (picker) closePicker();
+  else if (drawer && !drawer.classList.contains("hidden")) toggleDrawer(false);
+}
+
 function bind() {
-  const builder = $("#rep-builder", root);
-  const modal = $("#pv-values-modal", root);
+  const builder = byId("rep-builder");
+  const modal = modalEl;
 
-  builder.addEventListener("click", (e) => {
-    const act = e.target.closest("[data-pv-act]");
-    if (act) {
-      const chip = act.closest(".pv-chip");
-      const key = chip.dataset.pvField;
-      const zone = chip.dataset.pvZone;
-      const i = Number(chip.dataset.pvI);
-      const a = act.dataset.pvAct;
-      if (a === "remove") removeField(key, zone);
-      else if (a === "filter") return openPicker(key);
-      else if (a === "left" && i > 0) [state[zone][i - 1], state[zone][i]] = [state[zone][i], state[zone][i - 1]];
-      else if (a === "right" && i < state[zone].length - 1) [state[zone][i + 1], state[zone][i]] = [state[zone][i], state[zone][i + 1]];
-      else if (a === "move") {
-        const order = ["rows", "cols", "filters"];
-        let next = order[(order.indexOf(zone) + 1) % 3];
-        if (state[next].length >= LIMITS[next]) next = order[(order.indexOf(next) + 1) % 3];
-        if (!place(key, "dim", next)) return;
-      } else return;
-      changed();
-      return;
-    }
-    const chip = e.target.closest(".pv-fields .pv-chip");
-    if (chip) {
-      const key = chip.dataset.pvField;
-      if (chip.dataset.pvKind === "measure") {
-        if (state.values.includes(key)) removeField(key, "values");
-        else if (!place(key, "measure", "values")) return;
-      } else {
-        const z = zoneOf(key);
-        if (z) removeField(key, z);
-        else if (!place(key, "dim", "rows")) return;
-      }
-      changed();
-      return;
-    }
-    const sortTh = e.target.closest("th[data-pv-sort]");
-    if (sortTh) {
-      const key = sortTh.dataset.pvSort;
-      if (state.sort_by === key) state.sort_dir = state.sort_dir === "desc" ? "asc" : "desc";
-      else Object.assign(state, { sort_by: key, sort_dir: "desc" });
-      scheduleRun(0);
-      return;
-    }
-    if (e.target.closest("th[data-pv-sort-dim]")) {
-      state.sort_by = "";
-      scheduleRun(0);
-    }
-  });
+  builder.addEventListener("click", onClick);
+  drawer.addEventListener("click", onClick);
+  document.addEventListener("keydown", onKey);
 
-  builder.addEventListener("dragstart", (e) => {
+  drawer.addEventListener("dragstart", (e) => {
     const chip = e.target.closest?.(".pv-chip");
     if (!chip) return;
     dragging = { key: chip.dataset.pvField, kind: chip.dataset.pvKind, from: chip.dataset.pvZone || "" };
@@ -625,31 +673,31 @@ function bind() {
     e.dataTransfer.setData("text/plain", dragging.key);
     chip.classList.add("dragging");
   });
-  builder.addEventListener("dragend", (e) => {
+  drawer.addEventListener("dragend", (e) => {
     e.target.closest?.(".pv-chip")?.classList.remove("dragging");
-    root?.querySelectorAll(".pv-zone.over").forEach((z) => z.classList.remove("over", "deny"));
+    drawer?.querySelectorAll(".pv-zone.over").forEach((z) => z.classList.remove("over", "deny"));
     dragging = null;
   });
-  builder.addEventListener("dragover", (e) => {
+  drawer.addEventListener("dragover", (e) => {
     if (!dragging) return;
     const zone = e.target.closest(".pv-zone");
     const back = e.target.closest(".pv-fields");
     if (!zone && !back) return;
     const ok = back ? Boolean(dragging.from) : (dragging.kind === "measure") === (zone.dataset.zone === "values");
     if (ok) e.preventDefault();
-    root.querySelectorAll(".pv-zone.over").forEach((z) => z !== zone && z.classList.remove("over", "deny"));
+    drawer.querySelectorAll(".pv-zone.over").forEach((z) => z !== zone && z.classList.remove("over", "deny"));
     if (zone) {
       zone.classList.add("over");
       zone.classList.toggle("deny", !ok);
     }
   });
-  builder.addEventListener("drop", (e) => {
+  drawer.addEventListener("drop", (e) => {
     if (!dragging) return;
     e.preventDefault();
     const zone = e.target.closest(".pv-zone");
     const { key, kind, from } = dragging;
     dragging = null;
-    root.querySelectorAll(".pv-zone.over").forEach((z) => z.classList.remove("over", "deny"));
+    drawer.querySelectorAll(".pv-zone.over").forEach((z) => z.classList.remove("over", "deny"));
     if (!zone) {
       if (from && e.target.closest(".pv-fields")) {
         removeField(key, from);
@@ -662,22 +710,25 @@ function bind() {
   });
 
   builder.addEventListener("change", (e) => {
-    const id = e.target.id;
-    if (id === "pv-layout") openLayout(e.target.value);
-    else if (id === "pv-subtotals") {
-      state.subtotals = e.target.checked;
-      scheduleRun(0);
-    }
+    if (e.target.id === "pv-layout") openLayout(e.target.value);
   });
-  $("#pv-field-q", root)?.addEventListener("input", renderFields);
-  $("#pv-save", root)?.addEventListener("click", () => saveLayout(false));
-  $("#pv-save-new", root)?.addEventListener("click", () => saveLayout(true));
-  $("#pv-delete", root)?.addEventListener("click", deleteLayout);
-  $("#pv-clear", root)?.addEventListener("click", () => {
+  drawer.addEventListener("change", (e) => {
+    if (e.target.id !== "pv-subtotals") return;
+    state.subtotals = e.target.checked;
+    renderSummary();
+    scheduleRun(0);
+  });
+  byId("pv-config-open")?.addEventListener("click", () => toggleDrawer());
+  byId("pv-config-close")?.addEventListener("click", () => toggleDrawer(false));
+  byId("pv-field-q")?.addEventListener("input", renderFields);
+  byId("pv-save")?.addEventListener("click", () => saveLayout(false));
+  byId("pv-save-new")?.addEventListener("click", () => saveLayout(true));
+  byId("pv-delete")?.addEventListener("click", deleteLayout);
+  byId("pv-clear")?.addEventListener("click", () => {
     state = blankState();
     changed();
   });
-  $("#pv-excel", root)?.addEventListener("click", (e) => exportExcel(e.currentTarget));
+  byId("pv-excel")?.addEventListener("click", (e) => exportExcel(e.currentTarget));
 
   modal?.addEventListener("click", (e) => {
     if (e.target === modal || e.target.id === "pv-values-cancel") return closePicker();
@@ -694,18 +745,22 @@ function bind() {
     if (!box || !picker) return;
     const v = box.dataset.pvVal;
     box.checked ? picker.selected.add(v) : picker.selected.delete(v);
-    $("#pv-values-info", root).textContent = `Tanlangan: ${picker.selected.size} / ${picker.values.length}`;
+    byId("pv-values-info").textContent = `Tanlangan: ${picker.selected.size} / ${picker.values.length}`;
   });
-  $("#pv-values-q", root)?.addEventListener("input", renderPicker);
+  byId("pv-values-q")?.addEventListener("input", renderPicker);
   modal?.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closePicker();
-    else if (e.key === "Enter" && e.target.id === "pv-values-q") applyPicker();
+    if (e.key === "Enter" && e.target.id === "pv-values-q") applyPicker();
   });
 }
 
 export function setup(context) {
   ctx = context;
   root = context.root;
+  // .glass (backdrop-filter) ichida position: fixed ekranga emas, panelga bog‘lanib qoladi
+  drawer = byId("pv-drawer");
+  modalEl = byId("pv-values-modal");
+  if (drawer) document.body.appendChild(drawer);
+  if (modalEl) document.body.appendChild(modalEl);
   bind();
 }
 
@@ -717,14 +772,25 @@ export async function activate() {
     if (!current && !usedDims().length) {
       current = "tpl:0";
       state = cleanState(TEMPLATES[0]);
-      $("#pv-name", root).value = TEMPLATES[0].name;
+      byId("pv-name").value = TEMPLATES[0].name;
     }
   }
   renderAll();
 }
 
+export function hide() {
+  if (picker) closePicker();
+  toggleDrawer(false);
+}
+
 export function destroy() {
   clearTimeout(runTimer);
+  document.removeEventListener("keydown", onKey);
+  document.body.classList.remove("pv-drawer-open");
+  drawer?.remove();
+  modalEl?.remove();
+  drawer = null;
+  modalEl = null;
   ctx = null;
   root = null;
   fields = null;
@@ -735,3 +801,4 @@ export function destroy() {
   picker = null;
   ready = false;
 }
+

@@ -76,34 +76,51 @@
   <div class="pv rep-pivot-only" id="rep-builder">
     <div class="pv-bar">
       <select id="pv-layout" title="Namuna yoki saqlangan hisobotni ochish"></select>
-      <input id="pv-name" maxlength="120" placeholder="Hisobot nomi" />
-      <label class="pv-check" title="Tashkilotingizdagi boshqa foydalanuvchilar ham ko‘radi"><input type="checkbox" id="pv-shared" />Ulashish</label>
-      <button class="btn" type="button" id="pv-save">Saqlash</button>
-      <button class="btn" type="button" id="pv-save-new" title="Joriy tuzilmani yangi nom bilan saqlash">Nusxa sifatida</button>
-      <button class="btn danger-text" type="button" id="pv-delete">O‘chirish</button>
-      <span class="pv-spacer"></span>
-      <label class="pv-check"><input type="checkbox" id="pv-subtotals" />Oraliq jami</label>
-      <button class="btn" type="button" id="pv-clear">Tuzilmani tozalash</button>
+      <button class="btn pv-config-btn" type="button" id="pv-config-open" title="Maydonlar, zonalar, saqlash">⚙ Sozlash</button>
+      <span class="pv-summary muted" id="pv-summary"></span>
       <button class="btn primary" type="button" id="pv-excel">Excel’ga yuklash</button>
     </div>
-    <div class="pv-grid">
-      <aside class="pv-fields">
-        <input id="pv-field-q" maxlength="40" placeholder="Maydon qidirish" />
-        <div class="pv-field-list" id="pv-field-list"></div>
-        <p class="pv-hint">Maydonni zonaga sudrang yoki bosing: ma’lumot maydoni qatorlarga, Σ ko‘rsatkich qiymatlarga tushadi.</p>
-      </aside>
-      <div class="pv-main">
+    <div class="pv-info muted" id="pv-info"></div>
+    <div class="pv-result" id="pv-result"></div>
+  </div>
+
+  <aside class="pv-drawer glass hidden" id="pv-drawer" aria-label="Hisobot sozlamasi">
+    <div class="pv-drawer-head">
+      <b>Hisobot sozlamasi</b>
+      <button type="button" class="pv-ic pv-close" id="pv-config-close" title="Yopish (Esc)">×</button>
+    </div>
+    <div class="pv-drawer-body">
+      <section class="pv-sec">
+        <input id="pv-name" maxlength="120" placeholder="Hisobot nomi" />
+        <div class="pv-sec-row">
+          <label class="pv-check" title="Tashkilotingizdagi boshqa foydalanuvchilar ham ko‘radi"><input type="checkbox" id="pv-shared" />Ulashish</label>
+          <span class="pv-spacer"></span>
+          <button class="btn primary" type="button" id="pv-save">Saqlash</button>
+          <button class="btn" type="button" id="pv-save-new" title="Joriy tuzilmani yangi nom bilan saqlash">Nusxa</button>
+          <button class="btn danger-text" type="button" id="pv-delete">O‘chirish</button>
+        </div>
+      </section>
+      <section class="pv-sec">
         <div class="pv-zones">
           <div class="pv-zone" data-zone="filters"><b>Filtrlar</b><div class="pv-drop" data-zone="filters"></div></div>
           <div class="pv-zone" data-zone="cols"><b>Ustunlar</b><div class="pv-drop" data-zone="cols"></div></div>
           <div class="pv-zone" data-zone="rows"><b>Qatorlar</b><div class="pv-drop" data-zone="rows"></div></div>
           <div class="pv-zone" data-zone="values"><b>Qiymatlar (Σ)</b><div class="pv-drop" data-zone="values"></div></div>
         </div>
-        <div class="pv-info muted" id="pv-info"></div>
-        <div class="pv-result" id="pv-result"></div>
-      </div>
+        <div class="pv-sec-row">
+          <label class="pv-check"><input type="checkbox" id="pv-subtotals" />Oraliq jami</label>
+          <span class="pv-spacer"></span>
+          <button class="btn tiny" type="button" id="pv-clear">Tuzilmani tozalash</button>
+        </div>
+      </section>
+      <section class="pv-sec pv-fields">
+        <input id="pv-field-q" maxlength="40" placeholder="Maydon qidirish" />
+        <div class="pv-field-list" id="pv-field-list"></div>
+        <p class="pv-hint">Maydonni yuqoridagi zonaga sudrang yoki bosing: ma’lumot maydoni qatorlarga, Σ ko‘rsatkich qiymatlarga tushadi. Zonadagi maydonni shu ro‘yxatga qaytarib tortsangiz, olib tashlanadi.</p>
+      </section>
+      <p class="error hidden" id="pv-drawer-err"></p>
     </div>
-  </div>
+  </aside>
 
   <div id="pv-values-modal" class="modal-overlay hidden">
     <div class="glass panel modal-card pv-values-card">

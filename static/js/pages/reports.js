@@ -1,6 +1,6 @@
 import { api, apiDownload } from "../api.js";
-import { $, escapeHtml } from "../ui.js?v=73";
-import * as pivot from "./pivot.js?v=73";
+import { $, escapeHtml } from "../ui.js?v=74";
+import * as pivot from "./pivot.js?v=74";
 
 const PAGE = 300;
 const fmtMoney = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
@@ -261,6 +261,7 @@ async function setMode(next) {
   localStorage.setItem("nx_rep_mode", mode);
   $(".rep-page", root)?.classList.toggle("mode-pivot", mode === "pivot");
   root.querySelectorAll("[data-rep-mode]").forEach((b) => b.classList.toggle("on", b.dataset.repMode === mode));
+  if (mode !== "pivot") pivot.hide();
   if (mode === "pivot") {
     try {
       await pivot.activate();
@@ -714,6 +715,10 @@ export async function init(pane) {
 
 export async function show() {
   if (root && data && Date.now() - lastLoaded > 5000) await load({ quiet: true });
+}
+
+export function hide() {
+  pivot.hide();
 }
 
 export async function refresh() {
