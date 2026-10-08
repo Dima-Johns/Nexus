@@ -1,6 +1,6 @@
 import { api, setMe, setToken } from "../api.js";
-import { $ } from "../ui.js?v=75";
-import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=75";
+import { $ } from "../ui.js?v=76";
+import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=76";
 
 const ORG_KEY = "nx_org_code";
 
@@ -18,7 +18,9 @@ export async function init(root) {
     $("#login-remember", root).checked = true;
   }
   if (!remembered) $("#login-user", root).focus();
+  let busy = false;
   const login = async () => {
+    if (busy) return;
     $("#login-error", root).textContent = "";
     const org_code = orgInput.value.trim();
     const username = $("#login-user", root).value.trim();
@@ -28,6 +30,8 @@ export async function init(root) {
       orgInput.focus();
       return;
     }
+    busy = true;
+    $("#login-btn", root).disabled = true;
     try {
       const data = await api("/auth/login", {
         method: "POST",
@@ -42,6 +46,9 @@ export async function init(root) {
       window.dispatchEvent(new PopStateEvent("popstate"));
     } catch (e) {
       $("#login-error", root).textContent = e.message === "unauthorized" ? "Tashkilot kodi, login yoki parol noto‘g‘ri" : e.message;
+    } finally {
+      busy = false;
+      $("#login-btn", root).disabled = false;
     }
   };
   $("#login-btn", root).onclick = login;

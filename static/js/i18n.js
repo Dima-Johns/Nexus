@@ -1,4 +1,4 @@
-import RU from "./i18n-ru.js?v=75";
+import RU from "./i18n-ru.js?v=76";
 
 export const LANGS = [
   { code: "uz", label: "O‘zbekcha", short: "UZ" },

@@ -1,7 +1,7 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
-import { $, $$ } from "./ui.js?v=75";
-import { refreshWorkspace, syncWorkspace } from "./workspace.js?v=75";
-import { renderProfile } from "./profile.js?v=75";
+import { $, $$ } from "./ui.js?v=76";
+import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=76";
+import { renderProfile } from "./profile.js?v=76";
 
 const ROUTES = {
   "/": "dashboard",
@@ -18,6 +18,9 @@ const ROUTES = {
 
 const pageCache = {};
 const panes = {};
+const paneInit = {};
+let paneGen = 0;
+let renderSeq = 0;
 let workspaceReady = false;
 let current = { name: "", destroy: null };
 
@@ -48,8 +51,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=75`),
-    import(`/static/js/pages/${name}.js?v=75`),
+    fetch(`/static/pages/${name}.html?v=76`),
+    import(`/static/js/pages/${name}.js?v=76`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;
@@ -70,32 +73,51 @@ function prefetchPages() {
 }
 
 function clearPanes() {
+  paneGen += 1;
   Object.values(panes).forEach((el) => {
     el._mod?.destroy?.();
     el.remove();
   });
   Object.keys(panes).forEach((k) => delete panes[k]);
+  Object.keys(paneInit).forEach((k) => delete paneInit[k]);
+  $$(".modal-overlay, #profile-menu").forEach((el) => el.classList.add("hidden"));
+  resetWorkspace();
   current = { name: "", destroy: null };
   workspaceReady = false;
 }
 
-async function showPane(name) {
-  const root = $("#page-root");
-  let created = false;
-  if (!panes[name]) {
-    const { html, mod } = await loadPage(name);
-    const pane = document.createElement("div");
-    pane.className = "page-pane";
-    pane.innerHTML = html;
-    root.appendChild(pane);
-    panes[name] = pane;
-    pane._mod = mod;
-    created = true;
-  }
+function togglePanes(name) {
   Object.entries(panes).forEach(([n, el]) => {
     el.classList.toggle("hidden", n !== name);
   });
-  if (created) await panes[name]._mod.init(panes[name]);
+}
+
+function createPane(name, seq) {
+  const gen = paneGen;
+  return loadPage(name).then(async ({ html, mod }) => {
+    if (gen !== paneGen || panes[name]) return;
+    const pane = document.createElement("div");
+    pane.className = "page-pane hidden";
+    pane.innerHTML = html;
+    $("#page-root").appendChild(pane);
+    panes[name] = pane;
+    pane._mod = mod;
+    if (seq === renderSeq) togglePanes(name);
+    await mod.init(pane);
+  });
+}
+
+async function showPane(name, seq) {
+  if (!panes[name] || paneInit[name]) {
+    const pending = paneInit[name] || (paneInit[name] = createPane(name, seq));
+    try {
+      await pending;
+    } finally {
+      if (paneInit[name] === pending) delete paneInit[name];
+    }
+  }
+  if (seq !== renderSeq || !panes[name]) return;
+  togglePanes(name);
   Object.entries(panes).forEach(([n, el]) => {
     if (n === name) el._mod?.show?.();
     else el._mod?.hide?.();
@@ -111,15 +133,18 @@ function applyPerms() {
 }
 
 export async function render() {
+  const seq = ++renderSeq;
   const authed = await ensureAuth();
+  if (seq !== renderSeq) return;
   const name = pathName();
   if (!authed) {
     if (location.pathname !== "/login") history.replaceState({}, "", "/login");
     $("#app-view").classList.add("hidden");
     $("#login-view").classList.remove("hidden");
-    if (Object.keys(panes).length) clearPanes();
+    if (Object.keys(panes).length || Object.keys(paneInit).length) clearPanes();
     if (current.name !== "login") {
       const { html, mod } = await loadPage("login");
+      if (seq !== renderSeq || current.name === "login") return;
       $("#login-view").innerHTML = html;
       current = { name: "login", destroy: mod.destroy || null };
       await mod.init($("#login-view"));
@@ -158,7 +183,7 @@ export async function render() {
   });
   $("#page-root").classList.toggle("page-map", name === "dashboard");
 
-  const panePromise = showPane(name);
+  const panePromise = showPane(name, seq);
   if (!workspaceReady) {
     workspaceReady = true;
     await Promise.all([panePromise, refreshWorkspace().catch(() => {})]);
@@ -166,6 +191,7 @@ export async function render() {
     syncWorkspace();
     await panePromise;
   }
+  if (seq !== renderSeq) return;
   applyPerms();
   prefetchPages();
 }

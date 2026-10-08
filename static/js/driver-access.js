@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { $ } from "./ui.js?v=75";
+import { $ } from "./ui.js?v=76";
 
 let currentId = null;
 let bound = false;
@@ -72,14 +72,23 @@ async function changeAccess(body) {
   }
 }
 
+let openSeq = 0;
+
 export async function openDriverAccess(id, initialPassword = null) {
+  const seq = ++openSeq;
   currentId = id;
   const modal = $("#drv-access-modal");
   if (!modal) return;
   accessErr("");
+  renderAccess({ name: "…", username: "" }, null);
   modal.classList.remove("hidden");
-  const data = await api(`/drivers/${id}/access`);
-  renderAccess(data, initialPassword || data.password || null);
+  try {
+    const data = await api(`/drivers/${id}/access`);
+    if (seq !== openSeq) return;
+    renderAccess(data, initialPassword || data.password || null);
+  } catch (ex) {
+    if (seq === openSeq) accessErr(ex.message || "Ma’lumot yuklanmadi");
+  }
 }
 
 export function bindDriverAccessModal() {

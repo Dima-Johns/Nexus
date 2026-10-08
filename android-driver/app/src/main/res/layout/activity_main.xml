@@ -9,60 +9,95 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Ko‘rinishi static/css/driver.css dagi .intro bilan bir xil: sahifa ochilganda sakrash bo‘lmaydi -->
     <LinearLayout
         android:id="@+id/splash"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/splash_bg"
+        android:clipChildren="false"
         android:gravity="center"
         android:orientation="vertical"
         android:padding="32dp">
 
-        <LinearLayout
-            android:id="@+id/splash_brand"
+        <FrameLayout
+            android:layout_width="300dp"
+            android:layout_height="300dp"
+            android:layout_marginTop="-68dp"
+            android:layout_marginBottom="-38dp"
+            android:clipChildren="false">
+
+            <View
+                android:id="@+id/splash_glow"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/splash_glow" />
+
+            <FrameLayout
+                android:id="@+id/splash_tile"
+                android:layout_width="164dp"
+                android:layout_height="164dp"
+                android:layout_gravity="center"
+                android:background="@drawable/splash_tile"
+                android:elevation="18dp">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/app_name"
+                    android:scaleType="centerCrop"
+                    android:scaleX="1.18"
+                    android:scaleY="1.18"
+                    android:src="@drawable/nexus_logo"
+                    android:translationX="4dp" />
+
+                <View
+                    android:id="@+id/splash_shine"
+                    android:layout_width="62dp"
+                    android:layout_height="240dp"
+                    android:layout_gravity="center_vertical"
+                    android:background="@drawable/splash_shine"
+                    android:rotation="16"
+                    android:translationX="-120dp" />
+            </FrameLayout>
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/splash_word"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
+            android:fontFamily="sans-serif-black"
+            android:letterSpacing="0.42"
+            android:paddingStart="14dp"
+            android:text="NEXUS"
+            android:textColor="#f3f4f6"
+            android:textSize="36sp" />
 
-            <ImageView
-                android:layout_width="88dp"
-                android:layout_height="88dp"
-                android:layout_marginBottom="22dp"
-                android:contentDescription="@string/app_name"
-                android:src="@drawable/ic_brand" />
+        <TextView
+            android:id="@+id/splash_tag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:letterSpacing="0.34"
+            android:paddingStart="4dp"
+            android:text="LOGISTIKA · HAYDOVCHI"
+            android:textColor="#8b93a7"
+            android:textSize="11sp" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-black"
-                android:letterSpacing="0.42"
-                android:paddingStart="14dp"
-                android:shadowColor="#665eead4"
-                android:shadowRadius="18"
-                android:text="NEXUS"
-                android:textColor="#eef2ff"
-                android:textSize="36sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:letterSpacing="0.34"
-                android:paddingStart="4dp"
-                android:text="LOGISTIKA · HAYDOVCHI"
-                android:textColor="#8b93a7"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <ProgressBar
-            style="?android:attr/progressBarStyleHorizontal"
+        <FrameLayout
+            android:id="@+id/splash_line"
             android:layout_width="150dp"
             android:layout_height="3dp"
-            android:layout_marginTop="34dp"
-            android:indeterminate="true"
-            android:indeterminateTint="#5eead4"
-            android:progressBackgroundTint="#22ffffff" />
+            android:layout_marginTop="26dp"
+            android:background="@drawable/splash_track">
+
+            <View
+                android:id="@+id/splash_line_bar"
+                android:layout_width="60dp"
+                android:layout_height="match_parent"
+                android:background="@drawable/splash_line"
+                android:translationX="-60dp" />
+        </FrameLayout>
 
         <TextView
             android:id="@+id/splash_text"

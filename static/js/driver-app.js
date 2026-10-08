@@ -527,8 +527,8 @@ function drawMap() {
     const m = L.marker([o.dropoff_lat, o.dropoff_lng], { icon: stopIcon(n, kind), zIndexOffset: kind === "current" ? 1000 : 0 })
       .addTo(map)
       .bindPopup(
-        `<b>${n} · ${o.code || ""}</b><br>${o.client_name || ""}<br>${o.dropoff_address || ""}` +
-          `<br><button class="popup-go" data-go="${o.id}" type="button">Bu do‘konga borish</button>`
+        `<b>${n} · ${esc(o.code)}</b><br>${esc(o.client_name)}<br>${esc(o.dropoff_address)}` +
+          `<br><button class="popup-go" data-go="${esc(o.id)}" type="button">Bu do‘konga borish</button>`
       );
     markers.push(m);
     latlngs.push([o.dropoff_lat, o.dropoff_lng]);
@@ -630,7 +630,7 @@ function onReysChange(key) {
 }
 
 function esc(v) {
-  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 const START_ICON = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 20 21l-8-4.5L4 21z"/></svg>`;
@@ -1570,6 +1570,7 @@ function logout() {
   localStorage.removeItem(TOKEN_KEY);
   // Token IndexedDB'da ham saqlanadi — tozalanmasa ilova qayta ochilganda shu akkauntga o‘zi kirib ketadi
   ["token", "driver", "route"].forEach((k) => kvSet(k, null).catch(() => {}));
+  gpsClear().catch(() => {});
   if (watchId != null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
@@ -1765,7 +1766,7 @@ async function boot() {
         applyRoute(cachedRoute);
         setSync("Offline kesh", true);
       } else {
-        logout();
+        setSync(navigator.onLine ? err?.message || "Server javob bermadi" : "Offline", true);
       }
     }
   } else {

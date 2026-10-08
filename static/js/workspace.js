@@ -1,5 +1,5 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=75";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=76";
 
 let orders = [];
 let filter = "incoming";
@@ -894,8 +894,26 @@ async function runPlan() {
   }
 }
 
+let epoch = 0;
+
+export function resetWorkspace() {
+  epoch += 1;
+  orders = [];
+  selected = new Set();
+  driversById = {};
+  warehouses = [];
+  expandedDrivers = new Set();
+  applied = defaultFilters();
+  draft = defaultFilters();
+  lastSync = 0;
+  renderList();
+}
+
 export async function refreshWorkspace({ quiet = false } = {}) {
-  orders = await api("/orders");
+  const ep = epoch;
+  const fresh = await api("/orders");
+  if (ep !== epoch) return;
+  orders = fresh;
   const ids = new Set(orders.map((o) => o.id));
   selected = new Set([...selected].filter((id) => ids.has(id)));
   await fillSelects().catch(() => {});

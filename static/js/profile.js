@@ -1,6 +1,6 @@
 import { api, me, setMe } from "./api.js";
-import { LANGS, getLang, setLang } from "./i18n.js?v=75";
-import { loadRemembered, saveRemembered } from "./theme.js?v=75";
+import { LANGS, getLang, setLang } from "./i18n.js?v=76";
+import { loadRemembered, saveRemembered } from "./theme.js?v=76";
 
 const $id = (id) => document.getElementById(id);
 const AVATAR_PX = 256;

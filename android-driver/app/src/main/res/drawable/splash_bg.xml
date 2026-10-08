@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- static/css/driver.css dagi .intro foni bilan bir xil -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <gradient
         android:type="radial"
         android:centerX="0.5"
         android:centerY="0.42"
-        android:gradientRadius="520dp"
-        android:startColor="#0d1424"
-        android:endColor="#07080c" />
+        android:gradientRadius="620dp"
+        android:startColor="#3a3d42"
+        android:centerColor="#1d1f22"
+        android:endColor="#121315" />
 </shape>

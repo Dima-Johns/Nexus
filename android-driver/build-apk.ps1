@@ -87,6 +87,11 @@ cmd /c "`"$sdkmanager`" --sdk_root=$Sdk --licenses < `"$yes`""
 Write-Host "Android SDK paketlari..."
 & $sdkmanager --sdk_root=$Sdk "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
+$logoSrc = Join-Path (Split-Path -Parent $Root) "static\brand\nexus-logo.webp"
+if (Test-Path $logoSrc) {
+    Copy-Item $logoSrc (Join-Path $Project "app\src\main\res\drawable-nodpi\nexus_logo.webp") -Force
+}
+
 Write-Host "APK yigilmoqda..."
 $gradle = Join-Path $GradleHome "bin\gradle.bat"
 Push-Location $Project

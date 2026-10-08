@@ -1,6 +1,6 @@
 import { api, apiDownload } from "../api.js";
-import { $, escapeHtml } from "../ui.js?v=75";
-import * as pivot from "./pivot.js?v=75";
+import { $, escapeHtml } from "../ui.js?v=76";
+import * as pivot from "./pivot.js?v=76";
 
 const PAGE = 300;
 const fmtMoney = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
@@ -490,6 +490,8 @@ function renderTable() {
   box.innerHTML = `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table></div>${more}`;
 }
 
+let loadingMore = false;
+
 async function loadOrders(reset) {
   const offset = reset ? 0 : orders.rows.length;
   const res = await api(`/reports/orders?${params({ limit: PAGE, offset })}`);
@@ -598,9 +600,12 @@ function bind() {
     }
     if (e.target.closest("[data-more]")) {
       if (tab === "orders") {
+        if (loadingMore) return;
+        loadingMore = true;
         loadOrders(false)
           .then(renderTable)
-          .catch((ex) => errMsg(ex.message));
+          .catch((ex) => errMsg(ex.message))
+          .finally(() => (loadingMore = false));
       } else {
         shown += PAGE;
         renderTable();
@@ -728,6 +733,8 @@ export async function refresh() {
 export function destroy() {
   clearTimeout(qTimer);
   pivot.destroy();
+  paymentsSeen.clear();
+  loadingMore = false;
   root = null;
   bound = false;
   data = null;

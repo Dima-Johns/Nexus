@@ -10,8 +10,15 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.animation.Animator
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
+import android.animation.ValueAnimator
 import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.TextView
 import android.webkit.GeolocationPermissions
 import android.webkit.JavascriptInterface
@@ -86,14 +93,7 @@ class MainActivity : AppCompatActivity() {
         web = findViewById(R.id.web)
         splash = findViewById(R.id.splash)
         splashText = findViewById(R.id.splash_text)
-        findViewById<View>(R.id.splash_brand).apply {
-            alpha = 0f
-            scaleX = 0.9f
-            scaleY = 0.9f
-            translationY = 24f
-            animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
-                .setDuration(750).setInterpolator(DecelerateInterpolator(1.8f)).start()
-        }
+        playSplashIntro()
         web.setBackgroundColor(Color.parseColor("#07080c"))
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
@@ -127,7 +127,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView, url: String?) {
                 if (url != null && url.startsWith("http") && url.contains("/driver") && !showingError) {
                     retry.removeCallbacksAndMessages(null)
-                    splash.visibility = View.GONE
+                    hideSplash()
                     web.visibility = View.VISIBLE
                     prefs().edit().putString("last_ok_url", activeUrl).apply()
                 }
@@ -235,6 +235,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var splash: View
     private lateinit var splashText: TextView
+    private val splashLoops = mutableListOf<Animator>()
+    private val SPLASH_EDGE = Color.parseColor("#121315")
+    private val APP_BG = Color.parseColor("#07080c")
     private var activeUrl: String = ""
     private var connecting = false
     private val probes = Executors.newCachedThreadPool()
@@ -364,6 +367,101 @@ class MainActivity : AppCompatActivity() {
     private fun showSplash(text: String) {
         splash.visibility = View.VISIBLE
         splashText.text = text
+        setBarColor(SPLASH_EDGE)
+        startSplashLoops()
+    }
+
+    private fun hideSplash() {
+        splash.visibility = View.GONE
+        stopSplashLoops()
+        setBarColor(APP_BG)
+    }
+
+    private fun setBarColor(color: Int) {
+        window.statusBarColor = color
+        window.navigationBarColor = color
+    }
+
+    private fun dp(v: Float) = v * resources.displayMetrics.density
+
+    /** static/css/driver.css dagi .intro animatsiyasi bilan bir xil vaqtlar. */
+    private fun playSplashIntro() {
+        findViewById<View>(R.id.splash_tile).apply {
+            clipToOutline = true
+            alpha = 0f
+            scaleX = 0.72f
+            scaleY = 0.72f
+            translationY = dp(26f)
+            animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
+                .setDuration(950).setInterpolator(OvershootInterpolator(1.15f)).start()
+        }
+        findViewById<View>(R.id.splash_glow).apply {
+            alpha = 0f
+            animate().alpha(1f).setStartDelay(350).setDuration(800).start()
+        }
+        findViewById<TextView>(R.id.splash_word).apply {
+            alpha = 0f
+            translationY = dp(16f)
+            animate().alpha(1f).translationY(0f).setStartDelay(450).setDuration(700)
+                .setInterpolator(DecelerateInterpolator(1.8f)).start()
+            ObjectAnimator.ofFloat(this, "letterSpacing", 0.8f, 0.42f).apply {
+                startDelay = 450
+                duration = 900
+                interpolator = DecelerateInterpolator(1.8f)
+            }.start()
+        }
+        findViewById<View>(R.id.splash_tag).apply {
+            alpha = 0f
+            animate().alpha(1f).setStartDelay(950).setDuration(700).start()
+        }
+        findViewById<View>(R.id.splash_line).apply {
+            alpha = 0f
+            animate().alpha(1f).setStartDelay(1000).setDuration(400).start()
+        }
+        startSplashLoops()
+    }
+
+    private fun startSplashLoops() {
+        if (splashLoops.isNotEmpty()) return
+        val glow = findViewById<View>(R.id.splash_glow)
+        splashLoops += ObjectAnimator.ofPropertyValuesHolder(
+            glow,
+            PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.12f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.12f),
+        ).apply {
+            duration = 1600
+            startDelay = 1200
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = AccelerateDecelerateInterpolator()
+        }
+        val shine = findViewById<View>(R.id.splash_shine)
+        val from = -dp(120f)
+        val travel = dp(340f)
+        splashLoops += ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 3200
+            startDelay = 900
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = LinearInterpolator()
+            // Har siklning birinchi 38% ida yaltirab o‘tadi, qolganida kutadi
+            addUpdateListener {
+                val f = (it.animatedFraction / 0.38f).coerceAtMost(1f)
+                shine.translationX = from + travel * (f * f * (3 - 2 * f))
+            }
+        }
+        val bar = findViewById<View>(R.id.splash_line_bar)
+        splashLoops += ObjectAnimator.ofFloat(bar, View.TRANSLATION_X, -dp(60f), dp(150f)).apply {
+            duration = 1200
+            startDelay = 1000
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = AccelerateDecelerateInterpolator()
+        }
+        splashLoops.forEach { it.start() }
+    }
+
+    private fun stopSplashLoops() {
+        splashLoops.forEach { it.cancel() }
+        splashLoops.clear()
     }
 
     private fun connect() {
@@ -417,7 +515,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showError() {
         showingError = true
-        splash.visibility = View.GONE
+        hideSplash()
         web.visibility = View.VISIBLE
         web.loadDataWithBaseURL("about:blank", errorHtml(), "text/html", "utf-8", null)
         retry.postDelayed({ connect() }, 5000)
@@ -599,14 +697,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val logoDataUri: String by lazy {
+        try {
+            val bytes = resources.openRawResource(R.drawable.nexus_logo).use { it.readBytes() }
+            "data:image/webp;base64," + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
     private fun errorHtml(): String {
         val urls = serverUrls().joinToString("<br>") { it.removePrefix("http://").removePrefix("https://").removeSuffix("/driver/") }
         val manual = prefs().getString("manual_url", "") ?: ""
         val manualShort = manual.removePrefix("http://").removePrefix("https://").removeSuffix("/driver/")
         return """
             <html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-            <body style="background:#0c101c;color:#e8edf7;font-family:sans-serif;padding:24px;margin:0">
-            <h2 style="margin-top:8px">Server topilmadi</h2>
+            <body style="background:#121315;color:#e8edf7;font-family:sans-serif;padding:24px;margin:0">
+            <div style="display:flex;align-items:center;gap:12px;margin-top:8px"><img src="$logoDataUri" alt="" style="width:44px;height:44px;border-radius:11px;object-fit:cover;box-shadow:0 6px 18px -6px rgba(220,38,38,.55)"><b style="letter-spacing:.3em">NEXUS</b></div>
+            <h2 style="margin-top:18px">Server topilmadi</h2>
             <p>Telefonda <b>internet</b> (mobil internet yoki Wi‑Fi) yoqilganini tekshiring.</p>
             <p style="color:#8b93a7;font-size:13px">Tekshirildi:<br>$urls</p>
             <p style="color:#8b93a7">5 soniyada qayta uriniladi…</p>
@@ -621,6 +729,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        stopSplashLoops()
         retry.removeCallbacksAndMessages(null)
         probes.shutdownNow()
         super.onDestroy()
