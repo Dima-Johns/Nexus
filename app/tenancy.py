@@ -84,4 +84,6 @@ def user_payload(user: User) -> dict:
         "org_code": (org.code or "") if org else "",
         "idle_timeout_minutes": int(user.idle_timeout_minutes or 0),
         "permissions": permissions_of(user),
+        "avatar_url": f"/api/avatars/{user.avatar_key}" if getattr(user, "avatar_key", "") else "",
+        "lang": getattr(user, "lang", "") or "uz",
     }

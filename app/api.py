@@ -2,6 +2,7 @@ import io
 import json
 import os
 import re
+import secrets
 import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -79,6 +80,7 @@ from .models import (
     Organization,
     SessionToken,
     User,
+    UserAvatar,
     Warehouse,
 )
 from .permissions import (
@@ -536,9 +538,76 @@ def update_me(payload: MeUpdate, db: Session = Depends(get_db), user: User = Dep
         row.idle_timeout_minutes = mins
     if payload.org_id is not None and payload.org_id != row.org_id:
         raise HTTPException(403, "Tashkilotni almashtirib bo‘lmaydi")
+    if payload.lang is not None:
+        row.lang = payload.lang
     db.commit()
     row = db.query(User).options(joinedload(User.org)).filter(User.id == user.id).first()
     return user_payload(row)
+
+
+MAX_AVATAR_BYTES = 2 * 1024 * 1024
+
+
+def _image_mime(data: bytes) -> str:
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return ""
+
+
+@router.post("/auth/me/avatar", response_model=UserOut)
+async def upload_avatar(
+    file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    data = await read_upload(file, MAX_AVATAR_BYTES, "Rasm bo‘sh")
+    mime = _image_mime(data)
+    if not mime:
+        raise HTTPException(400, "Faqat JPG, PNG yoki WEBP rasm yuklang")
+    row = db.query(User).options(joinedload(User.org)).filter(User.id == user.id).first()
+    avatar = db.get(UserAvatar, row.id)
+    if avatar is None:
+        avatar = UserAvatar(user_id=row.id)
+        db.add(avatar)
+    avatar.mime = mime
+    avatar.data = data
+    avatar.updated_at = datetime.now(timezone.utc)
+    row.avatar_key = f"{row.id}-{secrets.token_hex(12)}"
+    db.commit()
+    db.refresh(row)
+    return user_payload(row)
+
+
+@router.delete("/auth/me/avatar", response_model=UserOut)
+def delete_avatar(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    row = db.query(User).options(joinedload(User.org)).filter(User.id == user.id).first()
+    avatar = db.get(UserAvatar, row.id)
+    if avatar is not None:
+        db.delete(avatar)
+    row.avatar_key = ""
+    db.commit()
+    db.refresh(row)
+    return user_payload(row)
+
+
+@router.get("/avatars/{key}")
+def get_avatar(key: str, db: Session = Depends(get_db)):
+    if not re.fullmatch(r"\d+-[0-9a-f]{24}", key):
+        raise HTTPException(404, "Rasm topilmadi")
+    owner = db.query(User).filter(User.avatar_key == key).first()
+    avatar = db.get(UserAvatar, owner.id) if owner else None
+    if avatar is None:
+        raise HTTPException(404, "Rasm topilmadi")
+    return Response(
+        content=avatar.data,
+        media_type=avatar.mime,
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post("/auth/driver-login")
@@ -957,6 +1026,7 @@ def delete_user(item_id: int, db: Session = Depends(get_db), admin: User = Depen
         raise HTTPException(400, "Tashkilotdagi oxirgi adminni o‘chirib bo‘lmaydi")
     db.query(SessionToken).filter(SessionToken.user_id == item_id).delete()
     archive_deleted(db, admin, "user", row, f"{row.full_name or row.username} · {row.username}")
+    db.query(UserAvatar).filter(UserAvatar.user_id == item_id).delete()
     db.delete(row)
     db.commit()
     return {"ok": True}

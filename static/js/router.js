@@ -1,6 +1,7 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
-import { $, $$ } from "./ui.js?v=74";
-import { refreshWorkspace, syncWorkspace } from "./workspace.js?v=74";
+import { $, $$ } from "./ui.js?v=75";
+import { refreshWorkspace, syncWorkspace } from "./workspace.js?v=75";
+import { renderProfile } from "./profile.js?v=75";
 
 const ROUTES = {
   "/": "dashboard",
@@ -47,8 +48,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=74`),
-    import(`/static/js/pages/${name}.js?v=74`),
+    fetch(`/static/pages/${name}.html?v=75`),
+    import(`/static/js/pages/${name}.js?v=75`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;
@@ -149,7 +150,7 @@ export async function render() {
 
   $("#login-view").classList.add("hidden");
   $("#app-view").classList.remove("hidden");
-  $("#who").textContent = me.org_name ? `${me.full_name} · ${me.org_name}` : me.full_name;
+  renderProfile();
   applyPerms();
   $$("a.icon-btn[data-link], a.htab[data-link]").forEach((a) => {
     const href = a.getAttribute("href");

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -41,8 +41,20 @@ class User(Base):
     org_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     idle_timeout_minutes: Mapped[int] = mapped_column(Integer, default=30)
     permissions_json: Mapped[str] = mapped_column(Text, default="[]")
+    avatar_key: Mapped[str] = mapped_column(String(32), default="")
+    lang: Mapped[str] = mapped_column(String(8), default="uz")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     org: Mapped[Organization | None] = relationship(back_populates="users")
+
+
+class UserAvatar(Base):
+    """Profil rasmi bazada: Railway’da uploads papkasi deploydan keyin saqlanmasligi mumkin."""
+    __tablename__ = "user_avatars"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mime: Mapped[str] = mapped_column(String(32), default="image/jpeg")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class SessionToken(Base):

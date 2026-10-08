@@ -43,6 +43,8 @@ def migrate_schema() -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id INTEGER",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS idle_timeout_minutes INTEGER DEFAULT 30",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions_json TEXT DEFAULT '[]'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_key VARCHAR(32) DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS lang VARCHAR(8) DEFAULT 'uz'",
         "ALTER TABLE session_tokens ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS org_id INTEGER",
         "ALTER TABLE agents ADD COLUMN IF NOT EXISTS org_id INTEGER",

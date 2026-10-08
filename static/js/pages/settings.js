@@ -1,6 +1,7 @@
 import { api, me, setMe } from "../api.js";
-import { $, formData } from "../ui.js?v=74";
-import { loadRemembered, saveRemembered } from "../theme.js?v=74";
+import { $, formData } from "../ui.js?v=75";
+import { loadRemembered, saveRemembered } from "../theme.js?v=75";
+import { renderProfile } from "../profile.js?v=75";
 
 function loadIdle(root) {
   const sel = $("#idle-mins", root);
@@ -29,9 +30,13 @@ function fillProfile(root) {
   if (name) name.value = me.full_name || "";
 }
 
+let onMeUpdated = null;
+
 export async function init(root) {
   fillProfile(root);
   loadIdle(root);
+  onMeUpdated = () => fillProfile(root);
+  window.addEventListener("nexus:me-updated", onMeUpdated);
   const profileForm = $("#profile-form", root);
   if (profileForm) {
     profileForm.onsubmit = async (e) => {
@@ -62,8 +67,7 @@ export async function init(root) {
         e.target.password2.value = "";
         const remembered = loadRemembered();
         if (remembered) saveRemembered(updated.username, d.password || remembered.password);
-        const who = document.getElementById("who");
-        if (who) who.textContent = updated.org_name ? `${updated.full_name} · ${updated.org_name}` : updated.full_name;
+        renderProfile();
         if (ok) {
           ok.classList.remove("hidden");
           ok.textContent = "Login ma’lumotlari saqlandi";
@@ -88,4 +92,7 @@ export async function init(root) {
   };
 }
 
-export function destroy() {}
+export function destroy() {
+  if (onMeUpdated) window.removeEventListener("nexus:me-updated", onMeUpdated);
+  onMeUpdated = null;
+}

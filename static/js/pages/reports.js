@@ -1,6 +1,6 @@
 import { api, apiDownload } from "../api.js";
-import { $, escapeHtml } from "../ui.js?v=74";
-import * as pivot from "./pivot.js?v=74";
+import { $, escapeHtml } from "../ui.js?v=75";
+import * as pivot from "./pivot.js?v=75";
 
 const PAGE = 300;
 const fmtMoney = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });

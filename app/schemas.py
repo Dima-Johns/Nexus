@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -56,6 +56,8 @@ class UserOut(Schema):
     org_code: str = ""
     idle_timeout_minutes: int = 30
     permissions: list[str] = Field(default_factory=list)
+    avatar_url: str = ""
+    lang: str = "uz"
 
     class Config:
         from_attributes = True
@@ -90,6 +92,7 @@ class MeUpdate(Schema):
     full_name: Name | None = None
     current_password: Password | None = None
     password: Password | None = None
+    lang: Literal["uz", "uz-cyrl", "ru"] | None = None
 
 
 class OrgIn(Schema):
