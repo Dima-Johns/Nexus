@@ -1,3 +1,4 @@
+import mimetypes
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,6 +15,9 @@ from .database import Base, SessionLocal, engine
 from .migrate import migrate_schema
 from .seed import ensure_agents, ensure_default_templates, ensure_driver_logins, ensure_phone_format, seed_if_empty
 from .tracking import start_simulator, stop_simulator
+
+# Railway konteyneridagi mime bazasida .webp yo‘q — logo octet-stream bo‘lib ketadi
+mimetypes.add_type("image/webp", ".webp")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 SPA_ROUTES = {"", "login", "dashboard", "orders", "drivers", "agents", "warehouses", "settings", "admin", "reports"}
