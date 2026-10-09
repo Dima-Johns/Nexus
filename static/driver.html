@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/static/brand/nexus-logo.webp" />
   <link rel="preload" href="/static/brand/nexus-logo.webp" as="image" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=19" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=20" />
 </head>
 <body>
   <div id="intro" class="intro" aria-hidden="true">
@@ -227,9 +227,23 @@
       <div id="pick-list" class="pick-list"></div>
     </div>
   </div>
+  <div id="cam" class="cam hidden" role="dialog" aria-label="Kamera">
+    <video id="cam-video" playsinline muted autoplay></video>
+    <div class="cam-top">
+      <button type="button" class="cam-btn" id="cam-close" aria-label="Yopish">×</button>
+      <b id="cam-title">Rasmga oling</b>
+      <button type="button" class="cam-btn hidden" id="cam-torch" aria-label="Chiroq">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>
+      </button>
+    </div>
+    <div class="cam-bottom">
+      <p id="cam-err" class="cam-err"></p>
+      <button type="button" class="cam-shot" id="cam-shot" aria-label="Rasmga olish" disabled><i></i></button>
+    </div>
+  </div>
   <input type="file" id="proof-file" accept="image/*" capture="environment" hidden />
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/driver-app.js?v=19"></script>
+  <script src="/static/js/driver-app.js?v=20"></script>
 </body>
 </html>

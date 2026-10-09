@@ -27,6 +27,7 @@ from .auth import (
 )
 from .database import get_db
 from .dispatch import (
+    LOCAL_TZ,
     apply_warehouse,
     ensure_drivers_from_orders,
     live_origin,
@@ -154,7 +155,9 @@ from .tracking import (
     ONLINE_TTL,
     _aware,
     driver_active_orders,
+    driver_done_orders,
     ingest_gps,
+    parse_device_time,
     reverse_geocode,
     route_geometry_for,
     search_geocode,
@@ -433,7 +436,7 @@ def _driver_route_payload(db: Session, driver: Driver, rows: list[Order] | None 
     dates.sort()
     return {
         "driver": _driver_out(driver),
-        "orders": [_order_out(o) for o in all_rows],
+        "orders": [_order_out(o) for o in all_rows + driver_done_orders(db, driver)],
         "all_count": len(all_rows),
         "reys": reys,
         "dates": dates,
@@ -832,11 +835,15 @@ async def driver_order_proof(
     result: str = Form(..., max_length=40),
     reason: str = Form("", max_length=40),
     comment: str | None = Form(None, max_length=500),
+    done_at: str = Form("", max_length=40),
     photo: UploadFile = File(...),
     db: Session = Depends(get_db),
     driver: Driver = Depends(get_current_driver),
 ):
-    """Yetkazildi / Qaytarildi — rasm bilan tasdiqlash; qaytarishda izoh majburiy."""
+    """Yetkazildi / Qaytarildi — rasm bilan tasdiqlash; qaytarishda izoh majburiy.
+
+    done_at — telefonda belgilangan vaqt: oflayn navbatdan keyinroq yuborilsa ham haqiqiy vaqt yoziladi.
+    """
     result = (result or "").strip()
     reason = (reason or "").strip()
     # Eski ilova «comment» maydonini umuman yubormaydi — u ishlashda davom etsin
@@ -862,7 +869,8 @@ async def driver_order_proof(
     row.proof_photo = f"/uploads/proofs/{now.strftime('%Y-%m-%d')}/{name}"
     row.proof_reason = reason or result
     row.proof_comment = comment
-    row.proof_at = now
+    marked = parse_device_time(done_at).astimezone(LOCAL_TZ) if done_at else now
+    row.proof_at = marked if now - timedelta(days=3) <= marked <= now + timedelta(minutes=5) else now
     row.status = result
     left = (
         db.query(Order)

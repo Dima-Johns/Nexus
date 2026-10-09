@@ -5,7 +5,13 @@ import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
+import android.media.ExifInterface
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -62,14 +68,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var fileCallback: ValueCallback<Array<Uri>>? = null
-    private var photoUri: Uri? = null
+    private var photoFile: File? = null
     private var pendingPhoto = false
+    private var pendingWebPerm: PermissionRequest? = null
 
+    // Ba'zi kamera ilovalari rasmni saqlasa ham "bekor" qaytaradi — fayl to‘lgan bo‘lsa rasm olingan deb hisoblanadi.
+    // Katta rasm WebView'ga berilishidan oldin shu yerda kichraytiriladi, shuning uchun tasdiq tez ochiladi.
     private val takePicture = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val cb = fileCallback
         fileCallback = null
-        val uri = photoUri
-        cb?.onReceiveValue(if (ok && uri != null) arrayOf(uri) else null)
+        val file = photoFile
+        photoFile = null
+        if (cb == null) return@registerForActivityResult
+        if (file == null || !(ok || file.length() > 0)) {
+            cb.onReceiveValue(null)
+            return@registerForActivityResult
+        }
+        probes.execute {
+            val out = shrinkPhoto(file) ?: file
+            val uri = try {
+                FileProvider.getUriForFile(this, "$packageName.files", out)
+            } catch (_: Exception) {
+                null
+            }
+            runOnUiThread { cb.onReceiveValue(uri?.let { arrayOf(it) }) }
+        }
     }
 
     private val permLauncher = registerForActivityResult(
@@ -83,6 +106,10 @@ class MainActivity : AppCompatActivity() {
         if (pendingPhoto) {
             pendingPhoto = false
             if (camOk) launchCamera() else cancelFileChooser()
+        }
+        pendingWebPerm?.let { req ->
+            pendingWebPerm = null
+            if (camOk) req.grant(req.resources) else req.deny()
         }
     }
 
@@ -142,7 +169,16 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPermissionRequest(request: PermissionRequest) {
-                runOnUiThread { request.grant(request.resources) }
+                runOnUiThread {
+                    val wantsCamera = PermissionRequest.RESOURCE_VIDEO_CAPTURE in request.resources
+                    if (wantsCamera && !hasCamera()) {
+                        pendingWebPerm?.deny()
+                        pendingWebPerm = request
+                        permLauncher.launch(arrayOf(Manifest.permission.CAMERA))
+                    } else {
+                        request.grant(request.resources)
+                    }
+                }
             }
 
             override fun onShowFileChooser(
@@ -194,6 +230,12 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun retry() {
             runOnUiThread { connect() }
+        }
+
+        @JavascriptInterface
+        fun offlineReady(url: String) {
+            if (!url.startsWith("http")) return
+            prefs().edit().putString("sw_url", url.substringBefore('#').substringBefore('?')).apply()
         }
 
         @JavascriptInterface
@@ -469,6 +511,12 @@ class MainActivity : AppCompatActivity() {
         connecting = true
         retry.removeCallbacksAndMessages(null)
         showingError = false
+        val offlineUrl = prefs().getString("sw_url", null)?.takeIf { it.isNotBlank() }
+        if (!hasNetwork() && offlineUrl != null) {
+            connecting = false
+            openOffline(offlineUrl)
+            return
+        }
         showSplash("Serverga ulanmoqda…")
         val urls = serverUrls()
         Thread {
@@ -504,11 +552,62 @@ class MainActivity : AppCompatActivity() {
                     activeUrl = ok
                     web.visibility = View.VISIBLE
                     web.loadUrl(ok)
+                } else if (offlineUrl != null) {
+                    openOffline(offlineUrl)
                 } else {
                     showError()
                 }
             }
         }.start()
+    }
+
+    // Internet yo‘q: sahifa service worker keshidan ochiladi, zayavkalar telefonda saqlangan holda ishlaydi
+    private fun openOffline(url: String) {
+        activeUrl = url
+        web.visibility = View.VISIBLE
+        web.loadUrl(url)
+    }
+
+    private fun hasNetwork(): Boolean {
+        return try {
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    private fun shrinkPhoto(src: File, maxSide: Int = 1600): File? {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(src.path, bounds)
+            val big = maxOf(bounds.outWidth, bounds.outHeight)
+            if (big <= 0) return null
+            var sample = 1
+            while (big / (sample * 2) >= maxSide) sample *= 2
+            val raw = BitmapFactory.decodeFile(src.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+            val rotate = when (ExifInterface(src.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+            val scale = minOf(1f, maxSide.toFloat() / maxOf(raw.width, raw.height))
+            val m = Matrix().apply {
+                postScale(scale, scale)
+                postRotate(rotate)
+            }
+            val bmp = if (scale < 1f || rotate != 0f) Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true) else raw
+            val out = File(src.parentFile, src.nameWithoutExtension + "_s.jpg")
+            out.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+            if (bmp !== raw) bmp.recycle()
+            raw.recycle()
+            src.delete()
+            out
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     private fun loadServer() = connect()
@@ -545,7 +644,7 @@ class MainActivity : AppCompatActivity() {
             dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 86_400_000L }?.forEach { it.delete() }
             val file = File.createTempFile("proof_", ".jpg", dir)
             val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
-            photoUri = uri
+            photoFile = file
             takePicture.launch(uri)
         } catch (_: Exception) {
             cancelFileChooser()

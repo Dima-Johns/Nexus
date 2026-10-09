@@ -13,7 +13,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from .database import SessionLocal
-from .dispatch import local_today
+from .dispatch import LOCAL_TZ, local_today
 from .models import DONE_STATUSES, Driver, GpsPing, Order
 
 _task: asyncio.Task | None = None
@@ -279,6 +279,24 @@ def driver_active_orders(db: Session, driver: Driver, delivery_date: str | None 
     else:
         q = q.filter(or_(Order.delivery_date >= today, Order.delivery_date.is_(None), Order.delivery_date == ""))
     return q.order_by(Order.delivery_date.asc(), Order.stop_no.asc(), Order.id.asc()).all()
+
+
+def driver_done_orders(db: Session, driver: Driver, limit: int = 300) -> list[Order]:
+    """Bugungi va keyingi kunlarning yakunlangan zayavkalari — ilovada yashil/qizil bo‘lib ko‘rinadi."""
+    today = local_today()
+    day_start = datetime.fromisoformat(today).replace(tzinfo=LOCAL_TZ)
+    return (
+        db.query(Order)
+        .options(joinedload(Order.client), joinedload(Order.driver), joinedload(Order.warehouse))
+        .filter(
+            Order.driver_id == driver.id,
+            Order.status.in_(DONE_STATUSES),
+            or_(Order.delivery_date >= today, Order.proof_at >= day_start),
+        )
+        .order_by(Order.proof_at.desc(), Order.id.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 def real_driver_point(driver: Driver) -> tuple[float, float] | None:

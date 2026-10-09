@@ -83,17 +83,82 @@ function nativeCall(name, arg) {
   }
 }
 
+let dbPromise = null;
+
 function openDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("nexus-driver", 1);
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open("nexus-driver", 2);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv");
       if (!db.objectStoreNames.contains("gps")) db.createObjectStore("gps", { autoIncrement: true });
+      if (!db.objectStoreNames.contains("outbox")) db.createObjectStore("outbox", { keyPath: "qid", autoIncrement: true });
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      dbPromise = null;
+      reject(req.error);
+    };
   });
+  return dbPromise;
+}
+
+async function storeTx(store, mode, fn) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, mode);
+    const out = fn(tx.objectStore(store));
+    tx.oncomplete = () => resolve(out?.result);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+// Oflayn navbat: tasdiq (rasm bilan), tartib va «Boshlash» internet chiqqach shu tartibda serverga yuboriladi.
+// outboxMeta — rasmsiz nusxa: ro‘yxat va server javobi ustiga mahalliy o‘zgarishlarni qo‘yish uchun.
+let outboxMeta = [];
+
+function metaOf(item) {
+  const { blob, ...meta } = item;
+  return meta;
+}
+
+async function outboxLoad() {
+  try {
+    const all = (await storeTx("outbox", "readonly", (s) => s.getAll())) || [];
+    outboxMeta = all.map(metaOf);
+  } catch {
+    outboxMeta = [];
+  }
+  return outboxMeta;
+}
+
+async function outboxPut(item) {
+  const qid = await storeTx("outbox", "readwrite", (s) => s.add(item));
+  outboxMeta.push(metaOf({ ...item, qid }));
+  return qid;
+}
+
+async function outboxDel(qid) {
+  await storeTx("outbox", "readwrite", (s) => s.delete(qid));
+  outboxMeta = outboxMeta.filter((x) => x.qid !== qid);
+}
+
+async function outboxClear() {
+  outboxMeta = [];
+  await storeTx("outbox", "readwrite", (s) => s.clear());
+}
+
+function queuedProof(id) {
+  return outboxMeta.find((x) => x.type === "proof" && Number(x.orderId) === Number(id)) || null;
 }
 
 async function kvSet(key, value) {
@@ -157,7 +222,15 @@ async function api(path, opts = {}) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(body);
   }
-  const res = await fetch(API + path, { ...opts, headers, body });
+  const { timeout, ...rest } = opts;
+  const ctrl = timeout ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeout) : null;
+  let res;
+  try {
+    res = await fetch(API + path, { ...rest, headers, body, signal: ctrl?.signal });
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) {
     token = "";
@@ -169,7 +242,9 @@ async function api(path, opts = {}) {
   }
   if (!res.ok) {
     const d = data.detail;
-    throw new Error(typeof d === "string" ? d : "Xatolik");
+    const err = new Error(typeof d === "string" ? d : "Xatolik");
+    err.status = res.status;
+    throw err;
   }
   return data;
 }
@@ -244,8 +319,9 @@ function onLogoutClick() {
     return;
   }
   btn.classList.add("confirm");
-  btn.textContent = "Rostdan chiqasizmi? Yana bosing";
-  outArmed = setTimeout(resetLogoutBtn, 3500);
+  const n = queuedCount();
+  btn.textContent = n ? `${n} ta tasdiq hali yuborilmagan va o‘chadi! Baribir chiqish — yana bosing` : "Rostdan chiqasizmi? Yana bosing";
+  outArmed = setTimeout(resetLogoutBtn, n ? 6000 : 3500);
 }
 
 const INTRO_STARTED = Date.now();
@@ -436,10 +512,12 @@ function visibleOrders() {
   return rows.filter((o) => reysKey(o) === reysFilter);
 }
 
+// Yopilganlar (yetkazilgan/qaytarilgan) yopilgan vaqti bo‘yicha boshida, kutilayotganlar — borish tartibida
 function orderedStops() {
-  return visibleOrders()
-    .slice()
-    .sort((a, b) => Number(a.stop_no || 0) - Number(b.stop_no || 0) || a.id - b.id);
+  const byStop = (a, b) => Number(a.stop_no || 0) - Number(b.stop_no || 0) || a.id - b.id;
+  const rows = visibleOrders();
+  const done = rows.filter(isDone).sort((a, b) => (Date.parse(a.proof_at || "") || 0) - (Date.parse(b.proof_at || "") || 0) || byStop(a, b));
+  return [...done, ...rows.filter((o) => !isDone(o)).sort(byStop)];
 }
 
 function pendingStops() {
@@ -492,12 +570,13 @@ function navigateTo(o) {
 }
 
 function stopIcon(n, kind) {
-  const cls = kind === "current" ? "drv-stop current" : kind === "done" ? "drv-stop done" : "drv-stop";
+  const cls = kind ? `drv-stop ${kind}` : "drv-stop";
   const html = `<div class="${cls}">${n}</div>`;
   return L.divIcon({ className: "drv-pin", html, iconSize: [28, 28], iconAnchor: [14, 14] });
 }
 
 function drawMap() {
+  if (!L) return;
   if (!map) {
     map = L.map("map", { zoomControl: false }).setView([41.3111, 69.2797], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
@@ -523,12 +602,14 @@ function drawMap() {
   orderedStops().forEach((o, i) => {
     if (!gpsOk(o.dropoff_lat, o.dropoff_lng)) return;
     const n = i + 1;
-    const kind = cur && cur.id === o.id ? "current" : o.status === "delivered" ? "done" : "";
+    const kind = cur && cur.id === o.id ? "current" : o.status === "delivered" ? "done" : o.status === "returned" ? "back" : "";
     const m = L.marker([o.dropoff_lat, o.dropoff_lng], { icon: stopIcon(n, kind), zIndexOffset: kind === "current" ? 1000 : 0 })
       .addTo(map)
       .bindPopup(
         `<b>${n} · ${esc(o.code)}</b><br>${esc(o.client_name)}<br>${esc(o.dropoff_address)}` +
-          `<br><button class="popup-go" data-go="${esc(o.id)}" type="button">Bu do‘konga borish</button>`
+          (isDone(o)
+            ? `<br><b style="color:${o.status === "returned" ? "#dc2626" : "#16a34a"}">${o.status === "returned" ? "Qaytarildi" : "Yetkazildi"}</b>`
+            : `<br><button class="popup-go" data-go="${esc(o.id)}" type="button">Bu do‘konga borish</button>`)
       );
     markers.push(m);
     latlngs.push([o.dropoff_lat, o.dropoff_lng]);
@@ -758,16 +839,34 @@ async function saveOrder(ids) {
   drawMap();
   renderList();
   syncStartUi();
+  const body = { ...startFilterBody(), order_ids: full };
+  let queued = false;
+  try {
+    await queueSingle("reorder", body);
+    queued = true;
+  } catch {
+    /* IndexedDB yo‘q — to‘g‘ridan-to‘g‘ri yuboramiz */
+  }
   if (!navigator.onLine) {
-    toast("Offline: tartib telefonda saqlandi", true);
-    return;
+    toast("Offline: tartib telefonda saqlandi, internet chiqqach serverga yoziladi", true);
+    return "queued";
+  }
+  if (queued) {
+    await flushOutbox();
+    if (!outboxMeta.some((x) => x.type === "reorder")) return true;
+    toast("Tartib telefonda saqlandi, serverga keyinroq yoziladi", true);
+    return "queued";
   }
   try {
-    applyRoute(await api("/driver/reorder", { method: "POST", body: { ...startFilterBody(), order_ids: full } }));
+    applyRoute(await api("/driver/reorder", { method: "POST", body }));
     return true;
   } catch (err) {
     toast(err.message || "Tartib serverga yozilmadi", true);
   }
+}
+
+function currentFullOrder() {
+  return orderedStops().map((o) => o.id);
 }
 
 async function replan(firstId) {
@@ -788,16 +887,41 @@ async function replan(firstId) {
   drawMap();
   renderList();
   syncStartUi();
-  if (!navigator.onLine) return;
+  // Oflayn tuzilgan reja ham serverga yetib borsin, aks holda internet chiqqach tartib eski holiga qaytadi
+  const keepLocal = () => queueSingle("reorder", { ...startFilterBody(), order_ids: currentFullOrder() }).catch(() => {});
+  if (!navigator.onLine) {
+    await keepLocal();
+    return;
+  }
   try {
     const data = await api("/driver/replan", {
       method: "POST",
       body: { ...startFilterBody(), first_id: firstId ?? null, lat: me ? me.lat : null, lng: me ? me.lng : null },
+      timeout: 30000,
     });
     applyRoute(data);
   } catch (err) {
-    toast(err.message || "Reja serverga yozilmadi", true);
+    if (err?.status) toast(err.message || "Reja serverga yozilmadi", true);
+    else await keepLocal();
   }
+}
+
+async function markStarted() {
+  if (driver?.status === "on_route" || route.started) return;
+  const body = startFilterBody();
+  if (navigator.onLine) {
+    try {
+      applyRoute(await api("/driver/start", { method: "POST", body, timeout: 30000 }));
+      return;
+    } catch (err) {
+      if (err?.status) {
+        if (err.status !== 400) toast(err.message || "Serverga yozilmadi", true);
+        return;
+      }
+    }
+  }
+  route.started = true;
+  await queueSingle("start", body).catch(() => {});
 }
 
 async function goToStop(o) {
@@ -809,13 +933,7 @@ async function goToStop(o) {
   run.arrived = false;
   run.going = true;
   saveRun();
-  if (navigator.onLine && !(driver?.status === "on_route" || route.started)) {
-    try {
-      applyRoute(await api("/driver/start", { method: "POST", body: startFilterBody() }));
-    } catch {
-      /* oflayn — mahalliy reja bilan davom etamiz */
-    }
-  }
+  await markStarted();
   drawMap();
   renderList();
   syncStartUi();
@@ -926,11 +1044,11 @@ function proofErr(text) {
 }
 
 function openProof(id, result) {
-  if (!navigator.onLine) {
-    toast("Offline: internet chiqqach belgilang", true);
+  const o = allOrders().find((x) => Number(x.id) === Number(id));
+  if (o && isDone(o)) {
+    toast("Bu zayavka allaqachon yopilgan", true);
     return;
   }
-  const o = allOrders().find((x) => Number(x.id) === Number(id));
   if (proof.url) URL.revokeObjectURL(proof.url);
   proof = { id: Number(id), result, reason: "", blob: null, url: "" };
   if ($("proof-comment")) $("proof-comment").value = "";
@@ -941,9 +1059,12 @@ function openProof(id, result) {
   proofErr("");
   proofStep(result === "delivered" ? "reason" : "shoot");
   $("proof-sheet").classList.remove("hidden");
+  // Qaytarishda sabab so‘ralmaydi — kamera darhol ochiladi
+  if (result === "returned") openCamera();
 }
 
 function closeProof() {
+  closeCamera();
   $("proof-sheet")?.classList.add("hidden");
   if (proof.url) URL.revokeObjectURL(proof.url);
   proof = { id: null, result: "", reason: "", blob: null, url: "" };
@@ -954,6 +1075,134 @@ function takeProofPhoto() {
   if (!input) return;
   input.value = "";
   input.click();
+}
+
+// Ilova ichidagi kamera: tizim kamera ilovasiga o‘tilmaydi, shuning uchun Android ilovani xotiradan
+// chiqarib yubormaydi va rasm bir bosishda olinadi. Ishlamasa — tizim kamerasi (input file).
+const cam = { stream: null, starting: null, torch: false, failed: false };
+
+function camSupported() {
+  return !cam.failed && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia;
+}
+
+async function startCamStream() {
+  if (cam.stream?.active) return cam.stream;
+  if (!cam.starting) {
+    cam.starting = navigator.mediaDevices
+      .getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      })
+      .finally(() => {
+        cam.starting = null;
+      });
+  }
+  cam.stream = await cam.starting;
+  return cam.stream;
+}
+
+function stopCamStream() {
+  cam.stream?.getTracks().forEach((t) => t.stop());
+  cam.stream = null;
+  cam.torch = false;
+  $("cam-torch")?.classList.remove("on");
+  const v = $("cam-video");
+  if (v) v.srcObject = null;
+}
+
+function closeCamera() {
+  $("cam")?.classList.add("hidden");
+  stopCamStream();
+}
+
+async function openCamera() {
+  if (!proof.id) return;
+  if (!camSupported()) {
+    takeProofPhoto();
+    return;
+  }
+  const box = $("cam");
+  const shot = $("cam-shot");
+  const v = $("cam-video");
+  $("cam-err").textContent = "";
+  $("cam-title").textContent =
+    proof.result === "returned" ? "Qaytarilgan mahsulotni rasmga oling" : PROOF_REASONS[proof.reason] || "Rasmga oling";
+  box.classList.remove("hidden");
+  box.classList.add("loading");
+  shot.disabled = true;
+  const t0 = Date.now();
+  try {
+    const stream = await startCamStream();
+    if (!proof.id || box.classList.contains("hidden")) {
+      stopCamStream();
+      return;
+    }
+    if (v.srcObject !== stream) v.srcObject = stream;
+    await v.play().catch(() => {});
+    if (!v.videoWidth) {
+      await new Promise((resolve) => {
+        v.addEventListener("loadedmetadata", resolve, { once: true });
+        setTimeout(resolve, 2500);
+      });
+    }
+    if (!v.videoWidth) throw new Error("no frames");
+    box.classList.remove("loading");
+    shot.disabled = false;
+    const caps = stream.getVideoTracks()[0]?.getCapabilities?.() || {};
+    $("cam-torch").classList.toggle("hidden", !caps.torch);
+  } catch {
+    cam.failed = true;
+    box.classList.remove("loading");
+    closeCamera();
+    if (!proof.id) return;
+    proofStep(proof.blob ? "preview" : "shoot");
+    // Fayl tanlash oynasi faqat bosishdan keyin tez ochilsa ruxsat etiladi; kechiksa — tugma ko‘rinib turadi
+    if (Date.now() - t0 < 4000) takeProofPhoto();
+  }
+}
+
+async function toggleTorch() {
+  const track = cam.stream?.getVideoTracks()[0];
+  if (!track) return;
+  cam.torch = !cam.torch;
+  try {
+    await track.applyConstraints({ advanced: [{ torch: cam.torch }] });
+  } catch {
+    cam.torch = false;
+  }
+  $("cam-torch")?.classList.toggle("on", cam.torch);
+}
+
+async function shootCamera() {
+  const v = $("cam-video");
+  const box = $("cam");
+  if (!v?.videoWidth || !proof.id) return;
+  const scale = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(v.videoWidth * scale);
+  canvas.height = Math.round(v.videoHeight * scale);
+  canvas.getContext("2d").drawImage(v, 0, 0, canvas.width, canvas.height);
+  box.classList.remove("flash");
+  void box.offsetWidth;
+  box.classList.add("flash");
+  if (navigator.vibrate) navigator.vibrate(30);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+  if (!blob) {
+    $("cam-err").textContent = "Rasm olinmadi — yana bosing";
+    return;
+  }
+  closeCamera();
+  setProofPhoto(blob);
+}
+
+function setProofPhoto(blob) {
+  if (proof.url) URL.revokeObjectURL(proof.url);
+  proof.blob = blob;
+  proof.url = URL.createObjectURL(blob);
+  $("proof-img").src = proof.url;
+  $("proof-tag").textContent = proof.result === "delivered" ? PROOF_REASONS[proof.reason] || "" : "Qaytarildi";
+  proofStep("preview");
+  if (proof.result === "returned" && !proofComment()) setTimeout(() => $("proof-comment")?.focus(), 150);
 }
 
 function compressImage(file, maxSide = 1600, quality = 0.78) {
@@ -984,14 +1233,7 @@ async function onProofFile() {
   if (!file || !proof.id) return;
   proofErr("");
   try {
-    const blob = await compressImage(file).catch(() => file);
-    if (proof.url) URL.revokeObjectURL(proof.url);
-    proof.blob = blob;
-    proof.url = URL.createObjectURL(blob);
-    $("proof-img").src = proof.url;
-    $("proof-tag").textContent = proof.result === "delivered" ? PROOF_REASONS[proof.reason] || "" : "Qaytarildi";
-    proofStep("preview");
-    if (proof.result === "returned" && !proofComment()) setTimeout(() => $("proof-comment")?.focus(), 150);
+    setProofPhoto(await compressImage(file).catch(() => file));
   } catch (err) {
     proofErr(err.message || "Rasm o‘qilmadi");
   }
@@ -1008,24 +1250,143 @@ async function sendProof() {
   const btn = $("proof-send");
   if (btn) btn.disabled = true;
   proofErr("");
+  const item = {
+    type: "proof",
+    orderId: proof.id,
+    result: proof.result,
+    reason: proof.result === "delivered" ? proof.reason : "",
+    comment,
+    done_at: new Date().toISOString(),
+    blob: proof.blob,
+  };
   try {
-    const form = new FormData();
-    form.append("result", proof.result);
-    form.append("reason", proof.result === "delivered" ? proof.reason : "");
-    form.append("comment", comment);
-    form.append("photo", proof.blob, `proof_${proof.id}.jpg`);
-    const id = proof.id;
-    const result = proof.result;
-    const label = result === "delivered" ? "Yetkazildi" : "Qaytarildi";
-    await api(`/driver/orders/${id}/proof`, { method: "POST", body: form });
-    closeProof();
-    toast(`${label} ✓`, false);
-    await afterStopDone(id, result);
-  } catch (err) {
-    proofErr(err.message || "Yuborilmadi");
-  } finally {
-    syncProofSend();
+    await outboxPut(item);
+  } catch {
+    // IndexedDB ishlamasa — navbatsiz, darhol yuboramiz
+    try {
+      await sendQueued(item);
+    } catch (err) {
+      proofErr(err.message || "Yuborilmadi");
+      syncProofSend();
+      return;
+    }
   }
+  const { orderId: id, result } = item;
+  const label = result === "delivered" ? "Yetkazildi" : "Qaytarildi";
+  closeProof();
+  markDone(id, item);
+  toast(navigator.onLine ? `${label} ✓` : `${label} ✓ — internet chiqqach serverga yuboriladi`, !navigator.onLine);
+  afterStopDone(id, result).catch(() => {});
+  flushOutbox().catch(() => {});
+}
+
+let freshDoneId = null;
+
+function markDone(id, item) {
+  const o = allOrders().find((x) => Number(x.id) === Number(id));
+  if (!o) return;
+  freshDoneId = o.id;
+  o.status = item.result;
+  o.proof_at = item.done_at;
+  o.proof_comment = item.comment || "";
+  o.proof_reason = item.reason || item.result;
+  saveSession();
+}
+
+// Server javobi kelganda ham hali yuborilmagan tasdiq va tartib telefondagidek ko‘rinsin
+function overlayLocal(orders) {
+  const byId = new Map((orders || []).map((o) => [Number(o.id), o]));
+  outboxMeta.forEach((it) => {
+    if (it.type !== "proof") return;
+    const o = byId.get(Number(it.orderId));
+    if (!o) return;
+    o.status = it.result;
+    o.proof_at = it.done_at;
+    o.proof_comment = it.comment || "";
+    o.proof_reason = it.reason || it.result;
+  });
+  const ro = [...outboxMeta].reverse().find((x) => x.type === "reorder");
+  (ro?.body?.order_ids || []).forEach((id, i) => {
+    const o = byId.get(Number(id));
+    if (o) o.stop_no = i + 1;
+  });
+}
+
+function sendQueued(item) {
+  if (item.type === "proof") {
+    const form = new FormData();
+    form.append("result", item.result);
+    form.append("reason", item.reason || "");
+    form.append("comment", item.comment || "");
+    form.append("done_at", item.done_at || "");
+    form.append("photo", item.blob, `proof_${item.orderId}.jpg`);
+    return api(`/driver/orders/${item.orderId}/proof`, { method: "POST", body: form, timeout: 90000 });
+  }
+  if (item.type === "reorder") return api("/driver/reorder", { method: "POST", body: item.body, timeout: 30000 });
+  if (item.type === "start") {
+    return api("/driver/start", { method: "POST", body: item.body, timeout: 30000 }).catch((err) => {
+      if (err.status === 400) return null;
+      throw err;
+    });
+  }
+  return Promise.resolve(null);
+}
+
+// 4xx (401 dan tashqari) — qayta yuborish foyda bermaydi; tarmoq xatosi va 5xx — keyinroq qayta uriniladi
+function permanentFail(err) {
+  return err?.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status);
+}
+
+let flushing = null;
+
+function flushOutbox() {
+  if (flushing) return flushing;
+  flushing = (async () => {
+    let sent = 0;
+    if (!token || !navigator.onLine) return sent;
+    const items = (await storeTx("outbox", "readonly", (s) => s.getAll()).catch(() => [])) || [];
+    for (const item of items) {
+      try {
+        const data = await sendQueued(item);
+        await outboxDel(item.qid);
+        sent += 1;
+        if (item.type !== "proof" && data?.orders) applyRoute(data);
+      } catch (err) {
+        if (err?.status === 401) break;
+        if (permanentFail(err)) {
+          await outboxDel(item.qid).catch(() => {});
+          const o = allOrders().find((x) => Number(x.id) === Number(item.orderId));
+          toast(`Yuborilmadi${o ? ` (${o.client_name || o.code})` : ""}: ${err.message}`, true);
+          continue;
+        }
+        break;
+      }
+    }
+    return sent;
+  })().finally(() => {
+    flushing = null;
+    syncQueueUi();
+  });
+  return flushing;
+}
+
+function queuedCount() {
+  return outboxMeta.filter((x) => x.type === "proof").length;
+}
+
+function syncQueueUi() {
+  const n = queuedCount();
+  if (n) setSync(`${navigator.onLine ? "" : "Offline · "}Yuborilmagan: ${n} ta tasdiq`, true);
+  else if (/yuborilmagan/i.test(syncState.text)) setSync("Hammasi yuborildi", false);
+  if (!drag && !hold) renderList();
+}
+
+async function queueSingle(type, body) {
+  const key = `${body.delivery_date || ""}|${body.route_code || ""}`;
+  for (const it of outboxMeta.filter((x) => x.type === type && x.key === key)) {
+    await outboxDel(it.qid).catch(() => {});
+  }
+  await outboxPut({ type, key, body, at: new Date().toISOString() });
 }
 
 function renderListHead() {
@@ -1034,7 +1395,7 @@ function renderListHead() {
   const pending = pendingStops();
   if (editing) {
     head.innerHTML = `
-      <div class="lh-txt"><b>Tartibni o‘zgartirish</b><span class="muted">Sudrang yoki ↑ ↓ tugmalarini bosing</span></div>
+      <div class="lh-txt"><b>Tartibni o‘zgartirish</b><span class="muted">Ushlab turib suring yoki ↑ ↓ ni bosing</span></div>
       <div class="lh-actions">
         <button class="btn ghost" type="button" data-edit-cancel>Bekor</button>
         <button class="btn primary sm" type="button" data-edit-save>Saqlash</button>
@@ -1110,7 +1471,7 @@ async function saveReorder() {
   // Hali yo‘lga chiqmagan bo‘lsa — yangi tartibdagi birinchi zayavka tavsiya qilinadi
   if (!run.going) run.currentId = null;
   saveRun();
-  if (await saveOrder(ids)) toast("Ketma-ketlik saqlandi", false);
+  if ((await saveOrder(ids)) === true) toast("Ketma-ketlik saqlandi", false);
 }
 
 async function autoReorder() {
@@ -1130,47 +1491,162 @@ function moveEdit(id, delta) {
   renderList();
 }
 
-// Barmoq bilan sudrash: qator barmoq ostidagi joyga ko‘chadi, qo‘yib yuborilganda tartib yoziladi
+// Sudrash: zayavka ustida barmoqni ushlab turing — u barmoq ortidan yuradi, qolganlari silliq joy beradi.
+// Ro‘yxatda ushlab turilsa tahrir rejimi o‘zi ochiladi; tahrirda ⋮⋮ tutqichdan darhol sudrash mumkin.
+const HOLD_MS = 320;
+const HOLD_SLOP = 10;
 let drag = null;
+let hold = null;
+let suppressClick = 0;
 
-function onGripDown(e) {
-  const grip = e.target.closest("[data-grip]");
-  if (!grip || !editing) return;
-  const row = grip.closest(".re-row");
-  e.preventDefault();
-  try {
-    grip.setPointerCapture(e.pointerId);
-  } catch {
-    /* capture bo‘lmasa ham ro‘yxat ustidagi harakatlar yetadi */
-  }
-  drag = { row, grip, id: e.pointerId };
-  row.classList.add("dragging");
+function listContentY(clientY) {
+  const box = $("list");
+  return clientY - box.getBoundingClientRect().top + box.scrollTop;
 }
 
-function onGripMove(e) {
-  if (!drag || e.pointerId !== drag.id) return;
+function cancelHold() {
+  if (!hold) return;
+  clearTimeout(hold.timer);
+  hold.el?.classList.remove("holding");
+  hold = null;
+}
+
+// Tahrirga o‘tishda kartochka qayta chiziladi va touch hodisalari uzilgan elementga keladi —
+// shu element ustida ham sahifa siljishini to‘xtatamiz
+function guardTouch(target) {
+  if (!target?.addEventListener) return;
+  const onMove = (ev) => {
+    if (drag && ev.cancelable) ev.preventDefault();
+  };
+  const off = () => {
+    target.removeEventListener("touchmove", onMove);
+    target.removeEventListener("touchend", off);
+    target.removeEventListener("touchcancel", off);
+  };
+  target.addEventListener("touchmove", onMove, { passive: false });
+  target.addEventListener("touchend", off);
+  target.addEventListener("touchcancel", off);
+}
+
+function onListPointerDown(e) {
+  if (drag || (e.pointerType === "mouse" && e.button !== 0)) return;
+  if (e.target.closest(".re-arrows, [data-edit-auto]")) return;
+  const grip = editing ? e.target.closest("[data-grip]") : null;
+  if (grip) {
+    e.preventDefault();
+    beginDrag(grip.closest(".re-row"), e.pointerId, e.clientY);
+    return;
+  }
+  const el = editing ? e.target.closest(".re-row") : e.target.closest(".card.pending");
+  if (!el || (!editing && pendingStops().length < 2)) return;
+  cancelHold();
+  hold = { el, id: Number(el.dataset.id), pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+  el.classList.add("holding");
+  hold.timer = setTimeout(() => {
+    const h = hold;
+    hold = null;
+    h.el.classList.remove("holding");
+    if (!editing) {
+      startReorder();
+      const row = $("list").querySelector(`.re-row[data-id="${h.id}"]`);
+      if (row) row.scrollIntoView({ block: "nearest" });
+      beginDrag(row, h.pointerId, h.lastY ?? h.y);
+    } else {
+      beginDrag(h.el, h.pointerId, h.lastY ?? h.y);
+    }
+  }, HOLD_MS);
+}
+
+function beginDrag(row, pointerId, clientY) {
+  if (!row || !editing) return;
+  const box = $("list");
+  try {
+    box.setPointerCapture(pointerId);
+  } catch {
+    /* barmoq allaqachon ko‘tarilgan */
+  }
+  drag = {
+    row,
+    pointerId,
+    startY: listContentY(clientY),
+    startTop: row.offsetTop,
+    clientY,
+    raf: 0,
+  };
+  row.classList.add("dragging");
+  box.classList.add("drag-on");
+  navigator.vibrate?.(18);
+  drag.raf = requestAnimationFrame(dragTick);
+}
+
+function flipRows(rows, mutate) {
+  const before = new Map(rows.map((r) => [r, r.offsetTop]));
+  mutate();
+  rows.forEach((r) => {
+    const dy = before.get(r) - r.offsetTop;
+    if (!dy) return;
+    r.style.transition = "none";
+    r.style.transform = `translateY(${dy}px)`;
+    r.getBoundingClientRect();
+    r.style.transition = "transform .18s cubic-bezier(.2,.8,.2,1)";
+    r.style.transform = "";
+  });
+}
+
+function dragLayout() {
+  const box = $("list");
+  const { row } = drag;
+  const offset = listContentY(drag.clientY) - drag.startY;
+  const center = drag.startTop + offset + row.offsetHeight / 2;
+  const others = [...box.querySelectorAll(".re-row")].filter((r) => r !== row);
+  const target = others.find((r) => center < r.offsetTop + r.offsetHeight / 2) || null;
+  const lastRow = others[others.length - 1];
+  const inPlace = target ? row.nextElementSibling === target : lastRow && lastRow.nextElementSibling === row;
+  if (!inPlace && lastRow) {
+    flipRows(others, () => (target ? box.insertBefore(row, target) : lastRow.after(row)));
+  }
+  row.style.transform = `translateY(${drag.startTop + offset - row.offsetTop}px) scale(1.02)`;
+}
+
+function dragTick() {
+  if (!drag) return;
   const box = $("list");
   const rect = box.getBoundingClientRect();
-  if (e.clientY < rect.top + 40) box.scrollTop -= 10;
-  else if (e.clientY > rect.bottom - 40) box.scrollTop += 10;
-  const rows = [...box.querySelectorAll(".re-row")].filter((r) => r !== drag.row);
-  const before = rows.find((r) => {
-    const b = r.getBoundingClientRect();
-    return e.clientY < b.top + b.height / 2;
-  });
-  if (before) {
-    if (drag.row.nextElementSibling !== before) box.insertBefore(drag.row, before);
-  } else {
-    const lastRow = rows[rows.length - 1];
-    if (lastRow && lastRow.nextElementSibling !== drag.row) lastRow.after(drag.row);
-  }
+  const edge = 64;
+  let speed = 0;
+  if (drag.clientY < rect.top + edge) speed = -Math.ceil(((rect.top + edge - drag.clientY) / edge) * 14);
+  else if (drag.clientY > rect.bottom - edge) speed = Math.ceil(((drag.clientY - (rect.bottom - edge)) / edge) * 14);
+  if (speed) box.scrollTop += speed;
+  dragLayout();
+  drag.raf = requestAnimationFrame(dragTick);
 }
 
-function onGripUp(e) {
-  if (!drag || e.pointerId !== drag.id) return;
+function onListPointerMove(e) {
+  if (hold && e.pointerId === hold.pointerId) {
+    hold.lastY = e.clientY;
+    if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > HOLD_SLOP) cancelHold();
+    return;
+  }
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  e.preventDefault();
+  drag.clientY = e.clientY;
+}
+
+function endDrag(e) {
+  if (hold && e.pointerId === hold.pointerId) cancelHold();
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  cancelAnimationFrame(drag.raf);
+  const box = $("list");
+  const rows = [...box.querySelectorAll(".re-row")];
+  editing = rows.map((r) => Number(r.dataset.id));
+  rows.forEach((r) => {
+    r.style.transition = "";
+    r.style.transform = "";
+  });
   drag.row.classList.remove("dragging");
+  box.classList.remove("drag-on");
   drag = null;
-  editing = [...$("list").querySelectorAll(".re-row")].map((r) => Number(r.dataset.id));
+  suppressClick = Date.now();
   renderList();
 }
 
@@ -1187,30 +1663,57 @@ function renderList() {
     return;
   }
   const cur = run.active ? currentStop() : null;
-  box.innerHTML = rows
-    .map((o, i) => {
-      const gps = gpsOk(o.dropoff_lat, o.dropoff_lng);
-      const isCur = cur && cur.id === o.id;
-      return `<article class="card ${isCur ? "current" : ""}" data-id="${o.id}">
-        <div class="top">
-          <span class="stop">${i + 1}</span>
-          <div style="flex:1">
-            <b>${esc(o.code || "")}</b>
-            <div>${esc(o.client_name || "Mijoz")}</div>
+  const queued = new Set(outboxMeta.filter((x) => x.type === "proof").map((x) => Number(x.orderId)));
+  const pendingN = rows.filter((o) => !isDone(o)).length;
+  box.innerHTML =
+    rows
+      .map((o, i) => {
+        const meta = `<div class="muted">${esc(o.dropoff_address || "")}</div>
+          <div class="muted">${[o.route_code, o.delivery_date, o.window_start && o.window_end ? `${o.window_start}–${o.window_end}` : ""].filter(Boolean).map(esc).join(" · ")}</div>`;
+        if (isDone(o)) {
+          const kind = o.status === "delivered" ? "delivered" : o.status === "returned" ? "returned" : "cancelled";
+          const label = { delivered: "Yetkazildi", returned: "Qaytarildi", cancelled: "Bekor qilindi" }[kind];
+          const at = o.proof_at ? new Date(o.proof_at) : null;
+          const time = at && !Number.isNaN(at.getTime()) ? at.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" }) : "";
+          const why = kind === "returned" && o.proof_reason && o.proof_reason !== "returned" ? o.proof_reason : "";
+          const note = [why, o.proof_comment].filter(Boolean).join(" — ");
+          return `<article class="card done ${kind}${o.id === freshDoneId ? " fresh" : ""}" data-id="${o.id}">
+            <div class="top">
+              <span class="stop">${kind === "delivered" ? "✓" : kind === "returned" ? "↩" : "×"}</span>
+              <div style="flex:1;min-width:0">
+                <b>${esc(o.code || "")}</b>
+                <div>${esc(o.client_name || "Mijoz")}</div>
+              </div>
+              <span class="pill st-${kind}">${label}${time ? ` · ${time}` : ""}</span>
+            </div>
+            ${meta}
+            ${note ? `<div class="card-note">${esc(note)}</div>` : ""}
+            ${queued.has(Number(o.id)) ? `<div class="card-queue">Internet chiqqach serverga yuboriladi</div>` : ""}
+          </article>`;
+        }
+        const gps = gpsOk(o.dropoff_lat, o.dropoff_lng);
+        const isCur = cur && cur.id === o.id;
+        return `<article class="card pending ${isCur ? "current" : ""}" data-id="${o.id}">
+          <div class="top">
+            <span class="stop">${i + 1}</span>
+            <div style="flex:1;min-width:0">
+              <b>${esc(o.code || "")}</b>
+              <div>${esc(o.client_name || "Mijoz")}</div>
+            </div>
+            ${isCur ? `<span class="pill live">${run.going ? "Hozirgi" : "Keyingi"}</span>` : ""}
           </div>
-          ${isCur ? `<span class="pill live">${run.going ? "Hozirgi" : "Keyingi"}</span>` : ""}
-        </div>
-        <div class="muted">${esc(o.dropoff_address || "")}</div>
-        <div class="muted">${[o.route_code, o.delivery_date, o.window_start && o.window_end ? `${o.window_start}–${o.window_end}` : ""].filter(Boolean).map(esc).join(" · ")}</div>
-        ${gps ? "" : `<div class="muted">Lokatsiya yo‘q</div>`}
-        <div class="actions">
-          <button class="btn primary" data-nav="${o.id}" type="button" ${gps ? "" : "disabled"}>Borish</button>
-          <button class="btn ok" data-done="${o.id}" type="button">Yetkazildi</button>
-          <button class="btn warn" data-return="${o.id}" type="button">Qaytarildi</button>
-        </div>
-      </article>`;
-    })
-    .join("");
+          ${meta}
+          ${gps ? "" : `<div class="muted">Lokatsiya yo‘q</div>`}
+          <div class="actions">
+            <button class="btn primary" data-nav="${o.id}" type="button" ${gps ? "" : "disabled"}>Borish</button>
+            <button class="btn ok" data-done="${o.id}" type="button">Yetkazildi</button>
+            <button class="btn warn" data-return="${o.id}" type="button">Qaytarildi</button>
+          </div>
+        </article>`;
+      })
+      .join("") +
+    (pendingN > 1 ? `<p class="list-hint muted">Tartibni o‘zgartirish uchun zayavka ustida barmoqni ushlab turing va suring</p>` : "");
+  freshDoneId = null;
 }
 
 function applyRoute(data) {
@@ -1224,6 +1727,7 @@ function applyRoute(data) {
     started: Boolean(data.started || driver?.status === "on_route"),
     downloaded_at: data.downloaded_at || new Date().toISOString(),
   };
+  overlayLocal(route.orders);
   reysFilter = keepReys;
   dateFilter = keepDate;
   renderProfile();
@@ -1235,6 +1739,7 @@ function applyRoute(data) {
   const when = route.downloaded_at ? new Date(route.downloaded_at) : null;
   const label = when && !Number.isNaN(when.getTime()) ? `Yuklandi ${when.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}` : "Kesh";
   setSync(label, !navigator.onLine);
+  if (queuedCount()) syncQueueUi();
 }
 
 async function startRun() {
@@ -1248,17 +1753,7 @@ async function startRun() {
   const btn = $("btn-start");
   if (btn) btn.disabled = true;
   try {
-    if (navigator.onLine && !run.active) {
-      try {
-        const data = await api("/driver/start", {
-          method: "POST",
-          body: startFilterBody(),
-        });
-        applyRoute(data);
-      } catch (err) {
-        toast(err.message || "Serverga yozilmadi", true);
-      }
-    }
+    if (!run.active) await markStarted();
     const target = currentStop() || first;
     if (!run.going) run.arrived = false;
     run.active = true;
@@ -1313,6 +1808,7 @@ async function heartbeat() {
     });
   }
   await flushGps();
+  if (outboxMeta.length) await flushOutbox();
 }
 
 function startHeartbeat() {
@@ -1341,9 +1837,10 @@ async function pullRoute() {
   if (!navigator.onLine) {
     const cached = await kvGet("route");
     if (cached) applyRoute(cached);
-    setSync("Offline kesh", true);
+    setSync(queuedCount() ? `Offline · yuborilmagan: ${queuedCount()} ta` : "Offline kesh", true);
     return;
   }
+  await flushOutbox().catch(() => {});
   const points = await gpsDump();
   const data = await api("/driver/sync", { method: "POST", body: { points } });
   await gpsClear();
@@ -1571,6 +2068,7 @@ function logout() {
   // Token IndexedDB'da ham saqlanadi — tozalanmasa ilova qayta ochilganda shu akkauntga o‘zi kirib ketadi
   ["token", "driver", "route"].forEach((k) => kvSet(k, null).catch(() => {}));
   gpsClear().catch(() => {});
+  outboxClear().catch(() => {});
   if (watchId != null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
@@ -1653,11 +2151,31 @@ function bind() {
     if (e.target.closest("[data-edit-cancel]")) return cancelReorder();
     if (e.target.closest("[data-edit-save]")) saveReorder();
   });
-  $("list").addEventListener("pointerdown", onGripDown);
-  $("list").addEventListener("pointermove", onGripMove);
-  $("list").addEventListener("pointerup", onGripUp);
-  $("list").addEventListener("pointercancel", onGripUp);
-  $("list").addEventListener("click", async (e) => {
+  const list = $("list");
+  list.addEventListener("pointerdown", (e) => {
+    onListPointerDown(e);
+    guardTouch(e.target);
+  });
+  list.addEventListener("pointermove", onListPointerMove);
+  list.addEventListener("pointerup", endDrag);
+  list.addEventListener("pointercancel", endDrag);
+  list.addEventListener("touchmove", (e) => {
+    if (drag && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  list.addEventListener("contextmenu", (e) => {
+    if (hold || drag || e.target.closest(".card, .re-row")) e.preventDefault();
+  });
+  list.addEventListener(
+    "click",
+    (e) => {
+      if (Date.now() - suppressClick < 450) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+    true
+  );
+  list.addEventListener("click", async (e) => {
     if (editing) {
       const mv = e.target.closest("[data-move]");
       if (mv) return moveEdit(mv.closest(".re-row").dataset.id, Number(mv.dataset.move));
@@ -1699,10 +2217,14 @@ function bind() {
     const btn = e.target.closest("[data-reason]");
     if (!btn) return;
     proof.reason = btn.dataset.reason;
-    takeProofPhoto();
+    proofStep("shoot");
+    openCamera();
   });
-  $("proof-camera")?.addEventListener("click", takeProofPhoto);
-  $("proof-retake")?.addEventListener("click", takeProofPhoto);
+  $("proof-camera")?.addEventListener("click", openCamera);
+  $("proof-retake")?.addEventListener("click", openCamera);
+  $("cam-shot")?.addEventListener("click", shootCamera);
+  $("cam-torch")?.addEventListener("click", toggleTorch);
+  $("cam-close")?.addEventListener("click", closeCamera);
   $("proof-send")?.addEventListener("click", sendProof);
   $("proof-comment")?.addEventListener("input", () => {
     proofErr("");
@@ -1719,7 +2241,15 @@ function bind() {
   $("proof-file")?.addEventListener("change", onProofFile);
   window.addEventListener("online", () => {
     setNet();
-    flushGps().then(() => pullRoute()).catch(() => {});
+    flushOutbox()
+      .catch(() => {})
+      .then(() => flushGps())
+      .then(() => pullRoute())
+      .catch(() => {});
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) closeCamera();
+    else if (outboxMeta.length && navigator.onLine) flushOutbox().catch(() => {});
   });
   window.addEventListener("offline", setNet);
   setNet();
@@ -1727,25 +2257,28 @@ function bind() {
 
 async function boot() {
   bind();
+  // Service worker sahifani keshlaydi: Android ilova ham internetsiz ochilib, zayavkalar bilan ishlaydi
   try {
     if ("serviceWorker" in navigator) {
-      if (nativeApp()) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map((r) => r.unregister()));
-      } else {
-        navigator.serviceWorker.register("/driver/sw.js", { scope: "/driver/" }).catch(() => {});
-      }
+      navigator.serviceWorker.register("/driver/sw.js", { scope: "/driver/" }).catch(() => {});
+      navigator.serviceWorker.ready
+        .then(() => {
+          if (typeof window.NexusNative?.offlineReady === "function") window.NexusNative.offlineReady(location.href);
+        })
+        .catch(() => {});
     }
   } catch {
     /* ignore */
   }
-  const saved = localStorage.getItem(TOKEN_KEY) || (await kvGet("token"));
-  const cachedDriver = await kvGet("driver");
-  const cachedRoute = await kvGet("route");
+  const saved = localStorage.getItem(TOKEN_KEY) || (await kvGet("token").catch(() => ""));
+  const cachedDriver = await kvGet("driver").catch(() => null);
+  const cachedRoute = await kvGet("route").catch(() => null);
+  await outboxLoad();
   if (saved) {
     token = saved;
     driver = cachedDriver;
     if (cachedRoute) route = cachedRoute;
+    overlayLocal(route.orders);
     show("view-app");
     hideIntro();
     renderProfile();
@@ -1764,7 +2297,7 @@ async function boot() {
         logout();
       } else if (cachedRoute) {
         applyRoute(cachedRoute);
-        setSync("Offline kesh", true);
+        setSync(queuedCount() ? `Offline · yuborilmagan: ${queuedCount()} ta` : "Offline kesh", true);
       } else {
         setSync(navigator.onLine ? err?.message || "Server javob bermadi" : "Offline", true);
       }
