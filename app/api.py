@@ -75,6 +75,7 @@ from .models import (
     DayPlan,
     DeletedRecord,
     Driver,
+    GpsPing,
     ImportTemplate,
     Order,
     Organization,
@@ -1860,6 +1861,7 @@ def delete_all_drivers(db: Session = Depends(get_db), user: User = Depends(requi
     db.query(Order).filter(Order.org_id == oid).update({Order.driver_id: None})
     if ids:
         db.query(SessionToken).filter(SessionToken.driver_id.in_(ids)).delete(synchronize_session=False)
+        db.query(GpsPing).filter(GpsPing.driver_id.in_(ids)).delete(synchronize_session=False)
     n = db.query(Driver).filter(Driver.org_id == oid).delete(synchronize_session=False)
     db.commit()
     return {"ok": True, "deleted": n}
@@ -1871,6 +1873,7 @@ def delete_driver(item_id: int, db: Session = Depends(get_db), user: User = Depe
     archive_deleted(db, user, "driver", row, _driver_title(row), {"agent_name": row.agent.name if row.agent else ""})
     db.query(Order).filter(Order.org_id == org_id_of(user), Order.driver_id == item_id).update({Order.driver_id: None})
     db.query(SessionToken).filter(SessionToken.driver_id == item_id).delete(synchronize_session=False)
+    db.query(GpsPing).filter(GpsPing.driver_id == item_id).delete(synchronize_session=False)
     db.delete(row)
     db.commit()
     return {"ok": True}
