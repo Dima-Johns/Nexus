@@ -1,6 +1,6 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=78";
-import { proofThumb } from "./proof-photo.js?v=78";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=79";
+import { proofThumb } from "./proof-photo.js?v=79";
 
 let orders = [];
 let filter = "incoming";
@@ -827,7 +827,13 @@ async function openPlan() {
   }
   fillHourSelect($("#plan-from"), "09:00");
   fillHourSelect($("#plan-to"), "18:00");
-  const drivers = await api("/drivers");
+  let drivers;
+  try {
+    drivers = await api("/drivers");
+  } catch (ex) {
+    showWsError(ex.message || "Haydovchilar yuklanmadi");
+    return;
+  }
   const box = $("#plan-drivers");
   if (box) {
     box.innerHTML = drivers
@@ -891,7 +897,17 @@ async function runPlan() {
   }
 }
 
+function showWsError(text) {
+  const msg = $("#import-msg");
+  if (!msg) return;
+  msg.classList.remove("hidden");
+  msg.classList.add("error");
+  msg.textContent = text;
+}
+
 let epoch = 0;
+// Kechikib kelgan eski /orders javobi yangisining ustiga yozilmasin
+let refreshSeq = 0;
 
 export function resetWorkspace() {
   epoch += 1;
@@ -908,8 +924,9 @@ export function resetWorkspace() {
 
 export async function refreshWorkspace({ quiet = false } = {}) {
   const ep = epoch;
+  const seq = ++refreshSeq;
   const fresh = await api("/orders");
-  if (ep !== epoch) return;
+  if (ep !== epoch || seq !== refreshSeq) return;
   orders = fresh;
   const ids = new Set(orders.map((o) => o.id));
   selected = new Set([...selected].filter((id) => ids.has(id)));
@@ -1100,9 +1117,14 @@ export function bindWorkspace() {
     }
     const ok = await askConfirm(`${ids.length} ta zayavka Kiruvchiga qaytarilsinmi? Haydovchi olib tashlanadi.`);
     if (!ok) return;
-    await api("/orders/bulk-status", { method: "POST", body: { ids, status: "new" } });
+    try {
+      await api("/orders/bulk-status", { method: "POST", body: { ids, status: "new" } });
+    } catch (ex) {
+      showWsError(ex.message || "Kiruvchiga qaytarilmadi");
+      return;
+    }
     selected.clear();
-    await refreshWorkspace();
+    await refreshWorkspace().catch(() => {});
   };
   const reassignSelected = async (driverIdOverride = null, driverLabel = "") => {
     if (filter !== "active") return;
@@ -1257,9 +1279,14 @@ export function bindWorkspace() {
       danger: true,
     });
     if (!ok) return;
-    await api("/orders/bulk-delete", { method: "POST", body: { ids } });
+    try {
+      await api("/orders/bulk-delete", { method: "POST", body: { ids } });
+    } catch (ex) {
+      showWsError(ex.message || "O‘chirilmadi");
+      return;
+    }
     selected.clear();
-    await refreshWorkspace();
+    await refreshWorkspace().catch(() => {});
   };
   $("#btn-create").onclick = () => {
     $("#order-form").classList.toggle("hidden");
@@ -1392,10 +1419,16 @@ export function bindWorkspace() {
     d.client_id = d.client_id ? Number(d.client_id) : null;
     d.driver_id = d.driver_id ? Number(d.driver_id) : null;
     d.weight_kg = Number(d.weight_kg || 0);
-    await api("/orders", { method: "POST", body: d });
+    try {
+      await api("/orders", { method: "POST", body: d });
+    } catch (ex) {
+      showWsError(ex.message || "Zayavka saqlanmadi");
+      return;
+    }
     e.target.reset();
     $("#order-form").classList.add("hidden");
-    await refreshWorkspace();
+    $("#import-msg")?.classList.add("hidden");
+    await refreshWorkspace().catch(() => {});
   };
   fillSelects().catch(() => {});
 }

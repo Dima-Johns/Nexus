@@ -1,5 +1,5 @@
 import { can, token } from "./api.js";
-import { escapeHtml } from "./ui.js?v=78";
+import { escapeHtml } from "./ui.js?v=79";
 
 // Rasm endpointi token talab qiladi: <img src> sarlavha yubora olmaydi, shuning uchun fetch + blob URL
 const cache = new Map();

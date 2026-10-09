@@ -1,6 +1,6 @@
 import { api, can } from "../api.js";
-import { escapeHtml } from "../ui.js?v=78";
-import * as wsModule from "../workspace.js?v=78";
+import { escapeHtml } from "../ui.js?v=79";
+import * as wsModule from "../workspace.js?v=79";
 
 // Har doim bindWorkspace() chaqirilgan (zayavkalar yuklangan) nusxadan o'qiymiz.
 function ws() {
@@ -594,7 +594,8 @@ export async function init(root) {
     redrawMap(true);
   }, 40);
   await refreshVehicles().catch(() => {});
-  startTimer();
+  // init tugaguncha boshqa sahifaga o‘tilgan bo‘lsa, yashirin xarita so‘rov yubormasin
+  if (paneVisible) startTimer();
   onSelect = (e) => focusStore(e.detail);
   onChanged = (e) => redrawMap(true, Boolean(e.detail?.quiet));
   onResize = () => map && map.invalidateSize();
@@ -621,6 +622,8 @@ export async function init(root) {
   });
 }
 
+let paneVisible = true;
+
 function startTimer() {
   if (timer) return;
   timer = setInterval(() => refreshVehicles().catch(() => {}), 15000);
@@ -633,6 +636,7 @@ function resizeMap() {
 }
 
 export function hide() {
+  paneVisible = false;
   if (timer) {
     clearInterval(timer);
     timer = null;
@@ -644,6 +648,7 @@ export function refresh() {
 }
 
 export function show() {
+  paneVisible = true;
   if (!map) return;
   refresh();
   startTimer();

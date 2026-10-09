@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=78";
-import { mountOfficePicker } from "../office-picker.js?v=78";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=78";
+import { openDriverAccess } from "../driver-access.js?v=79";
+import { mountOfficePicker } from "../office-picker.js?v=79";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=79";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -1282,8 +1282,8 @@ export async function init(root) {
   }
 
   $("#drv-excel", root).onclick = async () => {
-    const id = await driverTplId();
     try {
+      const id = await driverTplId();
       if (id) await apiDownload(`/templates/${id}/excel`, "Haydovchilar_shablon.xlsx");
       else await apiDownload("/templates/excel?entity=drivers", "Haydovchilar_shablon.xlsx");
     } catch (ex) {
@@ -1385,11 +1385,16 @@ export async function init(root) {
       status: "approved",
     };
     const id = $("#tpl-id", root).value;
-    if (id) await api(`/templates/${id}`, { method: "PUT", body: payload });
-    else await api("/templates", { method: "POST", body: payload });
+    try {
+      if (id) await api(`/templates/${id}`, { method: "PUT", body: payload });
+      else await api("/templates", { method: "POST", body: payload });
+    } catch (ex) {
+      $("#sample-msg", root).textContent = ex.message || "Shablon saqlanmadi";
+      return;
+    }
     $("#sample-msg", root).textContent = "Shablon saqlandi.";
     $("#tpl-id", root).value = "";
-    await loadList(root);
+    await loadList(root).catch(() => {});
   };
 
   root.addEventListener("change", async (e) => {
@@ -1471,8 +1476,18 @@ export async function init(root) {
     const drvDel = e.target.dataset?.drvDel;
     if (drvDel) {
       if (!(await askConfirm("Haydovchini o‘chirasizmi?", { title: "O‘chirish", ok: "O‘chirish", danger: true }))) return;
-      await api(`/drivers/${drvDel}`, { method: "DELETE" });
-      await loadDrivers(root);
+      try {
+        await api(`/drivers/${drvDel}`, { method: "DELETE" });
+      } catch (ex) {
+        const err = $("#admin-drv-err", root);
+        if (err) {
+          err.classList.remove("hidden");
+          err.style.color = "";
+          err.textContent = ex.message;
+        }
+        return;
+      }
+      await loadDrivers(root).catch(() => {});
       loadTrash(root).catch(() => {});
       return;
     }
@@ -1488,36 +1503,46 @@ export async function init(root) {
     const editId = e.target.dataset?.edit;
     const approveId = e.target.dataset?.approve;
     const rejectId = e.target.dataset?.reject;
-    if (editId) {
-      const tpls = await api("/templates");
-      const tpl = tpls.find((t) => String(t.id) === String(editId));
-      if (!tpl) return;
-      $("#tpl-entity", root).value = tpl.entity || "orders";
-      await loadFields(tpl.entity || "orders");
-      currentHeaders = Object.values(tpl.mapping || {});
-      const unique = [...new Set(currentHeaders.filter(Boolean))];
-      if (inspectData?.sheets) {
-        const sheet = inspectData.sheets.find((s) => s.name === tpl.sheet) || inspectData.sheets[0];
-        currentHeaders = sheet?.headers || unique;
-        $("#tpl-sheet", root).innerHTML = inspectData.sheets
-          .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
-          .join("");
-      } else {
-        currentHeaders = unique;
-        $("#tpl-sheet", root).innerHTML = `<option value="${escapeHtml(tpl.sheet || "Sheet1")}">${escapeHtml(tpl.sheet || "Sheet1")}</option>`;
+    if (editId || approveId || rejectId) {
+      try {
+        await templateAction(root, editId, approveId, rejectId);
+      } catch (ex) {
+        $("#sample-msg", root).textContent = ex.message;
       }
-      fillForm(root, tpl);
-      $("#tpl-form", root).scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    if (approveId) {
-      await api(`/templates/${approveId}/approve`, { method: "POST", body: { note: "Tasdiqlandi" } });
-      await loadList(root);
-    }
-    if (rejectId) {
-      await api(`/templates/${rejectId}/reject`, { method: "POST", body: { note: "Rad etildi" } });
-      await loadList(root);
     }
   });
+}
+
+async function templateAction(root, editId, approveId, rejectId) {
+  if (editId) {
+    const tpls = await api("/templates");
+    const tpl = tpls.find((t) => String(t.id) === String(editId));
+    if (!tpl) return;
+    $("#tpl-entity", root).value = tpl.entity || "orders";
+    await loadFields(tpl.entity || "orders");
+    currentHeaders = Object.values(tpl.mapping || {});
+    const unique = [...new Set(currentHeaders.filter(Boolean))];
+    if (inspectData?.sheets) {
+      const sheet = inspectData.sheets.find((s) => s.name === tpl.sheet) || inspectData.sheets[0];
+      currentHeaders = sheet?.headers || unique;
+      $("#tpl-sheet", root).innerHTML = inspectData.sheets
+        .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
+        .join("");
+    } else {
+      currentHeaders = unique;
+      $("#tpl-sheet", root).innerHTML = `<option value="${escapeHtml(tpl.sheet || "Sheet1")}">${escapeHtml(tpl.sheet || "Sheet1")}</option>`;
+    }
+    fillForm(root, tpl);
+    $("#tpl-form", root).scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  if (approveId) {
+    await api(`/templates/${approveId}/approve`, { method: "POST", body: { note: "Tasdiqlandi" } });
+    await loadList(root);
+  }
+  if (rejectId) {
+    await api(`/templates/${rejectId}/reject`, { method: "POST", body: { note: "Rad etildi" } });
+    await loadList(root);
+  }
 }
 
 export async function show() {

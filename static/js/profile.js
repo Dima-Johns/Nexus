@@ -1,7 +1,7 @@
 import { api, me, setMe } from "./api.js";
-import { LANGS, getLang } from "./i18n.js?v=78";
-import { chooseLang, mountLangPicker, syncServerLang } from "./lang-picker.js?v=78";
-import { loadRemembered, saveRemembered } from "./theme.js?v=78";
+import { LANGS, getLang } from "./i18n.js?v=79";
+import { chooseLang, mountLangPicker, syncServerLang } from "./lang-picker.js?v=79";
+import { loadRemembered, saveRemembered } from "./theme.js?v=79";
 
 const $id = (id) => document.getElementById(id);
 const AVATAR_PX = 256;
@@ -205,7 +205,7 @@ async function saveProfile(e) {
     const updated = await api("/auth/me", { method: "PUT", body });
     setMe(updated);
     const remembered = loadRemembered();
-    if (remembered) saveRemembered(updated.username, password || remembered.password);
+    if (remembered) saveRemembered(updated.username, password);
     fillForm();
     renderProfile();
     window.dispatchEvent(new CustomEvent("nexus:me-updated"));

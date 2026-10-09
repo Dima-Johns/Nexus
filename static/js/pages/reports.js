@@ -1,7 +1,7 @@
 import { api, apiDownload } from "../api.js";
-import { $, escapeHtml } from "../ui.js?v=78";
-import * as pivot from "./pivot.js?v=78";
-import { proofThumb } from "../proof-photo.js?v=78";
+import { $, escapeHtml } from "../ui.js?v=79";
+import * as pivot from "./pivot.js?v=79";
+import { proofThumb } from "../proof-photo.js?v=79";
 
 const PAGE = 300;
 const fmtMoney = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
@@ -490,9 +490,15 @@ function renderTable() {
 
 let loadingMore = false;
 
+// Filtr o‘zgargach eski filtrdagi «Yana yuklash» javobi yangi ro‘yxatga qo‘shilmasin
+let ordersSeq = 0;
+
 async function loadOrders(reset) {
+  if (reset) ordersSeq += 1;
+  const seq = ordersSeq;
   const offset = reset ? 0 : orders.rows.length;
   const res = await api(`/reports/orders?${params({ limit: PAGE, offset })}`);
+  if (seq !== ordersSeq) return;
   orders = { rows: reset ? res.rows : orders.rows.concat(res.rows), total: res.total };
 }
 

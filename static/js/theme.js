@@ -46,14 +46,33 @@ export function loadRemembered() {
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (!data?.username) return null;
-    return { username: String(data.username), password: String(data.password || "") };
+    // Eski versiyalar parolni ochiq saqlagan — darhol o‘chiriladi
+    if ("password" in data) localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username: data.username }));
+    return { username: String(data.username) };
   } catch {
     return null;
   }
 }
 
+/** Parol localStorage’ga yozilmaydi: u brauzerning parol menejeriga topshiriladi. */
 export function saveRemembered(username, password) {
-  localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username, password }));
+  localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username }));
+  if (!password || !window.PasswordCredential || !navigator.credentials?.store) return;
+  try {
+    navigator.credentials.store(new window.PasswordCredential({ id: username, password, name: username })).catch(() => {});
+  } catch {
+    /* brauzer qo‘llamaydi */
+  }
+}
+
+export async function loadSavedPassword(username) {
+  if (!window.PasswordCredential || !navigator.credentials?.get) return "";
+  try {
+    const cred = await navigator.credentials.get({ password: true, mediation: "silent" });
+    return cred && cred.id === username ? cred.password || "" : "";
+  } catch {
+    return "";
+  }
 }
 
 export function clearRemembered() {

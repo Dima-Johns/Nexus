@@ -1,7 +1,7 @@
 import { api, me, setMe } from "../api.js";
-import { $, formData } from "../ui.js?v=78";
-import { loadRemembered, saveRemembered } from "../theme.js?v=78";
-import { renderProfile } from "../profile.js?v=78";
+import { $, formData } from "../ui.js?v=79";
+import { loadRemembered, saveRemembered } from "../theme.js?v=79";
+import { renderProfile } from "../profile.js?v=79";
 
 function loadIdle(root) {
   const sel = $("#idle-mins", root);
@@ -66,7 +66,7 @@ export async function init(root) {
         e.target.password.value = "";
         e.target.password2.value = "";
         const remembered = loadRemembered();
-        if (remembered) saveRemembered(updated.username, d.password || remembered.password);
+        if (remembered) saveRemembered(updated.username, d.password);
         renderProfile();
         if (ok) {
           ok.classList.remove("hidden");

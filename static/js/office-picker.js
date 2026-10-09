@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { escapeHtml } from "./ui.js?v=78";
+import { escapeHtml } from "./ui.js?v=79";
 
 const L = window.L;
 const CITY_CENTER = [41.3111, 69.2797];

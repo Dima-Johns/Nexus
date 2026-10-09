@@ -1,8 +1,8 @@
-const CACHE = "nexus-driver-v22";
+const CACHE = "nexus-driver-v23";
 const SHELL = [
   "/driver/",
   "/static/css/driver.css?v=20",
-  "/static/js/driver-app.js?v=21",
+  "/static/js/driver-app.js?v=22",
   "/static/driver-manifest.json",
   "/static/brand/nexus-logo.webp",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
@@ -52,20 +52,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   const isApi = url.pathname.startsWith("/api/");
   const isTile = url.hostname.includes("tile.openstreetmap.org");
-  if (isApi) {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          if (res.ok && url.pathname.includes("/driver/")) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => caches.match(req))
-    );
-    return;
-  }
+  // API javoblari keshlanmaydi: umumiy telefonda oldingi haydovchi ma’lumoti qolmasin (marshrut IndexedDB’da)
+  if (isApi) return;
   if (isTile) {
     event.respondWith(
       caches.match(req).then((hit) => {

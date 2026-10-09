@@ -1,6 +1,6 @@
 import { api, apiDownload, apiUpload, can } from "../api.js";
-import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=78";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=78";
+import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=79";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=79";
 
 const REFRESH_MS = 60000;
 
@@ -79,7 +79,9 @@ async function load(root) {
     const [drivers, agents] = await Promise.all([api("/drivers"), api("/agents")]);
     const agentSel = $("#driver-agent", root);
     if (agentSel) {
-      agentSel.innerHTML = agentOptions(agents, "");
+      // Yarim to‘ldirilgan formadagi tanlov yangilanishda tushib qolmasin
+      const keep = agentSel.value;
+      agentSel.innerHTML = agentOptions(agents, keep);
     }
     const manage = can("drivers.manage");
     const access = can("drivers.access");

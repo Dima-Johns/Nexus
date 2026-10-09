@@ -71,6 +71,19 @@ export function bindPhoneInputs(root = document) {
 
 let confirmBusy = null;
 
+// Esc eng ustdagi oynani o‘zining «Yopish/Bekor qilish» tugmasi orqali yopadi (tozalash mantig‘i ham ishlaydi)
+const ESC_SELF_HANDLED = new Set(["profile-modal", "pv-values-modal"]);
+const ESC_CLOSE_BTN = '[id$="-close"], [id$="-cancel"], [data-usr-close], [data-cl-close], [data-office-close]';
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || document.querySelector(".proof-lightbox")) return;
+  const open = [...document.querySelectorAll(".modal-overlay:not(.hidden)")].filter((el) => el.getClientRects().length);
+  const top = open.find((el) => el.id === "app-confirm") || open[open.length - 1];
+  if (!top || ESC_SELF_HANDLED.has(top.id)) return;
+  const btn = top.querySelector(ESC_CLOSE_BTN);
+  if (btn) btn.click();
+  else top.classList.add("hidden");
+});
+
 export function askConfirm(text, opts = {}) {
   const overlay = document.getElementById("app-confirm");
   const titleEl = document.getElementById("app-confirm-title");
