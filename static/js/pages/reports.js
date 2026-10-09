@@ -1,6 +1,7 @@
 import { api, apiDownload } from "../api.js";
-import { $, escapeHtml } from "../ui.js?v=76";
-import * as pivot from "./pivot.js?v=76";
+import { $, escapeHtml } from "../ui.js?v=77";
+import * as pivot from "./pivot.js?v=77";
+import { proofThumb } from "../proof-photo.js?v=77";
 
 const PAGE = 300;
 const fmtMoney = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
@@ -56,10 +57,7 @@ const clientCell = (r) => {
   return `<b>${escapeHtml(name)}</b>${addr}`;
 };
 
-const photoCell = (r) =>
-  r.photo
-    ? `<a class="proof-thumb" href="${escapeHtml(r.photo)}" target="_blank" rel="noopener" title="Rasmni ochish"><img src="${escapeHtml(r.photo)}" alt="" loading="lazy" /></a>`
-    : "";
+const photoCell = (r) => proofThumb(r.photo);
 
 const TABS = {
   clients: {

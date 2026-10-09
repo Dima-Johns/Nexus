@@ -92,7 +92,7 @@ class MeUpdate(Schema):
     full_name: Name | None = None
     current_password: Password | None = None
     password: Password | None = None
-    lang: Literal["uz", "uz-cyrl", "ru"] | None = None
+    lang: Literal["uz", "uz-cyrl", "ru", "en"] | None = None
 
 
 class OrgIn(Schema):

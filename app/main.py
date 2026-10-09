@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import UPLOAD_DIR, router
+from .api import UPLOAD_DIR, import_legacy_proofs, router
 from .reports_api import router as reports_router
 from .database import Base, SessionLocal, engine
 from .migrate import migrate_schema
@@ -43,6 +43,7 @@ async def lifespan(_: FastAPI):
         ensure_agents(db)
         ensure_phone_format(db)
         ensure_driver_logins(db)
+        import_legacy_proofs(db)
     finally:
         db.close()
     start_simulator()

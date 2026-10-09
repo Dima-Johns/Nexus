@@ -3,7 +3,6 @@ import json
 import os
 import re
 import secrets
-import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -79,6 +78,7 @@ from .models import (
     ImportTemplate,
     Order,
     Organization,
+    ProofPhoto,
     SessionToken,
     User,
     UserAvatar,
@@ -829,6 +829,54 @@ def check_import_rows(records: list) -> None:
         )
 
 
+PROOF_MIMES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def proof_photo_url(order_id: int) -> str:
+    # v= — rasm qayta yuborilsa brauzer keshidagi eskisini ko‘rsatmasin
+    return f"/api/orders/{order_id}/proof-photo?v={secrets.token_hex(4)}"
+
+
+def save_proof_photo(db: Session, row: Order, data: bytes, mime: str | None) -> None:
+    photo = db.get(ProofPhoto, row.id)
+    if photo is None:
+        photo = ProofPhoto(order_id=row.id)
+        db.add(photo)
+    photo.mime = mime if mime in PROOF_MIMES else "image/jpeg"
+    photo.data = data
+    photo.created_at = datetime.now(timezone.utc)
+    row.proof_photo = proof_photo_url(row.id)
+
+
+@router.get("/orders/{item_id}/proof-photo")
+def get_proof_photo(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("proofs.view"))):
+    order = get_org_row(db, Order, item_id, user, "Zayavka topilmadi")
+    photo = db.get(ProofPhoto, order.id)
+    if photo is None or not photo.data:
+        raise HTTPException(404, "Rasm topilmadi")
+    return Response(
+        content=photo.data,
+        media_type=photo.mime or "image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+def import_legacy_proofs(db: Session) -> int:
+    """Diskdagi eski /uploads/proofs rasmlarini bazaga ko‘chirish; yo‘qolgan fayllar avvalgi holicha qoladi."""
+    rows = db.query(Order).filter(Order.proof_photo.like("/uploads/%")).all()
+    moved = 0
+    for row in rows:
+        path = (UPLOAD_DIR / row.proof_photo[len("/uploads/"):]).resolve()
+        if not path.is_relative_to(UPLOAD_DIR.resolve()) or not path.is_file():
+            continue
+        mime = {".png": "image/png", ".webp": "image/webp"}.get(path.suffix.lower(), "image/jpeg")
+        save_proof_photo(db, row, path.read_bytes(), mime)
+        moved += 1
+    if moved:
+        db.commit()
+    return moved
+
+
 @router.post("/driver/orders/{item_id}/proof")
 async def driver_order_proof(
     item_id: int,
@@ -862,11 +910,7 @@ async def driver_order_proof(
     if not (photo.content_type or "").startswith("image/"):
         raise HTTPException(400, "Faqat rasm yuklash mumkin")
     now = local_now()
-    folder = UPLOAD_DIR / "proofs" / now.strftime("%Y-%m-%d")
-    folder.mkdir(parents=True, exist_ok=True)
-    name = f"{row.id}_{uuid.uuid4().hex}.jpg"
-    (folder / name).write_bytes(data)
-    row.proof_photo = f"/uploads/proofs/{now.strftime('%Y-%m-%d')}/{name}"
+    save_proof_photo(db, row, data, photo.content_type)
     row.proof_reason = reason or result
     row.proof_comment = comment
     marked = parse_device_time(done_at).astimezone(LOCAL_TZ) if done_at else now
@@ -1834,6 +1878,8 @@ def delete_driver(item_id: int, db: Session = Depends(get_db), user: User = Depe
 
 @router.delete("/orders/all")
 def delete_all_orders(db: Session = Depends(get_db), user: User = Depends(require_perm("orders.delete"))):
+    ids = q_org(db, Order, user).with_entities(Order.id).scalar_subquery()
+    db.query(ProofPhoto).filter(ProofPhoto.order_id.in_(ids)).delete(synchronize_session=False)
     n = q_org(db, Order, user).delete(synchronize_session=False)
     db.commit()
     return {"ok": True, "deleted": n}
@@ -2127,6 +2173,7 @@ def update_order(item_id: int, payload: OrderIn, db: Session = Depends(get_db), 
 @router.delete("/orders/{item_id}")
 def delete_order(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("orders.delete"))):
     row = get_org_row(db, Order, item_id, user, "Buyurtma topilmadi")
+    db.query(ProofPhoto).filter(ProofPhoto.order_id == row.id).delete(synchronize_session=False)
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -2398,6 +2445,8 @@ def bulk_delete_orders(payload: BulkIdsIn, db: Session = Depends(get_db), user: 
         raise HTTPException(400, "Zayavka tanlanmagan")
     rows = q_org(db, Order, user).filter(Order.id.in_(payload.ids)).all()
     n = len(rows)
+    if rows:
+        db.query(ProofPhoto).filter(ProofPhoto.order_id.in_([r.id for r in rows])).delete(synchronize_session=False)
     for row in rows:
         db.delete(row)
     db.commit()

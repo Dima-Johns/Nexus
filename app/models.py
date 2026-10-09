@@ -57,6 +57,16 @@ class UserAvatar(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ProofPhoto(Base):
+    """Yetkazish/qaytarish tasdiq rasmi bazada: Railway’da uploads papkasi har deployda tozalanadi."""
+    __tablename__ = "proof_photos"
+
+    order_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mime: Mapped[str] = mapped_column(String(32), default="image/jpeg")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class SessionToken(Base):
     __tablename__ = "session_tokens"
 

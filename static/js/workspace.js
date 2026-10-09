@@ -1,5 +1,6 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=76";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=77";
+import { proofThumb } from "./proof-photo.js?v=77";
 
 let orders = [];
 let filter = "incoming";
@@ -423,11 +424,7 @@ function proofHtml(o) {
   return `<div class="proof-line">
     <span class="proof-chip ${kind}">${escapeHtml(label)}</span>
     ${when ? `<span class="muted">${escapeHtml(when)}</span>` : ""}
-    ${
-      o.proof_photo
-        ? `<a class="proof-thumb" href="${escapeHtml(o.proof_photo)}" target="_blank" rel="noopener" title="Rasmni ochish"><img src="${escapeHtml(o.proof_photo)}" alt="" loading="lazy" /></a>`
-        : ""
-    }
+    ${proofThumb(o.proof_photo)}
     ${o.proof_comment ? `<span class="proof-comment" title="Haydovchi izohi">«${escapeHtml(o.proof_comment)}»</span>` : ""}
   </div>`;
 }

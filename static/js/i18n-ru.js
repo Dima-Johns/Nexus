@@ -397,6 +397,7 @@ export default {
   "Haydovchi faol emas": "Водитель неактивен",
   "Faol haydovchi topilmadi": "Активный водитель не найден",
   "Barcha haydovchilar": "Все водители",
+  "Barcha agentlar": "Все агенты",
   "{n} ta haydovchi import qilindi": "Импортировано водителей: {n}",
   "Jadvalda ma’lumot yo‘q. 1-qator sarlavha bo‘lsin: Ism, Telefon, Davlat raqami, Transport turi, Holat, Agent. 2-qatordan haydovchilarni yozing.": "В таблице нет данных. 1-я строка — заголовок: Имя, Телефон, Госномер, Тип транспорта, Статус, Агент. Водителей пишите со 2-й строки.",
 
@@ -726,6 +727,7 @@ export default {
   "Admin panel (shablonlar)": "Админ-панель (шаблоны)",
   "O‘chirilgan ma’lumotlarni ko‘rish": "Просмотр удалённых данных",
   "Tashkilot ochish va akkaunt berish": "Создание организаций и выдача аккаунтов",
+  "Tasdiq rasmlarini ko‘rish": "Просмотр фото подтверждений",
   "Faqat admin ruxsati": "Только для админа",
   "Faqat superadmin ruxsati": "Только для суперадмина",
   "Faolsizlik vaqti": "Время бездействия",
@@ -815,6 +817,21 @@ export default {
   "«{q}» — bunaqa agent mavjud emas, agentni qo‘shing": "«{q}» — такого агента нет, добавьте агента",
   "«{q}» filtrida juda ko‘p qiymat tanlangan": "В фильтре «{q}» выбрано слишком много значений",
   "Too long data": "Слишком длинные данные",
+
+  // Tasdiq rasmlari
+  "Rasm o‘chgan": "Фото утеряно",
+  "Rasmni ko‘rishga ruxsat yo‘q": "Нет доступа к фото",
+  "so‘m": "сум",
+  "{n} so‘m": "{n} сум",
+  "{n} zayavka": "{n} {заявка|заявки|заявок}",
+  "yetkazildi {n}": "доставлено {n}",
+  "qaytdi {n}": "возврат {n}",
+  "Og‘irlik": "Вес",
+  "Barcha ruxsatlar": "Все права",
+  "{n} / {n} ruxsat": "{n} / {n} прав",
+  "hammasi": "все",
+  "Birinchi {n} tasi ko‘rsatildi (topilgan: {n}). Qidiruvdan foydalaning yoki to‘liq ro‘yxatni Excel'da yuklab oling.":
+    "Показаны первые {n} (найдено: {n}). Воспользуйтесь поиском или скачайте полный список в Excel.",
 
   // Qo‘shimcha (ekrandan topilganlar)
   "{n} yanv. {n}": "{n} янв. {n}",

@@ -1,5 +1,6 @@
 import { api, token } from "../api.js";
-import { $, askConfirm, escapeHtml } from "../ui.js?v=76";
+import { $, askConfirm, escapeHtml } from "../ui.js?v=77";
+import { t } from "../i18n.js?v=77";
 
 const LIMITS = { rows: 8, cols: 2, filters: 20, values: 12 };
 const ZONE_NAMES = { rows: "Qatorlar", cols: "Ustunlar", filters: "Filtrlar", values: "Qiymatlar" };
@@ -582,13 +583,14 @@ function dropIndex(drop, e) {
 function renderSummary() {
   const box = byId("pv-summary");
   if (!box || !fields) return;
-  const names = (keys) => keys.map((k) => labelOf(k, "dim")).join(", ");
+  const label = (k, kind) => t(labelOf(k, kind));
+  const names = (keys) => keys.map((k) => label(k, "dim")).join(", ");
   const parts = [];
-  if (state.rows.length) parts.push(`Qatorlar: ${names(state.rows)}`);
-  if (state.cols.length) parts.push(`Ustunlar: ${names(state.cols)}`);
-  parts.push(`Σ ${state.values.map((k) => labelOf(k, "measure")).join(", ")}`);
+  if (state.rows.length) parts.push(`${t("Qatorlar")}: ${names(state.rows)}`);
+  if (state.cols.length) parts.push(`${t("Ustunlar")}: ${names(state.cols)}`);
+  parts.push(`Σ ${state.values.map((k) => label(k, "measure")).join(", ")}`);
   const filtered = usedDims().filter((k) => state.vf[k]?.length);
-  if (filtered.length) parts.push(`Filtr: ${filtered.map((k) => `${labelOf(k, "dim")} (${state.vf[k].length})`).join(", ")}`);
+  if (filtered.length) parts.push(`${t("Filtr")}: ${filtered.map((k) => `${label(k, "dim")} (${state.vf[k].length})`).join(", ")}`);
   box.textContent = parts.join(" · ");
   box.title = box.textContent;
 }

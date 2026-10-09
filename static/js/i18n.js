@@ -1,11 +1,13 @@
-import RU from "./i18n-ru.js?v=76";
+import RU from "./i18n-ru.js?v=77";
 
 export const LANGS = [
   { code: "uz", label: "O‘zbekcha", short: "UZ" },
   { code: "uz-cyrl", label: "Ўзбекча", short: "ЎЗ" },
   { code: "ru", label: "Русский", short: "RU" },
+  { code: "en", label: "English", short: "EN" },
 ];
 const STORE_KEY = "nx_lang";
+const EN = getLang() === "en" ? (await import("./i18n-en.js?v=77")).default : null;
 
 export function getLang() {
   const v = localStorage.getItem(STORE_KEY);
@@ -92,6 +94,10 @@ const CYRL_FIXED = { Online: "Онлайн", Offline: "Офлайн" };
 function build(lang) {
   if (lang === "uz") return null;
   const map = new Map();
+  if (lang === "en") {
+    for (const [k, v] of Object.entries(EN || {})) map.set(norm(k), v);
+    return map;
+  }
   for (const [k, v] of Object.entries(RU)) {
     map.set(norm(k), lang === "ru" ? v : CYRL_FIXED[k] ?? toCyrillic(k));
   }
@@ -100,6 +106,7 @@ function build(lang) {
 
 function plural(value, one, few, many) {
   const n = Math.abs(parseInt(String(value).replace(/\D/g, ""), 10) || 0);
+  if (getLang() === "en") return n === 1 ? one : many;
   if (n % 10 === 1 && n % 100 !== 11) return one;
   if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return few;
   return many;
@@ -139,7 +146,7 @@ function whole(t) {
   if (!t) return null;
   const r = lookup(t);
   if (r != null) return r;
-  const m = /^([^\p{L}\d«(]*)(.*?)([\s.:…!?*,]*)$/u.exec(t);
+  const m = /^((?:Σ )?[^\p{L}\d«(]*)(.*?)((?: \(\d+\))?[\s.:…!?*,]*)$/u.exec(t);
   if (m && m[2] && (m[1] || m[3])) {
     const inner = lookup(m[2]);
     if (inner != null) return m[1] + inner + m[3];

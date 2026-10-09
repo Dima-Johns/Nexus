@@ -1,11 +1,14 @@
 import { api, setMe, setToken } from "../api.js";
-import { $ } from "../ui.js?v=76";
-import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=76";
+import { $ } from "../ui.js?v=77";
+import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=77";
+import { getLang } from "../i18n.js?v=77";
+import { mountLangPicker } from "../lang-picker.js?v=77";
 
 const ORG_KEY = "nx_org_code";
 
 export async function init(root) {
   bindThemeToggle($("#login-theme", root));
+  mountLangPicker($("#login-lang", root));
   const orgInput = $("#login-org", root);
   orgInput.value = localStorage.getItem(ORG_KEY) || "";
   orgInput.addEventListener("input", () => {
@@ -41,6 +44,12 @@ export async function init(root) {
       if ($("#login-remember", root).checked) saveRemembered(username, password);
       else clearRemembered();
       setToken(data.token);
+      // Kirish oynasida tanlangan til serverdagi eski tildan ustun
+      const lang = getLang();
+      if (data.user && data.user.lang !== lang) {
+        data.user.lang = lang;
+        api("/auth/me", { method: "PUT", body: { lang } }).catch(() => {});
+      }
       setMe(data.user);
       history.replaceState({}, "", "/dashboard");
       window.dispatchEvent(new PopStateEvent("popstate"));

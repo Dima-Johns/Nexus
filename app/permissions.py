@@ -6,6 +6,7 @@ PERMISSIONS = [
     {"key": "orders.plan", "group": "Zayavkalar", "label": "Planlashtirish"},
     {"key": "orders.routes", "group": "Zayavkalar", "label": "Yo‘nalish (marshrutlar)"},
     {"key": "orders.delete", "group": "Zayavkalar", "label": "O‘chirish"},
+    {"key": "proofs.view", "group": "Zayavkalar", "label": "Tasdiq rasmlarini ko‘rish"},
     {"key": "map.view", "group": "Xarita", "label": "Xaritani ko‘rish"},
     {"key": "tracking.live", "group": "Xarita", "label": "Haydovchi joylashuvi (real-time GPS)"},
     {"key": "drivers.view", "group": "Haydovchilar", "label": "Ro‘yxatni ko‘rish"},
@@ -30,7 +31,7 @@ PERMISSIONS = [
 ALL_PERMISSION_KEYS = [p["key"] for p in PERMISSIONS]
 ADMIN_ONLY_KEYS = {"users.manage", "perms.manage"}
 # Faqat superadmin beradi; boshqa rollarga sukut bo‘yicha yopiq va ularning Dostuplar bo‘limida ko‘rinmaydi
-SUPER_ONLY_KEYS = {"orgs.manage"}
+SUPER_ONLY_KEYS = {"orgs.manage", "proofs.view"}
 ADMIN_ROLES = {"superadmin", "admin"}
 
 

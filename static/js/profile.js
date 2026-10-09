@@ -1,6 +1,7 @@
 import { api, me, setMe } from "./api.js";
-import { LANGS, getLang, setLang } from "./i18n.js?v=76";
-import { loadRemembered, saveRemembered } from "./theme.js?v=76";
+import { LANGS, getLang, setLang } from "./i18n.js?v=77";
+import { chooseLang, mountLangPicker } from "./lang-picker.js?v=77";
+import { loadRemembered, saveRemembered } from "./theme.js?v=77";
 
 const $id = (id) => document.getElementById(id);
 const AVATAR_PX = 256;
@@ -90,17 +91,6 @@ function markLang() {
   document.querySelectorAll("#pm-langs [data-lang]").forEach((b) => {
     b.classList.toggle("active", b.dataset.lang === cur);
   });
-}
-
-async function chooseLang(code) {
-  if (code === getLang()) return;
-  try {
-    const updated = await api("/auth/me", { method: "PUT", body: { lang: code } });
-    setMe(updated);
-  } catch {
-    // til baribir shu brauzerda saqlanadi
-  }
-  setLang(code);
 }
 
 // ---- profil oynasi ----
@@ -241,6 +231,7 @@ export function bindProfile() {
     langs.innerHTML = LANGS.map((l) => `<button type="button" data-lang="${l.code}"><b>${l.short}</b>${l.label}</button>`).join("");
   }
   markLang();
+  mountLangPicker(document.getElementById("header-lang"));
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleMenu();
