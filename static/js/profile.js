@@ -1,7 +1,7 @@
 import { api, me, setMe } from "./api.js";
-import { LANGS, getLang, setLang } from "./i18n.js?v=77";
-import { chooseLang, mountLangPicker } from "./lang-picker.js?v=77";
-import { loadRemembered, saveRemembered } from "./theme.js?v=77";
+import { LANGS, getLang } from "./i18n.js?v=78";
+import { chooseLang, mountLangPicker, syncServerLang } from "./lang-picker.js?v=78";
+import { loadRemembered, saveRemembered } from "./theme.js?v=78";
 
 const $id = (id) => document.getElementById(id);
 const AVATAR_PX = 256;
@@ -55,13 +55,6 @@ export function renderProfile() {
   $id("pf-remove")?.classList.toggle("hidden", !me.avatar_url);
   syncServerLang();
 }
-
-/** Boshqa qurilmada tanlangan til shu yerga ham o‘tadi. */
-function syncServerLang() {
-  const server = me?.lang;
-  if (server && LANGS.some((l) => l.code === server) && server !== getLang()) setLang(server);
-}
-
 // ---- menyu ----
 function placeMenu() {
   const btn = $id("profile-btn");

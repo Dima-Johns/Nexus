@@ -1,17 +1,37 @@
 import { api, me, setMe, token } from "./api.js";
-import { LANGS, getLang, setLang } from "./i18n.js?v=77";
+import { LANGS, getLang, setLang } from "./i18n.js?v=78";
+
+// Serverga yozilmagan tanlov: keyingi yuklanishda serverdagi eski til uni bosib ketmasligi uchun
+const PENDING_KEY = "nx_lang_pending";
+
+async function saveServerLang(code) {
+  try {
+    setMe(await api("/auth/me", { method: "PUT", body: { lang: code } }));
+    localStorage.removeItem(PENDING_KEY);
+  } catch {
+    localStorage.setItem(PENDING_KEY, code);
+  }
+}
 
 /** Kirgan foydalanuvchida til serverga ham yoziladi — boshqa qurilmada ham shu til ochiladi. */
 export async function chooseLang(code) {
   if (code === getLang()) return;
-  if (token && me) {
-    try {
-      setMe(await api("/auth/me", { method: "PUT", body: { lang: code } }));
-    } catch {
-      // til baribir shu brauzerda saqlanadi
+  if (token && me) await saveServerLang(code);
+  setLang(code);
+}
+
+/** Boshqa qurilmada tanlangan til shu yerga ham o‘tadi. */
+export function syncServerLang() {
+  const server = me?.lang;
+  const pending = localStorage.getItem(PENDING_KEY);
+  if (pending) {
+    if (pending !== getLang() || server === pending) localStorage.removeItem(PENDING_KEY);
+    else {
+      saveServerLang(pending);
+      return;
     }
   }
-  setLang(code);
+  if (server && LANGS.some((l) => l.code === server) && server !== getLang()) setLang(server);
 }
 
 const GLOBE =

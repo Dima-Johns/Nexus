@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { escapeHtml, money, table } from "../ui.js?v=77";
+import { escapeHtml, money, table } from "../ui.js?v=78";
 
 export async function init(root) {
   const orders = await api("/orders");

@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=77";
-import { mountOfficePicker } from "../office-picker.js?v=77";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=77";
+import { openDriverAccess } from "../driver-access.js?v=78";
+import { mountOfficePicker } from "../office-picker.js?v=78";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=78";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };

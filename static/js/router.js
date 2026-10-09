@@ -1,7 +1,7 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
-import { $, $$ } from "./ui.js?v=77";
-import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=77";
-import { renderProfile } from "./profile.js?v=77";
+import { $, $$ } from "./ui.js?v=78";
+import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=78";
+import { renderProfile } from "./profile.js?v=78";
 
 const ROUTES = {
   "/": "dashboard",
@@ -38,21 +38,28 @@ export function go(path, replace = false) {
 async function ensureAuth() {
   if (!token) return false;
   if (me) return true;
-  try {
-    setMe(await api("/auth/me"));
-    return true;
-  } catch {
-    setToken("");
-    setMe(null);
-    return false;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      setMe(await api("/auth/me"));
+      return true;
+    } catch (err) {
+      // Tarmoq yoki server xatosida token o‘chirilmaydi: deploy paytida qayta kirishga majburlamaslik uchun
+      if (err.code === 401) {
+        setToken("");
+        setMe(null);
+        return false;
+      }
+      if (attempt >= 2) return false;
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
   }
 }
 
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=77`),
-    import(`/static/js/pages/${name}.js?v=77`),
+    fetch(`/static/pages/${name}.html?v=78`),
+    import(`/static/js/pages/${name}.js?v=78`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;

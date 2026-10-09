@@ -11,6 +11,7 @@ let markers = [];
 let meMarker = null;
 let watchId = null;
 let scanStream = null;
+let qrScanner = null;
 let lastGpsAt = 0;
 let gpsQueue = [];
 let lastGps = null;
@@ -181,37 +182,63 @@ async function kvGet(key) {
   });
 }
 
+// gpsQueue — faqat IndexedDB ishlamaganda xotiradagi zaxira
 async function gpsAdd(point) {
-  gpsQueue.push(point);
-  const db = await openDb();
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction("gps", "readwrite");
-    tx.objectStore("gps").add(point);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    const db = await openDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("gps", "readwrite");
+      tx.objectStore("gps").add(point);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    gpsQueue.push(point);
+  }
 }
 
 async function gpsDump() {
-  const db = await openDb();
-  const queued = await new Promise((resolve, reject) => {
-    const tx = db.transaction("gps", "readonly");
-    const req = tx.objectStore("gps").getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-  return queued.length ? queued : gpsQueue.slice();
+  let keys = [];
+  let points = [];
+  try {
+    const db = await openDb();
+    [keys, points] = await new Promise((resolve, reject) => {
+      const tx = db.transaction("gps", "readonly");
+      const store = tx.objectStore("gps");
+      const k = store.getAllKeys();
+      const v = store.getAll();
+      tx.oncomplete = () => resolve([k.result || [], v.result || []]);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    /* faqat xotiradagi nuqtalar */
+  }
+  const mem = gpsQueue.slice();
+  return { points: points.concat(mem), keys, mem: mem.length };
 }
 
-async function gpsClear() {
-  gpsQueue = [];
+/** Faqat yuborilgan nuqtalar o‘chadi: yuborish paytida qo‘shilganlari navbatda qoladi. */
+async function gpsClear(batch) {
+  if (!batch) gpsQueue = [];
+  else gpsQueue = gpsQueue.slice(batch.mem);
+  if (batch && !batch.keys.length) return;
   const db = await openDb();
   await new Promise((resolve, reject) => {
     const tx = db.transaction("gps", "readwrite");
-    tx.objectStore("gps").clear();
+    const store = tx.objectStore("gps");
+    if (batch) batch.keys.forEach((k) => store.delete(k));
+    else store.clear();
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
+}
+
+// Heartbeat, birinchi GPS nuqta va sync bir vaqtda ishlasa bir nuqta ikki marta ketmasin
+let gpsLock = Promise.resolve();
+function withGpsLock(fn) {
+  const run = gpsLock.then(fn);
+  gpsLock = run.catch(() => {});
+  return run;
 }
 
 async function api(path, opts = {}) {
@@ -233,11 +260,13 @@ async function api(path, opts = {}) {
   }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) {
+    const lost = !!headers.Authorization && headers.Authorization === `Bearer ${token}`;
     token = "";
     localStorage.removeItem(TOKEN_KEY);
     kvSet("token", "").catch(() => {});
     const err = new Error(typeof data.detail === "string" ? data.detail : "Sessiya yaroqsiz");
     err.status = 401;
+    if (lost) onSessionLost(err.message);
     throw err;
   }
   if (!res.ok) {
@@ -1769,20 +1798,23 @@ async function startRun() {
   }
 }
 
-async function flushGps() {
-  const points = await gpsDump();
-  if (!token || !navigator.onLine) {
-    if (points.length) setSync(`GPS kesh: ${points.length}`, true);
-    return 0;
-  }
-  try {
-    await api("/driver/location", { method: "POST", body: { points } });
-    if (points.length) await gpsClear();
-    return points.length;
-  } catch {
-    if (points.length) setSync(`GPS kesh: ${points.length}`, true);
-    return 0;
-  }
+function flushGps() {
+  return withGpsLock(async () => {
+    const batch = await gpsDump();
+    const n = batch.points.length;
+    if (!token || !navigator.onLine) {
+      if (n) setSync(`GPS kesh: ${n}`, true);
+      return 0;
+    }
+    try {
+      await api("/driver/location", { method: "POST", body: { points: batch.points } });
+      if (n) await gpsClear(batch);
+      return n;
+    } catch {
+      if (n) setSync(`GPS kesh: ${n}`, true);
+      return 0;
+    }
+  });
 }
 
 const BEAT_MS = 60000;
@@ -1833,7 +1865,7 @@ function nativeTracking(on) {
 }
 
 async function pullRoute() {
-  if (!token) return;
+  if (!token) throw new Error("Sessiya tugagan — qayta kiring");
   if (!navigator.onLine) {
     const cached = await kvGet("route");
     if (cached) applyRoute(cached);
@@ -1841,9 +1873,12 @@ async function pullRoute() {
     return;
   }
   await flushOutbox().catch(() => {});
-  const points = await gpsDump();
-  const data = await api("/driver/sync", { method: "POST", body: { points } });
-  await gpsClear();
+  const data = await withGpsLock(async () => {
+    const batch = await gpsDump();
+    const res = await api("/driver/sync", { method: "POST", body: { points: batch.points } });
+    if (batch.points.length) await gpsClear(batch).catch(() => {});
+    return res;
+  });
   applyRoute(data);
 }
 
@@ -1883,7 +1918,7 @@ function onPos(pos) {
   if (firstFix || now - lastQueuedAt >= BEAT_MS) {
     queuePoint(point).then(() => {
       if (navigator.onLine) return flushGps();
-      return gpsDump().then((q) => setSync(`GPS kesh: ${q.length}`, true));
+      return gpsDump().then((q) => setSync(`GPS kesh: ${q.points.length}`, true));
     });
   }
 }
@@ -1897,7 +1932,31 @@ function startGps() {
   });
 }
 
+/** Haydovchi o‘chirilgan/bloklangan: kuzatuv to‘xtaydi, lekin yuborilmagan tasdiqlar saqlanib qoladi. */
+function onSessionLost(message) {
+  if ($("view-app").classList.contains("hidden")) return;
+  nativeTracking(false);
+  stopHeartbeat();
+  if (watchId != null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  closeProfile();
+  show("view-login");
+  const n = queuedCount();
+  $("login-err").textContent = `${message}. Qayta kiring${n ? ` — ${n} ta yuborilmagan tasdiq saqlanib turibdi` : ""}.`;
+}
+
 async function enterApp(payload) {
+  // Boshqa haydovchi kirsa, oldingisining yuborilmagan navbati unga tegishli emas
+  const prev = driver || (await kvGet("driver").catch(() => null));
+  if (prev?.id && payload.driver?.id && prev.id !== payload.driver.id) {
+    await outboxClear().catch(() => {});
+    await gpsClear().catch(() => {});
+    route = { orders: [], geometry: [], downloaded_at: null };
+    run = { ...RUN_EMPTY };
+    localStorage.removeItem(RUN_KEY);
+  }
   token = payload.token;
   driver = payload.driver;
   localStorage.setItem(TOKEN_KEY, token);
@@ -1935,6 +1994,10 @@ function stopScan() {
   if (scanStream) {
     scanStream.getTracks().forEach((t) => t.stop());
     scanStream = null;
+  }
+  if (qrScanner) {
+    qrScanner.stop().catch(() => {});
+    qrScanner = null;
   }
   const reader = $("reader");
   if (reader) reader.innerHTML = "";
@@ -2030,12 +2093,11 @@ async function startScan() {
       document.head.appendChild(s);
     });
     stopScan();
-    const qr = new window.Html5Qrcode("reader");
-    await qr.start(
+    qrScanner = new window.Html5Qrcode("reader");
+    await qrScanner.start(
       { facingMode: "environment" },
       { fps: 8, qrbox: 220 },
       (text) => {
-        qr.stop().catch(() => {});
         loginQr(text);
       }
     );
@@ -2294,7 +2356,7 @@ async function boot() {
       await pullRoute();
     } catch (err) {
       if (err?.status === 401) {
-        logout();
+        // onSessionLost login oynasini ochdi; navbatdagi tasdiqlar o‘chirilmaydi
       } else if (cachedRoute) {
         applyRoute(cachedRoute);
         setSync(queuedCount() ? `Offline · yuborilmagan: ${queuedCount()} ta` : "Offline kesh", true);

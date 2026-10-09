@@ -1,8 +1,8 @@
 import { api, setMe, setToken } from "../api.js";
-import { $ } from "../ui.js?v=77";
-import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=77";
-import { getLang } from "../i18n.js?v=77";
-import { mountLangPicker } from "../lang-picker.js?v=77";
+import { $ } from "../ui.js?v=78";
+import { bindThemeToggle, clearRemembered, loadRemembered, saveRemembered } from "../theme.js?v=78";
+import { getLang } from "../i18n.js?v=78";
+import { mountLangPicker } from "../lang-picker.js?v=78";
 
 const ORG_KEY = "nx_org_code";
 
