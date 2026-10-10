@@ -1,4 +1,5 @@
 import mimetypes
+import os
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -9,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import UPLOAD_DIR, import_legacy_proofs, router
+from .api import import_legacy_proofs, router
+from .auth import wrap_legacy_hashes
 from .reports_api import router as reports_router
 from .database import Base, SessionLocal, engine
 from .migrate import migrate_schema
@@ -44,6 +46,7 @@ async def lifespan(_: FastAPI):
         ensure_phone_format(db)
         ensure_driver_logins(db)
         import_legacy_proofs(db)
+        wrap_legacy_hashes(db)
     finally:
         db.close()
     start_simulator()
@@ -91,10 +94,23 @@ class BodyLimitMiddleware:
         return await self.app(scope, limited_receive, send)
 
 
+def _cors_origins() -> list[str]:
+    """Panel va haydovchi ilovasi API bilan bir domenda ishlaydi — CORS faqat qo‘shimcha ruxsat etilgan saytlar uchun.
+
+    CORS_ORIGINS="https://a.uz,https://b.uz" bilan kengaytiriladi; Android ilovasi (WebView) va GPS xizmati bundan ta’sirlanmaydi.
+    """
+    origins = {o.strip().rstrip("/") for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()}
+    domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
+    if domain:
+        origins.add(f"https://{domain}")
+    origins.add("https://nexuslogistic.up.railway.app")
+    return sorted(origins)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins(),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -164,8 +180,7 @@ async def validation_error(_: Request, exc: RequestValidationError):
 app.include_router(router)
 app.include_router(reports_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# /uploads ochiq tarqatilmaydi: Railway diski har deployda tozalanadi, rasmlar bazada va proofs.view bilan beriladi
 
 
 RESERVED = {"docs", "redoc", "openapi.json", "uploads"}

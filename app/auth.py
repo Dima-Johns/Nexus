@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import json
 import re
 import secrets
@@ -6,19 +7,74 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from urllib.parse import parse_qs, unquote, urlparse
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 
 from .database import get_db
 from .models import Driver, SessionToken, User
 
+# OWASP tavsiyasi (argon2id, 19 MiB, 2 o‘tish): kichik serverda ham kirish ~50 ms
+_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
+# Eski tuzsiz SHA-256 hesh argon2 ichiga o‘ralgan: parolni bilmasdan ham bazadagini darhol himoyalash mumkin
+WRAPPED_PREFIX = "sha256+"
+_LEGACY_RE = re.compile(r"^[0-9a-f]{64}$")
 
-def hash_password(password: str) -> str:
+
+def _sha256(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
+def hash_password(password: str) -> str:
+    return _hasher.hash(password)
+
+
+def _argon_ok(stored: str, secret: str) -> bool:
+    try:
+        return _hasher.verify(stored, secret)
+    except (VerificationError, InvalidHashError):
+        return False
+
+
 def verify_password(password: str, password_hash: str) -> bool:
-    return hash_password(password) == password_hash
+    stored = password_hash or ""
+    if stored.startswith("$argon2"):
+        return _argon_ok(stored, password)
+    if stored.startswith(WRAPPED_PREFIX):
+        return _argon_ok(stored[len(WRAPPED_PREFIX):], _sha256(password))
+    if _LEGACY_RE.match(stored):
+        return hmac.compare_digest(_sha256(password), stored)
+    return False
+
+
+def password_needs_upgrade(password_hash: str) -> bool:
+    stored = password_hash or ""
+    if not stored.startswith("$argon2"):
+        return True
+    try:
+        return _hasher.check_needs_rehash(stored)
+    except InvalidHashError:
+        return True
+
+
+def upgrade_password(row, password: str) -> None:
+    """Muvaffaqiyatli kirishda eski formatdagi heshni toza argon2 ga almashtiradi (commit chaqiruvchida)."""
+    if password_needs_upgrade(row.password_hash):
+        row.password_hash = hash_password(password)
+
+
+def wrap_legacy_hashes(db: Session) -> int:
+    """Bazadagi barcha tuzsiz SHA-256 heshlarni argon2 bilan o‘raydi — parollar o‘zgarmaydi, kirish avvalgidek."""
+    n = 0
+    for model in (User, Driver):
+        for row in db.query(model).filter(model.password_hash.isnot(None)).all():
+            if _LEGACY_RE.match(row.password_hash or ""):
+                row.password_hash = WRAPPED_PREFIX + _hasher.hash(row.password_hash)
+                n += 1
+    if n:
+        db.commit()
+    return n
 
 
 def create_token(db: Session, user: User) -> str:

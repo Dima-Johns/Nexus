@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -22,6 +23,7 @@ from .auth import (
     issue_driver_credentials,
     parse_qr_token,
     require_admin,
+    upgrade_password,
     verify_password,
 )
 from .database import get_db
@@ -485,6 +487,7 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
                 status_code=401,
                 detail="Login yoki parol noto‘g‘ri. Superadmin bo‘lmasangiz, tashkilot kodini kiriting",
             )
+        upgrade_password(user, payload.password)
         token = create_token(db, user)
         return {"token": token, "user": user_payload(user)}
     if not is_org_code(code):
@@ -502,6 +505,7 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Tashkilot kodi, login yoki parol noto‘g‘ri")
     if not org.is_active and user.role != "superadmin":
         raise HTTPException(status_code=403, detail="Tashkilot faol emas. Administrator bilan bog‘laning")
+    upgrade_password(user, payload.password)
     token = create_token(db, user)
     return {"token": token, "user": user_payload(user)}
 
@@ -627,6 +631,7 @@ def driver_login(payload: LoginIn, db: Session = Depends(get_db)):
         or not verify_password(payload.password, row.password_hash)
     ):
         raise HTTPException(status_code=401, detail="Login yoki parol noto'g'ri")
+    upgrade_password(row, payload.password)
     token = create_driver_token(db, row)
     return {"token": token, "role": "driver", "driver": _driver_out(row)}
 
@@ -838,6 +843,32 @@ def proof_photo_url(order_id: int) -> str:
     return f"/api/orders/{order_id}/proof-photo?v={secrets.token_hex(4)}"
 
 
+PROOF_MAX_SIDE = 1280
+PROOF_MAX_PIXELS = 50_000_000
+
+
+def shrink_proof_photo(data: bytes, mime: str | None) -> tuple[bytes, str | None]:
+    """Bazani tejash: rasm 1280px JPEG ga siqiladi. Natija kichraymasa yoki xato bo‘lsa — asl rasm saqlanadi."""
+    try:
+        from PIL import Image, ImageOps
+
+        with Image.open(io.BytesIO(data)) as src:
+            if src.width * src.height > PROOF_MAX_PIXELS:
+                return data, mime
+            img = ImageOps.exif_transpose(src)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            img.thumbnail((PROOF_MAX_SIDE, PROOF_MAX_SIDE))
+            out = io.BytesIO()
+            img.save(out, "JPEG", quality=75, optimize=True, progressive=True)
+        packed = out.getvalue()
+        if len(packed) < len(data) * 0.9:
+            return packed, "image/jpeg"
+    except Exception:
+        pass
+    return data, mime
+
+
 def save_proof_photo(db: Session, row: Order, data: bytes, mime: str | None) -> None:
     photo = db.get(ProofPhoto, row.id)
     if photo is None:
@@ -911,7 +942,8 @@ async def driver_order_proof(
     if not (photo.content_type or "").startswith("image/"):
         raise HTTPException(400, "Faqat rasm yuklash mumkin")
     now = local_now()
-    save_proof_photo(db, row, data, photo.content_type)
+    data, mime = await run_in_threadpool(shrink_proof_photo, data, photo.content_type)
+    save_proof_photo(db, row, data, mime)
     row.proof_reason = reason or result
     row.proof_comment = comment
     marked = parse_device_time(done_at).astimezone(LOCAL_TZ) if done_at else now
