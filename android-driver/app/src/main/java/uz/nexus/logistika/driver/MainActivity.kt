@@ -3,8 +3,13 @@ package uz.nexus.logistika.driver
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.provider.Settings
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -36,11 +41,19 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.content.FileProvider
+import androidx.core.location.LocationManagerCompat
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationSettingsRequest
+import com.google.android.gms.location.Priority
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import org.json.JSONArray
@@ -98,6 +111,11 @@ class MainActivity : AppCompatActivity() {
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { granted ->
+        permBusy = false
+        if (askingLocation) {
+            askingLocation = false
+            if (hasLocationPerm()) ensureGps() else showGpsDialog(permission = true)
+        }
         val camOk = granted[Manifest.permission.CAMERA] == true || hasCamera()
         if (pendingScan && camOk) {
             pendingScan = false
@@ -131,6 +149,9 @@ class MainActivity : AppCompatActivity() {
         web.settings.useWideViewPort = true
         web.settings.loadWithOverviewMode = true
         web.addJavascriptInterface(JsBridge(), "NexusNative")
+        // Zayavka matnini uzoq bosib belgilash/nusxalash menyusi chiqmasin; kiritish maydonlarida qoladi
+        web.isHapticFeedbackEnabled = false
+        web.setOnLongClickListener { web.hitTestResult.type != WebView.HitTestResult.EDIT_TEXT_TYPE }
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val uri = request.url
@@ -198,7 +219,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        askPermissions(scanAfter = false)
         dropStaleLanUrls()
         connect()
     }
@@ -241,20 +261,16 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun startTracking(token: String) {
             if (token.isBlank()) return
-            prefs().edit().putString("drv_token", token).apply()
+            prefs().edit().putString("drv_token", token).putBoolean(TrackingService.PREF_ON, true).apply()
             runOnUiThread {
+                startTrackingService()
                 askNotificationPermission()
-                val i = Intent(this@MainActivity, TrackingService::class.java)
-                try {
-                    ContextCompat.startForegroundService(this@MainActivity, i)
-                } catch (_: Exception) {
-                }
             }
         }
 
         @JavascriptInterface
         fun stopTracking() {
-            prefs().edit().remove("drv_token").apply()
+            prefs().edit().remove("drv_token").putBoolean(TrackingService.PREF_ON, false).apply()
             runOnUiThread {
                 stopService(Intent(this@MainActivity, TrackingService::class.java))
             }
@@ -626,16 +642,189 @@ class MainActivity : AppCompatActivity() {
 
     private fun askPermissions(scanAfter: Boolean) {
         pendingScan = scanAfter
-        val need = listOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.CAMERA,
-        ).filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (need.isEmpty()) {
+        if (hasCamera()) {
             if (scanAfter) launchQr()
             return
         }
-        permLauncher.launch(need.toTypedArray())
+        launchPerms(arrayOf(Manifest.permission.CAMERA))
+    }
+
+    private fun launchPerms(perms: Array<String>) {
+        permBusy = true
+        permLauncher.launch(perms)
+    }
+
+    // ---- GPS: ilovaga har kirilganda ruxsat va telefon joylashuvi yoqilgani tekshiriladi ----
+
+    private var permBusy = false
+    private var askingLocation = false
+    private var gpsDialog: AlertDialog? = null
+    private var gpsDialogPerm = false
+    private var noGpsResolver = false
+
+    private val gpsLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+        askingLocation = false
+        if (isLocationOn()) ensureGps() else showGpsDialog(permission = false)
+    }
+
+    private val locationSwitch = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            ensureGps()
+        }
+    }
+
+    private fun hasLocationPerm(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    private fun isLocationOn(): Boolean {
+        val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return LocationManagerCompat.isLocationEnabled(lm)
+    }
+
+    private fun ensureGps() {
+        if (isFinishing || permBusy || askingLocation) return
+        val needPerm = !hasLocationPerm()
+        if (!needPerm && isLocationOn()) {
+            gpsDialog?.dismiss()
+            onGpsReady()
+            return
+        }
+        // Rad etilgandan keyin oyna turibdi — tizim so‘rovi qayta-qayta otilib chiqmasin
+        if (gpsDialog?.isShowing == true) {
+            if (gpsDialogPerm == needPerm) return
+            gpsDialog?.dismiss()
+        }
+        if (needPerm) requestLocationPerm() else askLocationOn()
+    }
+
+    private fun requestLocationPerm() {
+        val asked = prefs().getBoolean("loc_asked", false)
+        // "Boshqa so‘ralmasin" tanlangan bo‘lsa tizim oynasi chiqmaydi — faqat sozlamalar orqali ruxsat beriladi
+        if (asked && !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            showGpsDialog(permission = true)
+            return
+        }
+        prefs().edit().putBoolean("loc_asked", true).apply()
+        askingLocation = true
+        launchPerms(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+
+    // Google'ning bir bosishda "Joylashuvni yoqish" oynasi
+    private fun askLocationOn() {
+        if (noGpsResolver) {
+            showGpsDialog(permission = false)
+            return
+        }
+        askingLocation = true
+        val req = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 30_000L).build()
+        val settings = LocationSettingsRequest.Builder().addLocationRequest(req).setAlwaysShow(true).build()
+        val noResolver = {
+            // Google xizmatlari yo‘q telefonlar (masalan Huawei) — joylashuv sozlamalari ochiladi
+            askingLocation = false
+            noGpsResolver = true
+            showGpsDialog(permission = false)
+        }
+        try {
+            LocationServices.getSettingsClient(this).checkLocationSettings(settings)
+                .addOnSuccessListener {
+                    askingLocation = false
+                    if (isLocationOn()) ensureGps() else noResolver()
+                }
+                .addOnFailureListener { e ->
+                    if (e is ResolvableApiException) {
+                        try {
+                            gpsLauncher.launch(IntentSenderRequest.Builder(e.resolution).build())
+                            return@addOnFailureListener
+                        } catch (_: Exception) {
+                        }
+                    }
+                    noResolver()
+                }
+        } catch (_: Throwable) {
+            noResolver()
+        }
+    }
+
+    private fun showGpsDialog(permission: Boolean) {
+        if (isFinishing || gpsDialog?.isShowing == true) return
+        val blocked = permission && prefs().getBoolean("loc_asked", false) &&
+            !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)
+        val title = if (permission) "Joylashuvga ruxsat kerak" else "GPS o‘chiq"
+        val text = when {
+            !permission -> "Ilova ishlashi uchun telefonda joylashuv (GPS) yoqilgan bo‘lishi kerak — dispetcher sizni xaritada ko‘radi."
+            blocked -> "Sozlamalar → Ruxsatlar → Joylashuv bo‘limida «Ilovadan foydalanish vaqtida» ni tanlang."
+            else -> "Ilova ishlashi uchun joylashuvga ruxsat bering — «Ilovadan foydalanish vaqtida» ni tanlang."
+        }
+        val button = if (permission) (if (blocked) "Sozlamalarni ochish" else "Ruxsat berish") else "GPS'ni yoqish"
+        gpsDialog = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(text)
+            .setCancelable(false)
+            .setPositiveButton(button) { _, _ ->
+                when {
+                    permission && blocked -> openSettings(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
+                    )
+                    permission -> requestLocationPerm()
+                    noGpsResolver -> openSettings(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                    else -> askLocationOn()
+                }
+            }
+            .create()
+            .also {
+                gpsDialogPerm = permission
+                it.setOnDismissListener { d -> if (gpsDialog === d) gpsDialog = null }
+                it.show()
+            }
+    }
+
+    private fun openSettings(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            } catch (_: ActivityNotFoundException) {
+            }
+        }
+    }
+
+    private fun onGpsReady() {
+        startTrackingService()
+        askNotificationPermission()
+        if (this::web.isInitialized) {
+            web.evaluateJavascript("(function(){try{if(window.nexusGpsReady)window.nexusGpsReady();}catch(e){}})()", null)
+        }
+    }
+
+    // Android 14 da joylashuv ruxsatisiz kuzatuv xizmati ishga tushirilsa ilova yopilib qoladi
+    private fun startTrackingService() {
+        val p = prefs()
+        if (p.getString("drv_token", "").isNullOrBlank() || !p.getBoolean(TrackingService.PREF_ON, false) || !hasLocationPerm()) return
+        try {
+            ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
+        } catch (_: Exception) {
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ContextCompat.registerReceiver(
+            this,
+            locationSwitch,
+            IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        ensureGps()
+    }
+
+    override fun onPause() {
+        try {
+            unregisterReceiver(locationSwitch)
+        } catch (_: Exception) {
+        }
+        super.onPause()
     }
 
     private fun launchCamera() {
@@ -657,10 +846,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun askNotificationPermission() {
-        if (android.os.Build.VERSION.SDK_INT < 33) return
+        if (android.os.Build.VERSION.SDK_INT < 33 || permBusy || askingLocation) return
         val p = Manifest.permission.POST_NOTIFICATIONS
         if (ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED) return
-        permLauncher.launch(arrayOf(p))
+        if (prefs().getBoolean("notif_asked", false)) return
+        prefs().edit().putBoolean("notif_asked", true).apply()
+        launchPerms(arrayOf(p))
     }
 
     private fun launchQr() {
@@ -828,6 +1019,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // Orqaga tugmasi ilovani yopmaydi, shuning uchun finish — ilova to‘liq yopilgani
+        if (isFinishing && !isChangingConfigurations) {
+            prefs().edit().putBoolean(TrackingService.PREF_ON, false).apply()
+            stopService(Intent(this, TrackingService::class.java))
+        }
         stopSplashLoops()
         retry.removeCallbacksAndMessages(null)
         probes.shutdownNow()
@@ -836,6 +1032,7 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (this::web.isInitialized && web.canGoBack()) web.goBack() else super.onBackPressed()
+        // Orqaga tugmasi ilovani yopmaydi, faqat fonga o‘tkazadi — GPS faqat ilova to‘liq yopilganda to‘xtaydi
+        if (this::web.isInitialized && web.canGoBack()) web.goBack() else moveTaskToBack(true)
     }
 }

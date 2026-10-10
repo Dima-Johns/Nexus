@@ -10,8 +10,8 @@ android {
         applicationId = "uz.nexus.logistika.driver"
         minSdk = 24
         targetSdk = 34
-        versionCode = 17
-        versionName = "1.0.16"
+        versionCode = 18
+        versionName = "1.0.17"
     }
     buildTypes {
         release {
@@ -31,4 +31,5 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.webkit:webkit:1.11.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 }

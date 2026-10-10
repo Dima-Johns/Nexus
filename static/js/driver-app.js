@@ -10,6 +10,7 @@ let line = null;
 let markers = [];
 let meMarker = null;
 let watchId = null;
+let gpsBroken = false;
 let scanStream = null;
 let qrScanner = null;
 let lastGpsAt = 0;
@@ -1925,12 +1926,29 @@ function onPos(pos) {
 
 function startGps() {
   if (!navigator.geolocation || watchId != null) return;
-  watchId = navigator.geolocation.watchPosition(onPos, () => setGps("GPS yo‘q", false), {
-    enableHighAccuracy: true,
-    maximumAge: 5000,
-    timeout: 20000,
-  });
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      gpsBroken = false;
+      onPos(pos);
+    },
+    () => {
+      gpsBroken = true;
+      setGps("GPS yo‘q", false);
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+  );
 }
+
+// Android ilova: ruxsat berildi yoki telefonda GPS yoqildi — kuzatuv qayta ulanadi
+window.nexusGpsReady = () => {
+  if (!token) return;
+  if (watchId != null && gpsBroken) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  startGps();
+  nativeTracking(true);
+};
 
 /** Haydovchi o‘chirilgan/bloklangan: kuzatuv to‘xtaydi, lekin yuborilmagan tasdiqlar saqlanib qoladi. */
 function onSessionLost(message) {
@@ -2314,6 +2332,13 @@ function bind() {
     else if (outboxMeta.length && navigator.onLine) flushOutbox().catch(() => {});
   });
   window.addEventListener("offline", setNet);
+  // Zayavka matnini uzoq bosib belgilab/nusxalab bo‘lmasin — kiritish maydonlari bundan mustasno
+  const typing = (el) => el?.closest?.("input, textarea, [contenteditable='true']");
+  ["contextmenu", "selectstart", "copy", "cut", "dragstart"].forEach((type) =>
+    document.addEventListener(type, (e) => {
+      if (!typing(e.target)) e.preventDefault();
+    })
+  );
   setNet();
 }
 

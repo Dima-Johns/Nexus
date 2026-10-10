@@ -435,6 +435,15 @@ input {
   -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none;
 }
+/* Ilovadagi matnni uzoq bosib nusxalab bo‘lmaydi; yozish maydonlari ishlayveradi */
+body {
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text; user-select: text;
+  -webkit-touch-callout: default;
+}
 .list-hint { text-align: center; font-size: 12px; margin: 6px 0 4px; }
 .re-done { text-align: center; padding: 4px 0 10px; font-size: 12px; }
 .re-row {

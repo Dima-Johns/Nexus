@@ -56,11 +56,18 @@ class TrackingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
+        val prefs = getSharedPreferences("nexus", MODE_PRIVATE)
+        // Tizim xizmatni o‘zi qayta tiklaganda (intent == null): ilova yopilgan yoki chiqilgan bo‘lsa ishlamaydi
+        if (intent?.action == ACTION_STOP || (intent == null && !prefs.getBoolean(PREF_ON, false))) {
             stopSelf()
             return START_NOT_STICKY
         }
-        startInForeground()
+        try {
+            startInForeground()
+        } catch (_: Exception) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         startLocation()
         handler.removeCallbacks(beat)
         handler.post(beat)
@@ -82,7 +89,7 @@ class TrackingService : Service() {
         )
         val n: Notification = NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("Nexus Haydovchi")
-            .setContentText("Joylashuv dispetcherga yuborilmoqda")
+            .setContentText("Joylashuv dispetcherga yuborilmoqda — ilova to‘liq yopilganda to‘xtaydi")
             .setSmallIcon(R.drawable.ic_stat_nexus)
             .setOngoing(true)
             .setContentIntent(open)
@@ -101,15 +108,21 @@ class TrackingService : Service() {
             locationManager = it
         }
         lm.removeUpdates(listener)
-        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).forEach { p ->
+        // O‘chiq provayderga ham obuna bo‘linadi: haydovchi GPS'ni keyin yoqsa, nuqtalar o‘zi kela boshlaydi
+        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { it in lm.allProviders }.forEach { p ->
             try {
-                if (lm.isProviderEnabled(p)) {
-                    lm.requestLocationUpdates(p, 30_000L, 10f, listener, Looper.getMainLooper())
-                    lm.getLastKnownLocation(p)?.let { listener.onLocationChanged(it) }
-                }
+                lm.requestLocationUpdates(p, 30_000L, 10f, listener, Looper.getMainLooper())
+                lm.getLastKnownLocation(p)?.let { listener.onLocationChanged(it) }
             } catch (_: Exception) {
             }
         }
+    }
+
+    // Ilova "so‘nggi ilovalar" ro‘yxatidan surib yopilganda kuzatuv to‘xtaydi
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        getSharedPreferences("nexus", MODE_PRIVATE).edit().putBoolean(PREF_ON, false).apply()
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     private fun hasLocation(): Boolean =
@@ -149,7 +162,7 @@ class TrackingService : Service() {
                 val code = c.responseCode
                 c.disconnect()
                 if (code == 401) {
-                    prefs.edit().remove("drv_token").apply()
+                    prefs.edit().remove("drv_token").putBoolean(PREF_ON, false).apply()
                     handler.post { stopSelf() }
                 }
             } catch (_: Exception) {
@@ -174,6 +187,7 @@ class TrackingService : Service() {
 
     companion object {
         const val ACTION_STOP = "uz.nexus.logistika.driver.STOP_TRACKING"
+        const val PREF_ON = "track_on"
         private const val CHANNEL = "nexus_tracking"
         private const val NOTIF_ID = 42
         private const val BEAT_MS = 60_000L
