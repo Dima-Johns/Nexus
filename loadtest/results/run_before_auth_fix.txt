@@ -1,0 +1,61 @@
+
+>>> 1x yuklama, 120 s ...
+
+== 1x: 23.4 so‘rov/s, xato 0, server CPU o‘rt. 31% (maks 54%), Postgres CPU 2%, xotira 128 MB, bir vaqtdagi so‘rov maks 16
+endpoint                             soni    rps  xato    p50    p95    p99     max      KB
+GET /dashboard/stats                  196   1.63     0     17     83    110     191     0.1
+GET /drivers                          202   1.68     0     14     85    126     154     2.0
+GET /geo/search                        11   0.09     0   2186   2599   2599    2599     0.1
+GET /orders (hammasi)                 197   1.64     0    167    313    362     379  1306.1
+GET /reports/orders                    18   0.15     0     66    155    198     198    20.4
+GET /reports/overview                  23   0.19     0     86    237    255     255   164.0
+GET /tracking/live                    802   6.68     0     12     73    132     297     2.1
+POST /driver/location                1212   10.1     0     15     89    138     210     0.1
+POST /driver/sync                     121   1.01     0    341    402    445     446     8.4
+POST /reports/pivot                    17   0.14     0     73    152    159     159     0.6
+POST proof (rasm)                      10   0.08     0     77    153    153     153     1.1
+
+>>> 2x yuklama, 120 s ...
+
+== 2x: 42.2 so‘rov/s, xato 0, server CPU o‘rt. 55% (maks 104%), Postgres CPU 2%, xotira 136 MB, bir vaqtdagi so‘rov maks 21
+endpoint                             soni    rps  xato    p50    p95    p99     max      KB
+GET /dashboard/stats                  357   2.98     0     23    121    176     296     0.1
+GET /drivers                          360    3.0     0     23    140    261     305     2.0
+GET /geo/search                        15   0.12     0   2477   3075   3374    3374     0.1
+GET /orders (hammasi)                 353   2.94     0    189    395    475     705  1306.0
+GET /reports/orders                    20   0.17     0    111    193    204     204    20.4
+GET /reports/overview                  22   0.18     0     91    192    200     200   165.6
+GET /tracking/live                   1552  12.93     0     17    109    185     295     2.2
+POST /driver/location                2234  18.62     0     26    133    222     296     0.1
+POST /driver/sync                     109   0.91     0    169    496    575     757     7.1
+POST /reports/pivot                    19   0.16     0     73    184    190     190     0.6
+POST proof (rasm)                      20   0.17     0    114    268    280     280     1.1
+
+>>> 4x yuklama, 120 s ...
+
+== 4x: 64.4 so‘rov/s, xato 6316, server CPU o‘rt. 22% (maks 120%), Postgres CPU 1%, xotira 948 MB, bir vaqtdagi so‘rov maks 2760
+endpoint                             soni    rps  xato    p50    p95    p99     max      KB
+GET /dashboard/stats                  554   4.62   463  30030  30112  30162   30270     0.0
+                                     kodlar: {500: 8, 599: 455}
+GET /drivers                          542   4.52   471  30028  30099  30180   30213     0.3
+                                     kodlar: {500: 12, 599: 459}
+GET /geo/search                        26   0.22    21  30038  30073  30079   30079     0.0
+                                     kodlar: {599: 21}
+GET /orders (hammasi)                 548   4.57   468  30031  30104  30176   30247   190.7
+                                     kodlar: {500: 8, 599: 460}
+GET /reports/orders                    17   0.14    13  30024  30048  30113   30113     4.8
+                                     kodlar: {500: 1, 599: 12}
+GET /reports/overview                  12    0.1    11  30029  30054  30070   30070    13.9
+                                     kodlar: {599: 11}
+GET /tracking/live                   2336  19.47  1876  30028  30094  30173   30287     0.4
+                                     kodlar: {500: 30, 599: 1846}
+POST /driver/location                3469  28.91  2799  30029  30099  30169   30294     0.0
+                                     kodlar: {500: 42, 599: 2757}
+POST /driver/sync                     179   1.49   156  30036  30104  30194   30276     0.7
+                                     kodlar: {599: 156}
+POST /reports/pivot                    11   0.09    10  30046  30083  30083   30083     0.1
+                                     kodlar: {599: 10}
+POST proof (rasm)                      31   0.26    28  30033  30102  30131   30131     0.1
+                                     kodlar: {500: 1, 599: 27}
+
+>>> 8x yuklama, 120 s ...

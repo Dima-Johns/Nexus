@@ -1,0 +1,142 @@
+[
+  {
+    "endpoint": "GET /orgs",
+    "count": 1,
+    "rps": null,
+    "errors": 0,
+    "p50": 18,
+    "p95": 18,
+    "p99": 18,
+    "max": 18,
+    "avg_kb": 0.2,
+    "codes": {
+      "200": 1
+    }
+  },
+  {
+    "endpoint": "POST /agents",
+    "count": 300,
+    "rps": null,
+    "errors": 0,
+    "p50": 107,
+    "p95": 172,
+    "p99": 204,
+    "max": 263,
+    "avg_kb": 0.1,
+    "codes": {
+      "200": 300
+    }
+  },
+  {
+    "endpoint": "POST /drivers",
+    "count": 300,
+    "rps": null,
+    "errors": 0,
+    "p50": 159,
+    "p95": 292,
+    "p99": 965,
+    "max": 1033,
+    "avg_kb": 1.7,
+    "codes": {
+      "200": 300
+    }
+  },
+  {
+    "endpoint": "POST /drivers/{id}/access",
+    "count": 300,
+    "rps": null,
+    "errors": 0,
+    "p50": 144,
+    "p95": 268,
+    "p99": 954,
+    "max": 1341,
+    "avg_kb": 1.7,
+    "codes": {
+      "200": 300
+    }
+  },
+  {
+    "endpoint": "POST /orders",
+    "count": 3000,
+    "rps": null,
+    "errors": 0,
+    "p50": 473,
+    "p95": 769,
+    "p99": 954,
+    "max": 1356,
+    "avg_kb": 0.7,
+    "codes": {
+      "200": 3000
+    }
+  },
+  {
+    "endpoint": "POST /orgs",
+    "count": 50,
+    "rps": null,
+    "errors": 0,
+    "p50": 186,
+    "p95": 367,
+    "p99": 397,
+    "max": 397,
+    "avg_kb": 0.3,
+    "codes": {
+      "200": 50
+    }
+  },
+  {
+    "endpoint": "POST /warehouses",
+    "count": 50,
+    "rps": null,
+    "errors": 0,
+    "p50": 115,
+    "p95": 212,
+    "p99": 239,
+    "max": 239,
+    "avg_kb": 0.1,
+    "codes": {
+      "200": 50
+    }
+  },
+  {
+    "endpoint": "driver-login (300 bir vaqtda)",
+    "count": 300,
+    "rps": null,
+    "errors": 0,
+    "p50": 1646,
+    "p95": 2920,
+    "p99": 3033,
+    "max": 3164,
+    "avg_kb": 0.4,
+    "codes": {
+      "200": 300
+    }
+  },
+  {
+    "endpoint": "login org admin",
+    "count": 50,
+    "rps": null,
+    "errors": 0,
+    "p50": 92,
+    "p95": 229,
+    "p99": 287,
+    "max": 287,
+    "avg_kb": 0.7,
+    "codes": {
+      "200": 50
+    }
+  },
+  {
+    "endpoint": "login superadmin",
+    "count": 1,
+    "rps": null,
+    "errors": 0,
+    "p50": 67,
+    "p95": 67,
+    "p99": 67,
+    "max": 67,
+    "avg_kb": 0.7,
+    "codes": {
+      "200": 1
+    }
+  }
+]

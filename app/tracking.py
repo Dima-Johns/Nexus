@@ -116,14 +116,29 @@ def _short_address(data: dict) -> str:
     return (text or data.get("display_name") or "")[:500]
 
 
-def _nominatim(url: str):
+def _geo_slot(max_wait: float | None = None) -> bool:
+    """Nominatim: sekundiga 1 so‘rovdan oshmasin. Navbat qulf ichida band qilinadi, kutish esa qulfdan tashqarida —
+    aks holda GPS so‘rovlari (schedule_geocode) shu qulfni kutib, bazadagi tranzaksiyani ochiq ushlab qoladi."""
     global _geo_last_call
     with _geo_lock:
-        # Nominatim: sekundiga 1 so‘rovdan oshmasin
-        wait = 1.1 - (time.monotonic() - _geo_last_call)
-        if wait > 0:
-            time.sleep(wait)
-        _geo_last_call = time.monotonic()
+        now = time.monotonic()
+        slot = max(now, _geo_last_call + 1.1)
+        if max_wait is not None and slot - now > max_wait:
+            return False
+        _geo_last_call = slot
+    wait = slot - time.monotonic()
+    if wait > 0:
+        time.sleep(wait)
+    return True
+
+
+def _nominatim(url: str, max_wait: float | None = None):
+    if not _geo_slot(max_wait):
+        return None
+    return _fetch_json(url)
+
+
+def _fetch_json(url: str):
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "NexusLogistika/1.0"})
         with urllib.request.urlopen(req, timeout=6) as resp:
@@ -136,7 +151,9 @@ def reverse_geocode(lat: float, lng: float) -> str:
     query = urllib.parse.urlencode(
         {"lat": f"{lat:.6f}", "lon": f"{lng:.6f}", "format": "jsonv2", "zoom": 18, "accept-language": "uz,ru"}
     )
-    data = _nominatim(f"{NOMINATIM_URL}?{query}")
+    # Haydovchi manzili shoshilinch emas: navbat band bo‘lsa o‘tkazib yuboriladi, keyingi GPS signalida qayta uriniladi.
+    # Shunda dispetcherning manzil qidiruvi yuzlab haydovchi orqasida navbat kutmaydi.
+    data = _nominatim(f"{NOMINATIM_URL}?{query}", max_wait=1.5)
     return _short_address(data) if isinstance(data, dict) else ""
 
 

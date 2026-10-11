@@ -11,7 +11,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
-from sqlalchemy import func
+from sqlalchemy import Integer, cast, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from .auth import (
@@ -571,6 +572,10 @@ async def upload_avatar(
     file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
     data = await read_upload(file, MAX_AVATAR_BYTES, "Rasm bo‘sh")
+    return await run_in_threadpool(_save_avatar, db, user, data)
+
+
+def _save_avatar(db: Session, user: User, data: bytes):
     mime = _image_mime(data)
     if not mime:
         raise HTTPException(400, "Faqat JPG, PNG yoki WEBP rasm yuklang")
@@ -935,14 +940,21 @@ async def driver_order_proof(
         raise HTTPException(400, "Sababni tanlang")
     if result == "returned" and asked and len(comment) < 3:
         raise HTTPException(400, "Qaytarish sababini izohda yozing")
-    row = db.query(Order).filter(Order.id == item_id, Order.driver_id == driver.id).first()
+    # Baza bilan ish alohida oqimda: kutish butun serverni (event loop) to‘xtatib qo‘ymasin
+    row = await run_in_threadpool(
+        lambda: db.query(Order).filter(Order.id == item_id, Order.driver_id == driver.id).first()
+    )
     if not row:
         raise HTTPException(404, "Zayavka topilmadi")
     data = await read_upload(photo, MAX_PROOF_BYTES, "Rasm tushirilmagan")
     if not (photo.content_type or "").startswith("image/"):
         raise HTTPException(400, "Faqat rasm yuklash mumkin")
-    now = local_now()
     data, mime = await run_in_threadpool(shrink_proof_photo, data, photo.content_type)
+    return await run_in_threadpool(_finish_proof, db, driver, row, data, mime, result, reason, comment, done_at)
+
+
+def _finish_proof(db: Session, driver: Driver, row: Order, data: bytes, mime, result: str, reason: str, comment: str, done_at: str):
+    now = local_now()
     save_proof_photo(db, row, data, mime)
     row.proof_reason = reason or result
     row.proof_comment = comment
@@ -1834,8 +1846,12 @@ async def import_drivers_excel(
     user: User = Depends(require_perm("drivers.manage")),
 ):
     raw = await read_table_upload(file)
+    return await run_in_threadpool(_import_drivers_file, db, user, raw, file.filename or "drivers.xlsx")
+
+
+def _import_drivers_file(db: Session, user: User, raw: bytes, filename: str):
     try:
-        records = read_driver_records(raw, file.filename or "drivers.xlsx", 1)
+        records = read_driver_records(raw, filename, 1)
     except Exception as exc:
         raise HTTPException(400, f"Fayl o‘qilmadi: {exc}") from exc
     check_import_rows(records)
@@ -2130,6 +2146,10 @@ async def import_orders_file(
     user: User = Depends(require_perm("orders.import")),
 ):
     raw = await read_table_upload(file)
+    return await run_in_threadpool(_import_orders_file, db, user, raw, file.filename or "")
+
+
+def _import_orders_file(db: Session, user: User, raw: bytes, filename: str):
     mappings = [RELOG_MAPPING]
     for tpl in (
         q_org(db, ImportTemplate, user)
@@ -2140,7 +2160,7 @@ async def import_orders_file(
         if mapping:
             mappings.append(mapping)
     try:
-        records, mapping, meta = auto_read_order_records(raw, file.filename or "", mappings)
+        records, mapping, meta = auto_read_order_records(raw, filename, mappings)
     except Exception as exc:
         raise HTTPException(400, f"Fayl o‘qilmadi: {exc}") from exc
     if meta.get("score", 0) < 3 or not records:
@@ -2175,15 +2195,41 @@ def list_orders(db: Session = Depends(get_db), user: User = Depends(require_perm
     return [_order_out(o) for o in rows]
 
 
+def _next_order_no(db: Session, oid: int) -> int:
+    n = db.query(Order).filter(Order.org_id == oid).count() + 1006
+    if db.get_bind().dialect.name == "postgresql":
+        last = (
+            db.query(func.max(cast(func.substring(Order.code, r"^ORD-(\d{1,9})$"), Integer)))
+            .filter(Order.org_id == oid)
+            .scalar()
+        )
+    else:
+        nums = [c[4:] for (c,) in db.query(Order.code).filter(Order.org_id == oid, Order.code.like("ORD-%"))]
+        last = max((int(x) for x in nums if x.isdigit() and len(x) <= 9), default=None)
+    # Zayavka o‘chirilgandan keyin ham raqam takrorlanmasin: soni emas, eng katta raqamdan davom etadi
+    return max(n, (last or 0) + 1)
+
+
 @router.post("/orders", response_model=OrderOut)
 def create_order(payload: OrderIn, db: Session = Depends(get_db), user: User = Depends(require_perm("orders.create"))):
     oid = org_id_of(user)
-    n = db.query(Order).filter(Order.org_id == oid).count() + 1006
     data = payload.model_dump()
     data["org_id"] = oid
-    row = Order(code=f"ORD-{n}", **data)
-    db.add(row)
-    db.flush()
+    n = _next_order_no(db, oid)
+    for _ in range(8):
+        row = Order(code=f"ORD-{n}", **data)
+        try:
+            # Ikki dispetcher bir vaqtda saqlasa raqam band bo‘lishi mumkin — keyingisi olinadi
+            with db.begin_nested():
+                db.add(row)
+                db.flush()
+            break
+        except IntegrityError as err:
+            if "ux_orders_org_code" not in str(err.orig):
+                raise
+            n += 1
+    else:
+        raise HTTPException(409, "Zayavka raqami band — qayta saqlab ko‘ring")
     _bind_order_warehouse(db, row, oid)
     if row.driver_id:
         sequence_drivers(db, {row.driver_id}, oid)
@@ -2571,8 +2617,12 @@ def list_templates(db: Session = Depends(get_db), user: User = Depends(get_curre
 @router.post("/templates/inspect")
 async def inspect_import_file(file: UploadFile = File(...), _: User = Depends(get_current_user)):
     raw = await read_table_upload(file)
+    return await run_in_threadpool(_inspect_file, raw, file.filename or "")
+
+
+def _inspect_file(raw: bytes, filename: str):
     try:
-        return inspect_table(raw, file.filename or "")
+        return inspect_table(raw, filename)
     except Exception as exc:
         raise HTTPException(400, f"Fayl o‘qilmadi: {exc}") from exc
 
@@ -2669,17 +2719,21 @@ async def import_with_template(
     db: Session = Depends(get_db),
     user: User = Depends(require_perm("orders.import")),
 ):
-    row = get_org_row(db, ImportTemplate, item_id, user, "Shablon topilmadi")
+    row = await run_in_threadpool(get_org_row, db, ImportTemplate, item_id, user, "Shablon topilmadi")
     if row.status != "approved":
         raise HTTPException(400, "Faqat tasdiqlangan shablon bilan import qilish mumkin")
-    sheet, header_row, mapping = parse_template_config(row.mapping_json)
     raw = await read_table_upload(file)
+    return await run_in_threadpool(_import_with_template, db, user, row, raw, file.filename or "")
+
+
+def _import_with_template(db: Session, user: User, row: ImportTemplate, raw: bytes, filename: str):
+    sheet, header_row, mapping = parse_template_config(row.mapping_json)
     try:
         use_sheet = None if row.entity == "drivers" else sheet
         if row.entity == "drivers":
-            records = read_driver_records(raw, file.filename or "", header_row)
+            records = read_driver_records(raw, filename, header_row)
         else:
-            records = read_records(raw, file.filename or "", use_sheet, header_row)
+            records = read_records(raw, filename, use_sheet, header_row)
     except Exception as exc:
         raise HTTPException(400, f"Fayl o‘qilmadi: {exc}") from exc
     check_import_rows(records)
@@ -2689,7 +2743,7 @@ async def import_with_template(
         return result
     if not records:
         try:
-            records, mapping, _meta = auto_read_order_records(raw, file.filename or "", [mapping or RELOG_MAPPING, RELOG_MAPPING])
+            records, mapping, _meta = auto_read_order_records(raw, filename, [mapping or RELOG_MAPPING, RELOG_MAPPING])
         except Exception as exc:
             raise HTTPException(400, f"Fayl o‘qilmadi: {exc}") from exc
     result = _import_orders(db, records, mapping or RELOG_MAPPING, org_id_of(user))

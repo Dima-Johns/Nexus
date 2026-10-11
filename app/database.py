@@ -22,10 +22,19 @@ for _prefix in ("postgres://", "postgresql://"):
         break
 
 connect_args = {}
+pool_args = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+else:
+    # FastAPI 40 ta oqimda ishlaydi: ulanishlar ham shuncha bo‘lmasa so‘rovlar navbatda qotib qoladi
+    pool_args = {
+        "pool_size": int(os.getenv("DB_POOL_SIZE", "20")),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "20")),
+        "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "10")),
+        "pool_recycle": 1800,
+    }
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
+engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True, **pool_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
@@ -33,7 +42,9 @@ class Base(DeclarativeBase):
     pass
 
 
-def get_db():
+async def get_db():
+    # async: sessiyani yopish (ulanishni qaytarish) bo‘sh oqim kutmaydi — aks holda yuklamada
+    # barcha oqimlar ulanish kutib, ulanishlarni qaytaradigan yopish esa oqim kutib, server qotadi
     db = SessionLocal()
     try:
         yield db

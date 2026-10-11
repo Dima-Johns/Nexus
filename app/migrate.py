@@ -114,6 +114,9 @@ def migrate_schema() -> None:
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS agent_code VARCHAR(2) DEFAULT ''",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'manual'",
         "CREATE INDEX IF NOT EXISTS ix_clients_org_code ON clients (org_id, code)",
+        "CREATE INDEX IF NOT EXISTS ix_orders_driver_id ON orders (driver_id)",
+        "CREATE INDEX IF NOT EXISTS ix_orders_client_id ON orders (client_id)",
+        "CREATE INDEX IF NOT EXISTS ix_orders_org_date ON orders (org_id, delivery_date)",
         """
         CREATE TABLE IF NOT EXISTS app_migrations (
             key VARCHAR(80) PRIMARY KEY,
