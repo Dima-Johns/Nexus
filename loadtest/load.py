@@ -8,10 +8,12 @@ python loadtest/load.py [bosqich_soniyasi]
 import asyncio
 import io
 import json
+import os
 import random
 import sys
 import threading
 import time
+from datetime import date, timedelta
 
 import httpx
 import psutil
@@ -140,12 +142,22 @@ async def main():
         for tok in dispatchers:
             tasks.append(every(15, lambda tok=tok: hit(client, "GET /tracking/live", "GET", "/api/tracking/live", tok)))
             tasks.append(every(60, lambda tok=tok: hit(client, "GET /dashboard/stats", "GET", "/api/dashboard/stats", tok)))
-            tasks.append(every(60, lambda tok=tok: hit(client, "GET /orders (hammasi)", "GET", "/api/orders", tok)))
+            if os.getenv("LOAD_ORDERS_ALL"):
+                tasks.append(every(60, lambda tok=tok: hit(client, "GET /orders (hammasi)", "GET", "/api/orders", tok)))
+            else:
+                # Panel endi standart «Bugun» filtri bo‘yicha faqat shu kunni so‘raydi
+                day = date.today().isoformat()
+                tasks.append(every(60, lambda tok=tok: hit(client, "GET /orders (bugun)", "GET",
+                                                           f"/api/orders?date_from={day}&date_to={day}", tok)))
             tasks.append(every(60, lambda tok=tok: hit(client, "GET /drivers", "GET", "/api/drivers", tok)))
-            tasks.append(every(600, lambda tok=tok: hit(client, "GET /reports/overview", "GET", "/api/reports/overview", tok)))
-            tasks.append(every(600, lambda tok=tok: hit(client, "GET /reports/orders", "GET", "/api/reports/orders?limit=50", tok)))
+            # Hisobotlar sahifasi standart «Oxirgi 30 kun» bilan ochiladi
+            rng = f"date_from={(date.today() - timedelta(days=29)).isoformat()}&date_to={date.today().isoformat()}"
+            pivot_body = {"rows": ["driver"], "values": ["count", "amount"],
+                          "date_from": (date.today() - timedelta(days=29)).isoformat(), "date_to": date.today().isoformat()}
+            tasks.append(every(600, lambda tok=tok: hit(client, "GET /reports/overview", "GET", f"/api/reports/overview?{rng}", tok)))
+            tasks.append(every(600, lambda tok=tok: hit(client, "GET /reports/orders", "GET", f"/api/reports/orders?limit=50&{rng}", tok)))
             tasks.append(every(900, lambda tok=tok: hit(client, "POST /reports/pivot", "POST", "/api/reports/pivot",
-                                                         tok, json={"rows": ["driver"], "values": ["count", "amount"]})))
+                                                         tok, json=pivot_body)))
         tasks.append(proofs(client))
 
         samples = [[] for _ in MULTIPLIERS]
