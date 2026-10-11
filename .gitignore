@@ -10,6 +10,10 @@ uploads/
 *.sqlite3
 *.dump
 
+# Yuklama testi natijalari va tokenlari
+loadtest/state.json
+loadtest/results/
+
 # Python
 __pycache__/
 *.py[cod]
