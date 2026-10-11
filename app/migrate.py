@@ -117,6 +117,7 @@ def migrate_schema() -> None:
         "CREATE INDEX IF NOT EXISTS ix_orders_driver_id ON orders (driver_id)",
         "CREATE INDEX IF NOT EXISTS ix_orders_client_id ON orders (client_id)",
         "CREATE INDEX IF NOT EXISTS ix_orders_org_date ON orders (org_id, delivery_date)",
+        "ALTER TABLE proof_photos ADD COLUMN IF NOT EXISTS storage_key VARCHAR(300) DEFAULT ''",
         """
         CREATE TABLE IF NOT EXISTS app_migrations (
             key VARCHAR(80) PRIMARY KEY,

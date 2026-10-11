@@ -3,6 +3,7 @@ import json
 import os
 import re
 import secrets
+import time
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -11,10 +12,11 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
-from sqlalchemy import Integer, cast, func
+from sqlalchemy import Integer, and_, cast, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from . import storage
 from .auth import (
     create_driver_token,
     create_token,
@@ -23,6 +25,7 @@ from .auth import (
     hash_password,
     issue_driver_credentials,
     parse_qr_token,
+    release_connection,
     require_admin,
     upgrade_password,
     verify_password,
@@ -874,28 +877,104 @@ def shrink_proof_photo(data: bytes, mime: str | None) -> tuple[bytes, str | None
     return data, mime
 
 
-def save_proof_photo(db: Session, row: Order, data: bytes, mime: str | None) -> None:
+def _proof_mime(mime: str | None) -> str:
+    return mime if mime in PROOF_MIMES else "image/jpeg"
+
+
+def upload_proof_photo(row: Order, data: bytes, mime: str | None) -> str:
+    """Rasmni omborga yozadi; kalit qaytaradi. Ombor sozlanmagan/ishlamasa "" — rasm bazaga yoziladi."""
+    if not storage.enabled():
+        return ""
+    key = storage.new_key(row.org_id, row.id, _proof_mime(mime))
+    return key if storage.put(key, data, _proof_mime(mime)) else ""
+
+
+def save_proof_photo(db: Session, row: Order, data: bytes, mime: str | None, key: str | None = None) -> None:
+    if key is None:
+        key = upload_proof_photo(row, data, mime)
     photo = db.get(ProofPhoto, row.id)
     if photo is None:
         photo = ProofPhoto(order_id=row.id)
         db.add(photo)
-    photo.mime = mime if mime in PROOF_MIMES else "image/jpeg"
-    photo.data = data
+    old_key = photo.storage_key or ""
+    photo.mime = _proof_mime(mime)
+    photo.storage_key = key
+    photo.data = b"" if key else data
     photo.created_at = datetime.now(timezone.utc)
+    if old_key and old_key != key:
+        storage.delete_after_commit(db, [old_key])
     row.proof_photo = proof_photo_url(row.id)
+
+
+def drop_proof_photos(db: Session, cond) -> None:
+    """Rasm yozuvlarini o'chiradi; ombordagi fayllar tranzaksiya saqlangach o'chiriladi."""
+    keys = [k for (k,) in db.query(ProofPhoto.storage_key).filter(cond, ProofPhoto.storage_key != "")]
+    db.query(ProofPhoto).filter(cond).delete(synchronize_session=False)
+    storage.delete_after_commit(db, keys)
 
 
 @router.get("/orders/{item_id}/proof-photo")
 def get_proof_photo(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("proofs.view"))):
     order = get_org_row(db, Order, item_id, user, "Zayavka topilmadi")
     photo = db.get(ProofPhoto, order.id)
-    if photo is None or not photo.data:
+    if photo is None:
+        raise HTTPException(404, "Rasm topilmadi")
+    data, mime, key = photo.data, photo.mime, photo.storage_key or ""
+    if not data and key:
+        release_connection(db)
+        data = storage.get(key) if storage.enabled() else None
+        if data is None:
+            raise HTTPException(503, "Rasm omboriga hozir ulanib bo‘lmadi — birozdan keyin qayta oching")
+    if not data:
         raise HTTPException(404, "Rasm topilmadi")
     return Response(
-        content=photo.data,
-        media_type=photo.mime or "image/jpeg",
+        content=data,
+        media_type=mime or "image/jpeg",
         headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"},
     )
+
+
+def move_photos_to_storage(batch: int = 20, pause: float = 0.5) -> int:
+    """Bazadagi eski rasmlarni omborga ko‘chiradi (fon oqimida). Ko‘chirilgan rasmlar sonini qaytaradi."""
+    if not storage.enabled():
+        return 0
+    from .database import SessionLocal
+
+    moved = 0
+    skip: set[int] = set()
+    while True:
+        db = SessionLocal()
+        try:
+            q = (
+                db.query(ProofPhoto.order_id, ProofPhoto.mime, ProofPhoto.data, ProofPhoto.created_at, Order.org_id)
+                .join(Order, Order.id == ProofPhoto.order_id)
+                .filter(ProofPhoto.storage_key == "", func.length(ProofPhoto.data) > 0)
+            )
+            if skip:
+                q = q.filter(ProofPhoto.order_id.notin_(skip))
+            rows = q.order_by(ProofPhoto.order_id).limit(batch).all()
+            release_connection(db)
+            if not rows:
+                return moved
+            for order_id, mime, data, created_at, org_id in rows:
+                key = storage.new_key(org_id, order_id, _proof_mime(mime))
+                if not storage.put(key, data, _proof_mime(mime)):
+                    return moved
+                # Shu orada haydovchi rasmni qayta yuborgan bo‘lsa — yangisi ustidan yozilmaydi
+                done = (
+                    db.query(ProofPhoto)
+                    .filter(ProofPhoto.order_id == order_id, ProofPhoto.storage_key == "", ProofPhoto.created_at == created_at)
+                    .update({ProofPhoto.storage_key: key, ProofPhoto.data: b""}, synchronize_session=False)
+                )
+                db.commit()
+                if done:
+                    moved += 1
+                else:
+                    skip.add(order_id)
+                    storage.delete_now([key])
+        finally:
+            db.close()
+        time.sleep(pause)
 
 
 def import_legacy_proofs(db: Session) -> int:
@@ -941,21 +1020,27 @@ async def driver_order_proof(
     if result == "returned" and asked and len(comment) < 3:
         raise HTTPException(400, "Qaytarish sababini izohda yozing")
     # Baza bilan ish alohida oqimda: kutish butun serverni (event loop) to‘xtatib qo‘ymasin
-    row = await run_in_threadpool(
-        lambda: db.query(Order).filter(Order.id == item_id, Order.driver_id == driver.id).first()
-    )
+    row = await run_in_threadpool(_driver_order_row, db, driver, item_id)
     if not row:
         raise HTTPException(404, "Zayavka topilmadi")
     data = await read_upload(photo, MAX_PROOF_BYTES, "Rasm tushirilmagan")
     if not (photo.content_type or "").startswith("image/"):
         raise HTTPException(400, "Faqat rasm yuklash mumkin")
     data, mime = await run_in_threadpool(shrink_proof_photo, data, photo.content_type)
-    return await run_in_threadpool(_finish_proof, db, driver, row, data, mime, result, reason, comment, done_at)
+    key = await run_in_threadpool(upload_proof_photo, row, data, mime)
+    return await run_in_threadpool(_finish_proof, db, driver, row, data, mime, key, result, reason, comment, done_at)
 
 
-def _finish_proof(db: Session, driver: Driver, row: Order, data: bytes, mime, result: str, reason: str, comment: str, done_at: str):
+def _driver_order_row(db: Session, driver: Driver, item_id: int) -> Order | None:
+    row = db.query(Order).filter(Order.id == item_id, Order.driver_id == driver.id).first()
+    # Rasm o‘qilib, omborga yozilguncha baza ulanishi band turmasin
+    release_connection(db)
+    return row
+
+
+def _finish_proof(db: Session, driver: Driver, row: Order, data: bytes, mime, key: str, result: str, reason: str, comment: str, done_at: str):
     now = local_now()
-    save_proof_photo(db, row, data, mime)
+    save_proof_photo(db, row, data, mime, key)
     row.proof_reason = reason or result
     row.proof_comment = comment
     marked = parse_device_time(done_at).astimezone(LOCAL_TZ) if done_at else now
@@ -1930,7 +2015,7 @@ def delete_driver(item_id: int, db: Session = Depends(get_db), user: User = Depe
 @router.delete("/orders/all")
 def delete_all_orders(db: Session = Depends(get_db), user: User = Depends(require_perm("orders.delete"))):
     ids = q_org(db, Order, user).with_entities(Order.id).scalar_subquery()
-    db.query(ProofPhoto).filter(ProofPhoto.order_id.in_(ids)).delete(synchronize_session=False)
+    drop_proof_photos(db, ProofPhoto.order_id.in_(ids))
     n = q_org(db, Order, user).delete(synchronize_session=False)
     db.commit()
     return {"ok": True, "deleted": n}
@@ -2175,10 +2260,42 @@ def _import_orders_file(db: Session, user: User, raw: bytes, filename: str):
     return result
 
 
+def _day_param(value: str, label: str):
+    try:
+        return datetime.strptime(value.strip()[:10], "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, f"«{label}» sanasi YYYY-MM-DD ko‘rinishida bo‘lsin") from None
+
+
+def _orders_in_days(q, date_from: str, date_to: str):
+    """Sana oralig‘i berilsa — faqat shu kunlar; sanasi yo‘q zayavkalardan panel ko‘rsatishi mumkinlari ham qoladi."""
+    if not date_from and not date_to:
+        return q
+    start = _day_param(date_from or date_to, "Boshlanish")
+    end = _day_param(date_to or date_from, "Tugash")
+    if start > end:
+        start, end = end, start
+    dated = Order.delivery_date.like("____-__-__%")
+    return q.filter(
+        or_(
+            and_(dated, Order.delivery_date >= start.isoformat(), Order.delivery_date < (end + timedelta(days=1)).isoformat()),
+            and_(
+                or_(Order.delivery_date.is_(None), ~dated),
+                or_(Order.status.notin_(DONE_STATUSES), Order.extra_json.like("%delivery_date%")),
+            ),
+        )
+    )
+
+
 @router.get("/orders", response_model=list[OrderOut])
-def list_orders(db: Session = Depends(get_db), user: User = Depends(require_perm("orders.view"))):
+def list_orders(
+    date_from: str = Query("", max_length=10),
+    date_to: str = Query("", max_length=10),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("orders.view")),
+):
     rows = (
-        q_org(db, Order, user)
+        _orders_in_days(q_org(db, Order, user), date_from, date_to)
         .options(joinedload(Order.client), joinedload(Order.driver), joinedload(Order.warehouse))
         .order_by(Order.id.desc())
         .all()
@@ -2254,7 +2371,7 @@ def update_order(item_id: int, payload: OrderIn, db: Session = Depends(get_db), 
 @router.delete("/orders/{item_id}")
 def delete_order(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("orders.delete"))):
     row = get_org_row(db, Order, item_id, user, "Buyurtma topilmadi")
-    db.query(ProofPhoto).filter(ProofPhoto.order_id == row.id).delete(synchronize_session=False)
+    drop_proof_photos(db, ProofPhoto.order_id == row.id)
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -2527,7 +2644,7 @@ def bulk_delete_orders(payload: BulkIdsIn, db: Session = Depends(get_db), user: 
     rows = q_org(db, Order, user).filter(Order.id.in_(payload.ids)).all()
     n = len(rows)
     if rows:
-        db.query(ProofPhoto).filter(ProofPhoto.order_id.in_([r.id for r in rows])).delete(synchronize_session=False)
+        drop_proof_photos(db, ProofPhoto.order_id.in_([r.id for r in rows]))
     for row in rows:
         db.delete(row)
     db.commit()

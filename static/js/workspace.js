@@ -1,6 +1,6 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=79";
-import { proofThumb } from "./proof-photo.js?v=79";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=80";
+import { proofThumb } from "./proof-photo.js?v=80";
 
 let orders = [];
 let filter = "incoming";
@@ -908,10 +908,23 @@ function showWsError(text) {
 let epoch = 0;
 // Kechikib kelgan eski /orders javobi yangisining ustiga yozilmasin
 let refreshSeq = 0;
+// Serverdan faqat tanlangan davr keladi (butun tarix emas); qolgan filtrlash avvalgidek shu yerda
+let loadedQuery = null;
+
+function ordersQuery() {
+  if (applied.datePreset === "all") return "";
+  const { from, to } = presetRange(applied.datePreset, applied.customDate);
+  return from && to ? `?date_from=${from}&date_to=${to}` : "";
+}
+
+function refetchIfRangeChanged() {
+  if (ordersQuery() !== loadedQuery) refreshWorkspace({ quiet: true }).catch(() => {});
+}
 
 export function resetWorkspace() {
   epoch += 1;
   orders = [];
+  loadedQuery = null;
   selected = new Set();
   driversById = {};
   warehouses = [];
@@ -925,9 +938,11 @@ export function resetWorkspace() {
 export async function refreshWorkspace({ quiet = false } = {}) {
   const ep = epoch;
   const seq = ++refreshSeq;
-  const fresh = await api("/orders");
+  const query = ordersQuery();
+  const fresh = await api(`/orders${query}`);
   if (ep !== epoch || seq !== refreshSeq) return;
   orders = fresh;
+  loadedQuery = query;
   const ids = new Set(orders.map((o) => o.id));
   selected = new Set([...selected].filter((id) => ids.has(id)));
   await fillSelects().catch(() => {});
@@ -1049,6 +1064,7 @@ export function bindWorkspace() {
     draft = defaultFilters();
     syncDraftToDom();
     renderList();
+    refetchIfRangeChanged();
   };
   $("#filter-apply").onclick = () => {
     readDraftFromDom();
@@ -1056,6 +1072,7 @@ export function bindWorkspace() {
     closeFilterPanel();
     selected.clear();
     renderList();
+    refetchIfRangeChanged();
   };
   $("#order-sort").onclick = () => {
     sortAsc = !sortAsc;

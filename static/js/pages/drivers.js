@@ -1,6 +1,6 @@
 import { api, apiDownload, apiUpload, can } from "../api.js";
-import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=79";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=79";
+import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=80";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=80";
 
 const REFRESH_MS = 60000;
 

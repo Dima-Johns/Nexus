@@ -199,7 +199,7 @@ def parse_qr_token(raw: str) -> str:
 POLL_PATHS = {"/api/tracking/live", "/api/dashboard/stats", "/api/driver/location"}
 
 
-def _release_connection(db: Session) -> None:
+def release_connection(db: Session) -> None:
     """Endpoint navbat kutayotganda ulanish pulni band qilib turmasligi uchun tranzaksiyani yopadi."""
     db.expire_on_commit = False
     try:
@@ -235,7 +235,7 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Harakatsizlik tufayli sessiya yopildi")
     if request.url.path not in POLL_PATHS:
         row.last_seen_at = now
-    _release_connection(db)
+    release_connection(db)
     return user
 
 
@@ -257,7 +257,7 @@ def get_current_driver(
     driver.seen_at = now
     if request.url.path not in POLL_PATHS:
         row.last_seen_at = now
-    _release_connection(db)
+    release_connection(db)
     return driver
 
 

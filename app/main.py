@@ -1,6 +1,8 @@
+import logging
 import mimetypes
 import os
 import re
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,7 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import import_legacy_proofs, router
+from . import storage
+from .api import import_legacy_proofs, move_photos_to_storage, router
 from .auth import wrap_legacy_hashes
 from .reports_api import router as reports_router
 from .database import Base, SessionLocal, engine
@@ -18,11 +21,22 @@ from .migrate import migrate_schema
 from .seed import ensure_agents, ensure_default_templates, ensure_driver_logins, ensure_phone_format, seed_if_empty
 from .tracking import start_simulator, stop_simulator
 
+log = logging.getLogger("nexus")
+
 # Railway konteyneridagi mime bazasida .webp yo‘q — logo octet-stream bo‘lib ketadi
 mimetypes.add_type("image/webp", ".webp")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 SPA_ROUTES = {"", "login", "dashboard", "orders", "drivers", "agents", "warehouses", "settings", "admin", "reports"}
+
+
+def _move_photos() -> None:
+    try:
+        moved = move_photos_to_storage()
+        if moved:
+            log.info("Bazadagi %s ta rasm omborga ko‘chirildi", moved)
+    except Exception:
+        log.exception("Rasmlarni omborga ko‘chirish to‘xtadi")
 
 
 @asynccontextmanager
@@ -49,6 +63,8 @@ async def lifespan(_: FastAPI):
         wrap_legacy_hashes(db)
     finally:
         db.close()
+    if storage.enabled():
+        threading.Thread(target=_move_photos, daemon=True).start()
     start_simulator()
     yield
     stop_simulator()

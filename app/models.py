@@ -64,6 +64,8 @@ class ProofPhoto(Base):
     order_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     mime: Mapped[str] = mapped_column(String(32), default="image/jpeg")
     data: Mapped[bytes] = mapped_column(LargeBinary)
+    # Bo'sh bo'lmasa rasm S3/R2 omborida, data esa bo'sh
+    storage_key: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
