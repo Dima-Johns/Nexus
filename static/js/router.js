@@ -1,7 +1,7 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
-import { $, $$ } from "./ui.js?v=82";
-import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=82";
-import { renderProfile } from "./profile.js?v=82";
+import { $, $$ } from "./ui.js?v=83";
+import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=83";
+import { renderProfile } from "./profile.js?v=83";
 
 const ROUTES = {
   "/": "dashboard",
@@ -58,8 +58,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=82`),
-    import(`/static/js/pages/${name}.js?v=82`),
+    fetch(`/static/pages/${name}.html?v=83`),
+    import(`/static/js/pages/${name}.js?v=83`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;
@@ -189,6 +189,7 @@ export async function render() {
     a.classList.toggle("active", href === `/${name}` || (name === "dashboard" && href === "/dashboard"));
   });
   $("#page-root").classList.toggle("page-map", name === "dashboard");
+  $(".app-body")?.classList.toggle("no-rail", name !== "dashboard");
 
   const panePromise = showPane(name, seq);
   if (!workspaceReady) {

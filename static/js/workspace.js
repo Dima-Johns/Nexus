@@ -1,6 +1,6 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=82";
-import { proofThumb } from "./proof-photo.js?v=82";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=83";
+import { proofThumb } from "./proof-photo.js?v=83";
 
 let orders = [];
 let filter = "incoming";
@@ -986,7 +986,8 @@ export function bindWorkspace() {
         window.dispatchEvent(new CustomEvent("nexus:driver-select", { detail: { id: null } }));
       }
       renderList();
-      if (filter === "incoming" || filter === "active") {
+      // Yon panel faqat xaritada ko‘rinadi: boshqa sahifadan har qanday tab xaritaga olib o‘tadi
+      if (filter === "incoming" || filter === "active" || $(".app-body")?.classList.contains("no-rail")) {
         window.dispatchEvent(new CustomEvent("nexus:show-map"));
       }
     };

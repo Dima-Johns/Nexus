@@ -542,6 +542,10 @@ textarea { resize: vertical; }
   grid-template-columns: var(--rail-w, 340px) 6px 1fr;
   min-height: 0;
 }
+/* Yon panel faqat xarita sahifasida */
+.app-body.no-rail { grid-template-columns: minmax(0, 1fr); }
+.app-body.no-rail > .rail,
+.app-body.no-rail > .rail-resizer { display: none; }
 .rail-resizer {
   cursor: col-resize;
   background: var(--stroke);

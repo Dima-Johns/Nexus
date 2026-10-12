@@ -1,5 +1,5 @@
 import { api, me, setMe, token } from "./api.js";
-import { LANGS, getLang, setLang } from "./i18n.js?v=82";
+import { LANGS, getLang, setLang } from "./i18n.js?v=83";
 
 // Serverga yozilmagan tanlov: keyingi yuklanishda serverdagi eski til uni bosib ketmasligi uchun
 const PENDING_KEY = "nx_lang_pending";
