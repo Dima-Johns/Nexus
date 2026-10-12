@@ -1,15 +1,36 @@
 import { api, can, me } from "../api.js";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs } from "../ui.js?v=80";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs } from "../ui.js?v=81";
 
 let bound = false;
 let paneRoot = null;
 let agentsCache = [];
+const picked = new Set();
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 const ICON_TRASH = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
 
 function isAdmin() {
-  return me?.role === "admin";
+  return me?.role === "admin" || me?.role === "superadmin";
+}
+
+function syncBulk(root) {
+  const bar = $("#agent-bulk", root);
+  if (!bar) return;
+  const ids = new Set(agentsCache.map((a) => a.id));
+  [...picked].forEach((id) => {
+    if (!ids.has(id)) picked.delete(id);
+  });
+  bar.classList.toggle("hidden", !canManage() || !agentsCache.length);
+  const n = picked.size;
+  const all = $("#agent-all", root);
+  if (all) {
+    all.checked = n > 0 && n === agentsCache.length;
+    all.indeterminate = n > 0 && n < agentsCache.length;
+  }
+  const count = $("#agent-sel-count", root);
+  if (count) count.textContent = n ? `${n} ta tanlandi` : "";
+  const del = $("#agent-bulk-del", root);
+  if (del) del.disabled = !n;
 }
 
 function canManage() {
@@ -99,6 +120,7 @@ async function load(root) {
   const headers = manage || can("agents.code.set")
     ? ["Kod", "Ism", "Telefon", "Hudud", "Haydovchilar", ""]
     : ["Kod", "Ism", "Telefon", "Hudud", "Haydovchilar"];
+  if (manage) headers.unshift("");
   box.innerHTML = table(
     headers,
     agents
@@ -107,14 +129,18 @@ async function load(root) {
         if (canOpenEditor(a)) {
           buttons.push(`<button class="icon-btn row-icon" type="button" data-edit="${a.id}" title="${canSetCode(a) && !manage ? "Kod kiritish" : "Tahrirlash"}">${ICON_PENCIL}</button>`);
         }
-        if (isAdmin()) {
+        if (manage) {
           buttons.push(`<button class="icon-btn row-icon danger" type="button" data-del="${a.id}" title="O‘chirish">${ICON_TRASH}</button>`);
         }
         const actions = buttons.length
           ? `<td class="col-actions"><div class="row-icons">${buttons.join("")}</div></td>`
           : "";
+        const check = manage
+          ? `<td class="col-check"><input type="checkbox" data-pick="${a.id}" ${picked.has(a.id) ? "checked" : ""} aria-label="Belgilash" /></td>`
+          : "";
         const lockMark = a.code_locked ? `<span class="muted"> qulf</span>` : "";
         return `<tr>
+          ${check}
           <td><b>${escapeHtml(a.code || "—")}</b>${lockMark}</td>
           <td>${escapeHtml(a.name)}</td>
           <td>${escapeHtml(a.phone || "—")}</td>
@@ -125,6 +151,7 @@ async function load(root) {
       })
       .join("")
   );
+  syncBulk(root);
   } catch (ex) {
     showErr(err, ex.message || "Agentlarni yuklab bo‘lmadi");
     box.innerHTML = `<div class="empty-list">Ro‘yxatni ochib bo‘lmadi.</div>`;
@@ -159,7 +186,7 @@ export async function init(root) {
   if (openBtn) openBtn.classList.toggle("hidden", !canManage());
   const hint = $("#agent-hint", root);
   if (hint) {
-    if (isAdmin()) hint.textContent = "Qalamcha bilan tahrirlang. Kod Excel «Код торгового» ustuniga mos bo‘lsin.";
+    if (isAdmin()) hint.textContent = "Qalamcha bilan tahrirlang, axlat qutisi bilan o‘chiring yoki bir nechtasini belgilab birdan o‘chiring. Kod Excel «Код торгового» ustuniga mos bo‘lsin.";
     else if (canManage()) hint.textContent = "Agent kodini bir marta kiritasiz, keyin faqat admin o‘zgartiradi.";
     else if (can("agents.code.set")) hint.textContent = "Kod bo‘sh yoki qulfsiz agentlarga kodni bir marta kiritasiz. Keyin faqat admin o‘zgartiradi.";
     else hint.textContent = "Agentlar ro‘yxati. Tahrirlash faqat administrator uchun.";
@@ -246,10 +273,48 @@ export async function init(root) {
       if (!ok) return;
       try {
         await api(`/agents/${id}`, { method: "DELETE" });
+        picked.delete(id);
         await load(root);
       } catch (ex) {
         const err = $("#agent-err", root);
         showErr(err, ex.message);
+      }
+    });
+    root.addEventListener("change", (e) => {
+      const box = e.target.closest("[data-pick]");
+      if (box) {
+        const id = Number(box.dataset.pick);
+        if (box.checked) picked.add(id);
+        else picked.delete(id);
+        syncBulk(root);
+        return;
+      }
+      if (e.target.id === "agent-all") {
+        picked.clear();
+        if (e.target.checked) agentsCache.forEach((a) => picked.add(a.id));
+        root.querySelectorAll("[data-pick]").forEach((el) => {
+          el.checked = picked.has(Number(el.dataset.pick));
+        });
+        syncBulk(root);
+      }
+    });
+    $("#agent-bulk-del", root)?.addEventListener("click", async () => {
+      const ids = [...picked];
+      if (!ids.length) return;
+      const ok = await askConfirm(
+        `${ids.length} ta agentni o‘chirasizmi? Ularga biriktirilgan haydovchilar agentsiz qoladi. O‘chirilganlar «O‘chirilganlar» bo‘limida saqlanadi.`,
+        { title: "Tanlanganlarni o‘chirish", ok: "O‘chirish", danger: true }
+      );
+      if (!ok) return;
+      const btn = $("#agent-bulk-del", root);
+      if (btn) btn.disabled = true;
+      try {
+        await api("/agents/bulk-delete", { method: "POST", body: { ids } });
+        picked.clear();
+        await load(root);
+      } catch (ex) {
+        showErr($("#agent-err", root), ex.message);
+        syncBulk(root);
       }
     });
   }
@@ -262,6 +327,7 @@ export async function show() {
 }
 
 export function destroy() {
+  picked.clear();
   bound = false;
   paneRoot = null;
 }

@@ -1804,6 +1804,23 @@ def delete_agent(item_id: int, db: Session = Depends(get_db), user: User = Depen
     return {"ok": True}
 
 
+@router.post("/agents/bulk-delete")
+def bulk_delete_agents(payload: BulkIdsIn, db: Session = Depends(get_db), user: User = Depends(require_perm("agents.manage"))):
+    rows = q_org(db, Agent, user).filter(Agent.id.in_(payload.ids)).all()
+    if not rows:
+        raise HTTPException(404, "Agentlar topilmadi")
+    ids = [r.id for r in rows]
+    for row in rows:
+        archive_deleted(db, user, "agent", row, f"{row.code or '—'} · {row.name}")
+    db.query(Driver).filter(Driver.org_id == org_id_of(user), Driver.agent_id.in_(ids)).update(
+        {Driver.agent_id: None}, synchronize_session=False
+    )
+    for row in rows:
+        db.delete(row)
+    db.commit()
+    return {"ok": True, "deleted": len(ids)}
+
+
 @router.get("/warehouses", response_model=list[WarehouseOut])
 def list_warehouses(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return [_warehouse_out(w) for w in q_org(db, Warehouse, user).order_by(Warehouse.is_default.desc(), Warehouse.id.asc()).all()]

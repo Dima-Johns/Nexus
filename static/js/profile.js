@@ -1,7 +1,7 @@
 import { api, me, setMe } from "./api.js";
-import { LANGS, getLang } from "./i18n.js?v=80";
-import { chooseLang, mountLangPicker, syncServerLang } from "./lang-picker.js?v=80";
-import { loadRemembered, saveRemembered } from "./theme.js?v=80";
+import { LANGS, getLang } from "./i18n.js?v=81";
+import { chooseLang, mountLangPicker, syncServerLang } from "./lang-picker.js?v=81";
+import { loadRemembered, saveRemembered } from "./theme.js?v=81";
 
 const $id = (id) => document.getElementById(id);
 const AVATAR_PX = 256;

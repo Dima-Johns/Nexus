@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from . import storage
 from .api import import_legacy_proofs, move_photos_to_storage, router
 from .auth import wrap_legacy_hashes
+from .backup import router as backup_router
 from .reports_api import router as reports_router
 from .database import Base, SessionLocal, engine
 from .migrate import migrate_schema
@@ -78,6 +79,8 @@ app = FastAPI(
 )
 
 MAX_BODY_MB = 25
+# Zaxira ZIP tasdiq rasmlari bilan katta bo‘ladi; u diskka yoziladi, xotiraga to‘liq o‘qilmaydi
+BIG_BODY_PATHS = {"/api/admin/backup/restore": 2048}
 
 
 class BodyLimitMiddleware:
@@ -90,11 +93,13 @@ class BodyLimitMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
+        limit_mb = BIG_BODY_PATHS.get(scope.get("path", ""), MAX_BODY_MB)
+        max_bytes = limit_mb * 1024 * 1024 if scope.get("path", "") in BIG_BODY_PATHS else self.max_bytes
         length = dict(scope.get("headers") or []).get(b"content-length")
         too_big = JSONResponse(
-            {"detail": f"So‘rov hajmi juda katta (ko‘pi bilan {MAX_BODY_MB} MB)"}, status_code=413
+            {"detail": f"So‘rov hajmi juda katta (ko‘pi bilan {limit_mb} MB)"}, status_code=413
         )
-        if length is not None and (not length.isdigit() or int(length) > self.max_bytes):
+        if length is not None and (not length.isdigit() or int(length) > max_bytes):
             return await too_big(scope, receive, send)
         received = 0
 
@@ -103,7 +108,7 @@ class BodyLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > self.max_bytes:
+                if received > max_bytes:
                     raise ValueError("request body too large")
             return message
 
@@ -195,6 +200,7 @@ async def validation_error(_: Request, exc: RequestValidationError):
 
 app.include_router(router)
 app.include_router(reports_router)
+app.include_router(backup_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # /uploads ochiq tarqatilmaydi: Railway diski har deployda tozalanadi, rasmlar bazada va proofs.view bilan beriladi
 

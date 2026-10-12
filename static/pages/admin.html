@@ -35,7 +35,41 @@
       O‘chirilganlar
       <span class="admin-tab-count" id="cnt-trash"></span>
     </button>
+    <button type="button" class="admin-tab" data-admin-tab="backup" data-perm="superadmin">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.8" /><path d="M4.5 5.5v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-6" /><path d="M4.5 11.5v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-6" /></svg>
+      Baza
+    </button>
   </div>
+
+  <section class="glass panel admin-sec" data-admin-sec="backup" data-perm="superadmin">
+    <div class="panel-head">
+      <div>
+        <h3>Baza: zaxira nusxa va import</h3>
+        <p class="muted adm-sub">Server almashtirilganda ma’lumot yo‘qolmasligi uchun: eski serverda bazani yuklab oling, yangi serverda shu faylni import qiling. Fayl ichida har bir jadval alohida CSV (Excel'da ochiladi).</p>
+      </div>
+    </div>
+    <p class="error hidden" id="bk-err"></p>
+    <div class="bk-grid">
+      <div class="adm-card">
+        <div class="adm-card-title">Bazani yuklab olish (CSV)</div>
+        <p class="muted">Barcha tashkilotlar, akkauntlar, zayavkalar, klientlar, haydovchilar, agentlar, skladlar, GPS tarixi va tasdiq rasmlari bitta .zip faylga yoziladi. Faylni xavfsiz joyda saqlang — unda parollarning shifrlangan nusxasi ham bor.</p>
+        <button class="btn primary" type="button" id="bk-download">Bazani yuklab olish</button>
+        <div class="bk-result muted" id="bk-down-msg"></div>
+      </div>
+      <div class="adm-card">
+        <div class="adm-card-title">Bazani import qilish (tiklash)</div>
+        <p class="muted">Diqqat: hozirgi bazadagi <b>barcha ma’lumot o‘chiriladi</b> va fayldagisi bilan almashtiriladi. Avval hozirgi bazani yuklab oling. Tiklangandan keyin hamma (haydovchilar ham) qayta kiradi — fayldagi login/parollar bilan.</p>
+        <div class="bk-file">
+          <input type="file" id="bk-file" accept=".zip,application/zip" />
+        </div>
+        <div class="bk-file">
+          <input type="text" id="bk-confirm" class="bk-confirm" placeholder="TIKLASH deb yozing" autocomplete="off" maxlength="20" />
+          <button class="btn" type="button" id="bk-restore" disabled>Import qilish</button>
+        </div>
+        <div class="bk-result muted" id="bk-up-msg"></div>
+      </div>
+    </div>
+  </section>
 
   <section class="glass panel admin-sec" data-admin-sec="users" data-perm="users.manage">
     <div class="panel-head">

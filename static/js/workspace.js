@@ -1,6 +1,6 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=80";
-import { proofThumb } from "./proof-photo.js?v=80";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=81";
+import { proofThumb } from "./proof-photo.js?v=81";
 
 let orders = [];
 let filter = "incoming";
@@ -1304,10 +1304,6 @@ export function bindWorkspace() {
     }
     selected.clear();
     await refreshWorkspace().catch(() => {});
-  };
-  $("#btn-create").onclick = () => {
-    $("#order-form").classList.toggle("hidden");
-    $("#import-msg").classList.add("hidden");
   };
   $("#btn-import").onclick = () => {
     $("#order-form").classList.add("hidden");

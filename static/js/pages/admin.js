@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=80";
-import { mountOfficePicker } from "../office-picker.js?v=80";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=80";
+import { openDriverAccess } from "../driver-access.js?v=81";
+import { mountOfficePicker } from "../office-picker.js?v=81";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=81";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -31,7 +31,7 @@ function setCount(root, id, n) {
 }
 
 function tabAllowed(btn) {
-  return btn.dataset.perm.split(",").some((k) => can(k.trim()));
+  return btn.dataset.perm.split(",").some((k) => (k.trim() === "superadmin" ? isSuper() : can(k.trim())));
 }
 
 function showTab(root, name) {
@@ -1210,6 +1210,77 @@ function markPermDirty(card) {
   permCount(card);
 }
 
+function bindBackup(root) {
+  const err = $("#bk-err", root);
+  const setErr = (text) => {
+    if (!err) return;
+    err.classList.toggle("hidden", !text);
+    err.textContent = text || "";
+  };
+  const downBtn = $("#bk-download", root);
+  const downMsg = $("#bk-down-msg", root);
+  if (downBtn) {
+    downBtn.onclick = async () => {
+      setErr("");
+      downBtn.disabled = true;
+      downMsg.textContent = "Tayyorlanmoqda… baza katta bo‘lsa bir necha daqiqa olishi mumkin.";
+      const d = new Date();
+      const p = (v) => String(v).padStart(2, "0");
+      const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+      try {
+        await apiDownload("/admin/backup", `nexus-baza-${stamp}.zip`);
+        downMsg.textContent = `Yuklab olindi: nexus-baza-${stamp}.zip`;
+      } catch (ex) {
+        downMsg.textContent = "";
+        setErr(ex.message || "Yuklab bo‘lmadi");
+      } finally {
+        downBtn.disabled = false;
+      }
+    };
+  }
+  const file = $("#bk-file", root);
+  const confirmEl = $("#bk-confirm", root);
+  const upBtn = $("#bk-restore", root);
+  const upMsg = $("#bk-up-msg", root);
+  const sync = () => {
+    if (upBtn) upBtn.disabled = !file?.files?.[0] || confirmEl?.value.trim().toUpperCase() !== "TIKLASH";
+  };
+  file?.addEventListener("change", sync);
+  confirmEl?.addEventListener("input", sync);
+  if (upBtn) {
+    upBtn.onclick = async () => {
+      const f = file?.files?.[0];
+      if (!f) return;
+      const ok = await askConfirm(
+        `«${f.name}» faylidagi ma’lumot hozirgi bazaning o‘rniga yoziladi. Hozirgi barcha ma’lumot o‘chadi. Davom etasizmi?`,
+        { title: "Bazani import qilish", ok: "Import qilish", danger: true }
+      );
+      if (!ok) return;
+      setErr("");
+      upBtn.disabled = true;
+      upMsg.textContent = "Yuklanmoqda va tiklanmoqda… sahifani yopmang.";
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("confirm", confirmEl.value.trim());
+      try {
+        const res = await api("/admin/backup/restore", { method: "POST", body: fd });
+        const total = Object.values(res.tables || {}).reduce((s, n) => s + n, 0);
+        const lines = Object.entries(res.tables || {})
+          .filter(([, n]) => n)
+          .map(([t, n]) => `${t}: ${n}`);
+        upMsg.textContent = `Baza tiklandi (${total} ta yozuv, nusxa sanasi: ${res.created_at || "—"}).\n${lines.join(", ")}\nBir necha soniyadan keyin qayta kirish oynasi ochiladi.`;
+        file.value = "";
+        confirmEl.value = "";
+        setTimeout(() => api("/auth/me").catch(() => {}), 5000);
+      } catch (ex) {
+        upMsg.textContent = "";
+        setErr(`${ex.message || "Import bo‘lmadi"}. Hozirgi baza o‘zgarmadi.`);
+        sync();
+      }
+    };
+  }
+}
+
 export async function init(root) {
   paneRoot = root;
   showTab(root, localStorage.getItem(TAB_KEY) || "");
@@ -1225,6 +1296,7 @@ export async function init(root) {
   if (can("users.manage")) bindUsers(root);
   if (can("clients.view")) bindClients(root);
   if (can("trash.view")) bindTrash(root);
+  if (isSuper()) bindBackup(root);
   fillOrgSelects(root);
   await Promise.all([
     can("orgs.manage") ? loadOrgs(root).catch((ex) => orgErr(root, ex.message)) : null,

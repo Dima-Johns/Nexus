@@ -2302,3 +2302,22 @@ th.col-actions, td.col-actions { text-align: right; width: 88px; white-space: no
   .htab { padding: 0 10px; }
   #header-lang .lang-btn svg { display: none; }
 }
+
+/* Agentlar: ommaviy o‘chirish */
+.agent-bulk { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 10px; }
+.agent-bulk .chk { margin: 0; }
+.btn.bulk-del {
+  color: var(--danger);
+  border-color: rgba(251, 113, 133, 0.35);
+  background: rgba(251, 113, 133, 0.08);
+}
+.btn.bulk-del:disabled { opacity: 0.4; cursor: default; }
+.col-check { width: 34px; }
+.col-check input { width: auto; accent-color: var(--accent); }
+
+/* Admin: zaxira nusxa */
+.bk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.bk-grid .adm-card p { margin: 6px 0 12px; }
+.bk-file { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.bk-confirm { max-width: 220px; }
+.bk-result { margin-top: 10px; font-size: 13px; white-space: pre-line; }
