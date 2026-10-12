@@ -69,6 +69,28 @@
         <div class="bk-result muted" id="bk-up-msg"></div>
       </div>
     </div>
+    <div class="adm-card bk-saved-card">
+      <div class="bk-saved-head">
+        <div>
+          <div class="adm-card-title">Serverda saqlangan nusxalar</div>
+          <p class="muted">Umumiy tozalashdan oldin nusxa avtomatik shu yerga saqlanadi. Istalgan vaqtda yuklab olish yoki bazani shu holatga qaytarish mumkin.</p>
+        </div>
+        <button class="btn" type="button" id="bk-save-now">Hozir nusxa olib saqlash</button>
+      </div>
+      <div class="bk-result muted" id="bk-saved-msg"></div>
+      <div id="bk-saved"></div>
+    </div>
+    <div class="adm-card bk-wipe">
+      <div class="adm-card-title">Umumiy tozalash</div>
+      <p class="muted">Tanlangan ma’lumotlar <b>butun tizimdan</b> (barcha tashkilotlardan) o‘chiriladi. O‘chirishdan oldin butun bazaning nusxasi serverda saqlanadi — kerak bo‘lsa yuqoridagi ro‘yxatdan qaytarasiz. Tashkilotlar, akkauntlar, dostuplar, import shablonlari va hisobot shakllari o‘chmaydi.</p>
+      <label class="chk bk-wipe-all"><input type="checkbox" id="bk-wipe-all" checked /> Hammasini tanlash</label>
+      <div class="bk-wipe-list" id="bk-wipe-list"></div>
+      <div class="bk-file">
+        <input type="text" id="bk-wipe-confirm" class="bk-confirm" placeholder="TOZALASH deb yozing" autocomplete="off" maxlength="20" />
+        <button class="btn bulk-del" type="button" id="bk-wipe" disabled>Tozalash</button>
+      </div>
+      <div class="bk-result muted" id="bk-wipe-msg"></div>
+    </div>
   </section>
 
   <section class="glass panel admin-sec" data-admin-sec="users" data-perm="users.manage">

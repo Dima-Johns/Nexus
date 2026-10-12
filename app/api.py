@@ -84,6 +84,7 @@ from .models import (
     GpsPing,
     ImportTemplate,
     Order,
+    OrderEvent,
     Organization,
     ProofPhoto,
     SessionToken,
@@ -91,6 +92,7 @@ from .models import (
     UserAvatar,
     Warehouse,
 )
+from .history import STATUS_LABELS, delete_events, log_event, log_events, order_timeline
 from .permissions import (
     ADMIN_ONLY_KEYS,
     SUPER_ONLY_KEYS,
@@ -751,9 +753,12 @@ def driver_start(
     if not rows:
         raise HTTPException(400, "Tanlangan reysda zayavka yo‘q")
     driver.status = "on_route"
+    started = []
     for row in rows:
         if row.status in {"new", "assigned"}:
             row.status = "in_transit"
+            started.append(row)
+    log_events(db, started, "started", driver=driver, note=f"Reys: {payload.route_code or '—'}")
     out = _driver_route_payload(db, driver, rows)
     db.commit()
     return {"ok": True, **out}
@@ -820,6 +825,11 @@ def driver_order_status(
     status = (payload.status or "").strip()
     if status not in {"assigned", "on_route", "delivered"}:
         raise HTTPException(400, "Noto‘g‘ri status")
+    if row.status != status:
+        if status == "delivered":
+            log_event(db, row, "delivered", driver=driver)
+        else:
+            log_event(db, row, "status", driver=driver, note=f"{STATUS_LABELS.get(row.status, row.status)} → {STATUS_LABELS.get(status, status)}")
     row.status = status
     if status == "on_route":
         driver.status = "on_route"
@@ -1032,6 +1042,7 @@ async def driver_order_proof(
     reason: str = Form("", max_length=40),
     comment: str | None = Form(None, max_length=500),
     done_at: str = Form("", max_length=40),
+    photo_at: str = Form("", max_length=40),
     photo: UploadFile = File(...),
     db: Session = Depends(get_db),
     driver: Driver = Depends(get_current_driver),
@@ -1039,6 +1050,7 @@ async def driver_order_proof(
     """Yetkazildi / Qaytarildi — rasm bilan tasdiqlash; qaytarishda izoh majburiy.
 
     done_at — telefonda belgilangan vaqt: oflayn navbatdan keyinroq yuborilsa ham haqiqiy vaqt yoziladi.
+    photo_at — rasm olingan vaqt (tarix uchun; eski ilova yubormaydi).
     """
     result = (result or "").strip()
     reason = (reason or "").strip()
@@ -1060,7 +1072,7 @@ async def driver_order_proof(
         raise HTTPException(400, "Faqat rasm yuklash mumkin")
     data, mime = await run_in_threadpool(shrink_proof_photo, data, photo.content_type)
     key = await run_in_threadpool(upload_proof_photo, row, data, mime)
-    return await run_in_threadpool(_finish_proof, db, driver, row, data, mime, key, result, reason, comment, done_at)
+    return await run_in_threadpool(_finish_proof, db, driver, row, data, mime, key, result, reason, comment, done_at, photo_at)
 
 
 def _driver_order_row(db: Session, driver: Driver, item_id: int) -> Order | None:
@@ -1070,14 +1082,38 @@ def _driver_order_row(db: Session, driver: Driver, item_id: int) -> Order | None
     return row
 
 
-def _finish_proof(db: Session, driver: Driver, row: Order, data: bytes, mime, key: str, result: str, reason: str, comment: str, done_at: str):
+PROOF_REASON_LABELS = {"fridge_yes": "Muzlatgich bor", "foreign_goods": "Begona mahsulot bor", "fridge_no": "Muzlatgich yo‘q"}
+
+
+def _device_time(raw: str, now: datetime) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        t = parse_device_time(raw).astimezone(LOCAL_TZ)
+    except Exception:
+        return None
+    return t if now - timedelta(days=3) <= t <= now + timedelta(minutes=5) else None
+
+
+def _finish_proof(
+    db: Session, driver: Driver, row: Order, data: bytes, mime, key: str, result: str, reason: str, comment: str, done_at: str, photo_at: str = ""
+):
     now = local_now()
+    marked = _device_time(done_at, now) or now
+    # Oflayn navbat javobni olmay qayta yuborsa, tarix ikki marta yozilmasin
+    repeat = row.status == result and row.proof_at is not None and abs((row.proof_at - marked).total_seconds()) < 2
     save_proof_photo(db, row, data, mime, key)
     row.proof_reason = reason or result
     row.proof_comment = comment
-    marked = parse_device_time(done_at).astimezone(LOCAL_TZ) if done_at else now
-    row.proof_at = marked if now - timedelta(days=3) <= marked <= now + timedelta(minutes=5) else now
+    row.proof_at = marked
     row.status = result
+    if not repeat:
+        shot = _device_time(photo_at, now) or marked
+        log_event(db, row, "photo", driver=driver, at=shot)
+        late = (now - marked).total_seconds() > 120
+        log_event(db, row, "photo_uploaded", driver=driver, at=now, note="Oflayn navbatdan, kechikib yuborildi" if late else "")
+        why = PROOF_REASON_LABELS.get(reason, "")
+        log_event(db, row, result, driver=driver, at=marked, note=" — ".join(x for x in (why, comment) if x))
     left = (
         db.query(Order)
         .filter(Order.driver_id == driver.id, Order.status.notin_(DONE_STATUSES), Order.id != row.id)
@@ -2080,6 +2116,7 @@ def delete_driver(item_id: int, db: Session = Depends(get_db), user: User = Depe
 def delete_all_orders(db: Session = Depends(get_db), user: User = Depends(require_perm("orders.delete"))):
     ids = q_org(db, Order, user).with_entities(Order.id).scalar_subquery()
     drop_proof_photos(db, ProofPhoto.order_id.in_(ids))
+    delete_events(db, OrderEvent.order_id.in_(ids))
     n = q_org(db, Order, user).delete(synchronize_session=False)
     db.commit()
     return {"ok": True, "deleted": n}
@@ -2089,7 +2126,9 @@ def _client_name_key(name: str) -> str:
     return " ".join((name or "").lower().split())
 
 
-def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], org_id: int) -> dict:
+def _import_orders(
+    db: Session, records: list[dict], mapping: dict[str, str], org_id: int, user: User | None = None, source: str = ""
+) -> dict:
     org_clients = db.query(Client).filter(Client.org_id == org_id).all()
     clients_by_code = {c.code.strip().lower(): c for c in org_clients if (c.code or "").strip()}
     clients_by_name = {_client_name_key(c.name): c for c in org_clients}
@@ -2166,6 +2205,7 @@ def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], or
     ]
     new_orders: list[Order] = []
     touched: list[Order] = []
+    touched_notes: dict[int, str] = {}
     seen: set[str] = set()
     existing_rows = {o.code: o for o in db.query(Order).filter(Order.org_id == org_id).all()}
     agents = db.query(Agent).filter(Agent.org_id == org_id).all()
@@ -2216,6 +2256,7 @@ def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], or
                 existing["incoming"] += 1
                 row.delivery_date = incoming_day
                 row.status = "new"
+                touched_notes[row.id] = f"Kiruvchida, sana {incoming_day} ga o‘tdi"
             touched.append(row)
             continue
         client_name = mapped_value(rec, mapping, "client_name")
@@ -2269,6 +2310,10 @@ def _import_orders(db: Session, records: list[dict], mapping: dict[str, str], or
                 continue
             seen_labels.add(label)
             errors.append(f"«{label}» — bunaqa agent mavjud emas, agentni qo‘shing")
+    log_events(db, new_orders, "imported", user=user, note=source)
+    if touched:
+        notes = {o.id: "; ".join(x for x in (source, touched_notes.get(o.id, "")) if x) for o in touched}
+        log_events(db, touched, "reimported", user=user, notes=notes)
     db.commit()
     return {
         "ok": True,
@@ -2318,7 +2363,7 @@ def _import_orders_file(db: Session, user: User, raw: bytes, filename: str):
             "Fayl ustunlari mos kelmadi. RELOG Excel yoki tasdiqlangan shablon formatida yuklang.",
         )
     check_import_rows(records)
-    result = _import_orders(db, records, mapping, org_id_of(user))
+    result = _import_orders(db, records, mapping, org_id_of(user), user=user, source=f"Fayl: {filename}" if filename else "")
     result["template"] = "avto"
     result["sheet"] = meta.get("sheet")
     return result
@@ -2414,6 +2459,7 @@ def create_order(payload: OrderIn, db: Session = Depends(get_db), user: User = D
     _bind_order_warehouse(db, row, oid)
     if row.driver_id:
         sequence_drivers(db, {row.driver_id}, oid)
+    log_event(db, row, "created", user=user)
     db.commit()
     db.refresh(row)
     return _order_out(row)
@@ -2427,15 +2473,30 @@ def update_order(item_id: int, payload: OrderIn, db: Session = Depends(get_db), 
     _bind_order_warehouse(db, row, org_id_of(user), row.pickup_address)
     if row.driver_id:
         sequence_drivers(db, {row.driver_id}, org_id_of(user))
+    log_event(db, row, "edited", user=user)
     db.commit()
     db.refresh(row)
     return _order_out(row)
+
+
+@router.get("/orders/{item_id}/history")
+def order_history(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("orders.view"))):
+    row = (
+        q_org(db, Order, user)
+        .options(joinedload(Order.client), joinedload(Order.driver), joinedload(Order.warehouse))
+        .filter(Order.id == item_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Zayavka topilmadi")
+    return {"order": _order_out(row), "events": order_timeline(db, row)}
 
 
 @router.delete("/orders/{item_id}")
 def delete_order(item_id: int, db: Session = Depends(get_db), user: User = Depends(require_perm("orders.delete"))):
     row = get_org_row(db, Order, item_id, user, "Buyurtma topilmadi")
     drop_proof_photos(db, ProofPhoto.order_id == row.id)
+    delete_events(db, OrderEvent.order_id == row.id)
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -2486,6 +2547,13 @@ def assign_orders(payload: BulkAssignIn, db: Session = Depends(get_db), user: Us
     if driver.status == "idle":
         driver.status = "assigned"
     sequence_drivers(db, {driver.id}, org_id_of(user))
+    log_events(
+        db,
+        ok_rows,
+        "assigned",
+        user=user,
+        notes={r.id: f"Haydovchi: {_driver_title(driver)}; sana: {str(r.delivery_date or '')[:10]}" for r in ok_rows},
+    )
     db.commit()
     return {
         "ok": True,
@@ -2511,9 +2579,15 @@ def reassign_orders(payload: BulkAssignIn, db: Session = Depends(get_db), user: 
     if not driver:
         raise HTTPException(404, "Haydovchi topilmadi")
     rows = q_org(db, Order, user).filter(Order.id.in_(payload.ids)).all()
+    old_names = {
+        d.id: _driver_title(d)
+        for d in q_org(db, Driver, user).filter(Driver.id.in_({r.driver_id for r in rows if r.driver_id})).all()
+    }
     touched = {driver.id}
     moved = 0
     skipped = 0
+    moved_rows = []
+    notes = {}
     for row in rows:
         if row.status in DONE_STATUSES:
             skipped += 1
@@ -2522,16 +2596,19 @@ def reassign_orders(payload: BulkAssignIn, db: Session = Depends(get_db), user: 
             continue
         if row.driver_id:
             touched.add(row.driver_id)
+        notes[row.id] = f"{old_names.get(row.driver_id, '—') if row.driver_id else 'Haydovchisiz'} → {_driver_title(driver)}"
         row.driver_id = driver.id
         row.stop_no = 0
         if row.status == "new":
             row.status = "assigned"
         moved += 1
+        moved_rows.append(row)
     if not moved:
         raise HTTPException(400, "O‘tkaziladigan zayavka yo‘q (yetkazilganlar o‘tkazilmaydi)")
     if driver.status == "idle":
         driver.status = "assigned"
     sequence_drivers(db, touched, org_id_of(user))
+    log_events(db, moved_rows, "reassigned", user=user, notes=notes)
     db.commit()
     return {"ok": True, "moved": moved, "skipped": skipped, "driver_id": driver.id, "driver_name": driver.name}
 
@@ -2562,6 +2639,7 @@ def rename_route(payload: RouteRenameIn, db: Session = Depends(get_db), user: Us
             touched.add(row.driver_id)
     if touched:
         sequence_drivers(db, touched, org_id_of(user))
+    log_events(db, rows, "route", user=user, note=f"«{old or 'nomsiz'}» → «{new}»")
     db.commit()
     return {"ok": True, "updated": len(rows), "route_code": new}
 
@@ -2685,6 +2763,11 @@ def plan_incoming_orders(payload: PlanIn, db: Session = Depends(get_db), user: U
         raise HTTPException(400, "Soat oralig‘i noto‘g‘ri")
     if start >= end:
         raise HTTPException(400, "Tugash vaqti boshlanishdan keyin bo‘lsin")
+    # plan_orders faqat haydovchisi yo‘q zayavkalarni oladi: keyin haydovchi olganlari — rejaga tushganlar
+    waiting = q_org(db, Order, user).filter(Order.status.notin_(DONE_STATUSES), Order.driver_id.is_(None))
+    if payload.ids:
+        waiting = waiting.filter(Order.id.in_(payload.ids))
+    waiting_ids = [i for (i,) in waiting.with_entities(Order.id).all()]
     try:
         result = plan_orders(
             db,
@@ -2697,6 +2780,21 @@ def plan_incoming_orders(payload: PlanIn, db: Session = Depends(get_db), user: U
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    planned = []
+    for i in range(0, len(waiting_ids), 5000):
+        planned += (
+            db.query(Order)
+            .options(joinedload(Order.driver))
+            .filter(Order.id.in_(waiting_ids[i : i + 5000]), Order.driver_id.isnot(None))
+            .all()
+        )
+    log_events(
+        db,
+        planned,
+        "planned",
+        user=user,
+        notes={o.id: f"Haydovchi: {_driver_title(o.driver) if o.driver else '—'}; sana: {date}, {start}–{end}" for o in planned},
+    )
     db.commit()
     return result
 
@@ -2709,6 +2807,7 @@ def bulk_delete_orders(payload: BulkIdsIn, db: Session = Depends(get_db), user: 
     n = len(rows)
     if rows:
         drop_proof_photos(db, ProofPhoto.order_id.in_([r.id for r in rows]))
+        delete_events(db, OrderEvent.order_id.in_([r.id for r in rows]))
     for row in rows:
         db.delete(row)
     db.commit()
@@ -2729,14 +2828,21 @@ def bulk_set_delivery_date(payload: BulkDateIn, db: Session = Depends(get_db), u
     rows = q_org(db, Order, user).filter(Order.id.in_(payload.ids)).all()
     updated = 0
     skipped = 0
+    changed = []
+    notes = {}
     for row in rows:
         if row.status in DONE_STATUSES or row.driver_id:
             skipped += 1
             continue
+        old = str(row.delivery_date or "")[:10]
+        if old != date:
+            notes[row.id] = f"{old or '—'} → {date}"
+            changed.append(row)
         row.delivery_date = date
         updated += 1
     if not updated:
         raise HTTPException(400, "Faqat Kiruvchidagi zayavkalar sanasini o‘zgartirish mumkin")
+    log_events(db, changed, "date", user=user, notes=notes)
     db.commit()
     return {"ok": True, "updated": updated, "skipped": skipped, "delivery_date": date}
 
@@ -2750,9 +2856,15 @@ def bulk_status(payload: BulkStatusIn, db: Session = Depends(get_db), user: User
         raise HTTPException(400, "Zayavka tanlanmagan")
     rows = q_org(db, Order, user).filter(Order.id.in_(payload.ids)).all()
     touched = set()
+    changed = []
+    notes = {}
+    kind = {"new": "unassigned", "delivered": "delivered"}.get(payload.status, "status")
     for row in rows:
         if payload.status == "assigned" and not row.driver_id:
             continue
+        if row.status != payload.status or (payload.status == "new" and row.driver_id):
+            changed.append(row)
+            notes[row.id] = f"{STATUS_LABELS.get(row.status, row.status)} → {STATUS_LABELS.get(payload.status, payload.status)}"
         if payload.status == "new":
             if row.driver_id:
                 touched.add(row.driver_id)
@@ -2763,6 +2875,7 @@ def bulk_status(payload: BulkStatusIn, db: Session = Depends(get_db), user: User
             touched.add(row.driver_id)
     if touched and payload.status != "new":
         sequence_drivers(db, touched, org_id_of(user))
+    log_events(db, changed, kind, user=user, notes=notes)
     db.commit()
     return {"ok": True, "updated": len(rows), "status": payload.status}
 
@@ -2927,6 +3040,7 @@ def _import_with_template(db: Session, user: User, row: ImportTemplate, raw: byt
             records, mapping, _meta = auto_read_order_records(raw, filename, [mapping or RELOG_MAPPING, RELOG_MAPPING])
         except Exception as exc:
             raise HTTPException(400, f"Fayl o‘qilmadi: {exc}") from exc
-    result = _import_orders(db, records, mapping or RELOG_MAPPING, org_id_of(user))
+    source = "; ".join(x for x in (f"Shablon: {row.name}", f"Fayl: {filename}" if filename else "") if x)
+    result = _import_orders(db, records, mapping or RELOG_MAPPING, org_id_of(user), user=user, source=source)
     result["template"] = row.name
     return result

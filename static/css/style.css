@@ -2325,3 +2325,50 @@ th.col-actions, td.col-actions { text-align: right; width: 88px; white-space: no
 .bk-file { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .bk-confirm { max-width: 220px; }
 .bk-result { margin-top: 10px; font-size: 13px; white-space: pre-line; }
+/* Zayavka nomi bosilganda: tarix oynasi */
+.oc-name {
+  all: unset; cursor: pointer; border-radius: 4px;
+  text-decoration: underline dotted transparent; text-underline-offset: 3px;
+  transition: color .15s, text-decoration-color .15s;
+}
+.order-card-top .oc-name { font-family: var(--display); font-weight: 650; letter-spacing: 0.02em; }
+.oc-name:hover, .oc-name:focus-visible { color: var(--accent); text-decoration-color: currentColor; }
+.oh-overlay { z-index: 900; }
+.oh-card { width: min(560px, 96vw); max-height: 90vh; display: flex; flex-direction: column; }
+.oh-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.oh-title h3 { margin: 0; }
+.oh-body { overflow: auto; padding-right: 4px; }
+.oh-info { display: grid; gap: 6px; margin: 4px 0 12px; }
+.oh-info-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; font-size: 13px; align-items: baseline; }
+.oh-info-row b { font-weight: 560; overflow-wrap: anywhere; }
+.oh-proof { display: flex; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--stroke); border-radius: 12px; margin-bottom: 12px; font-size: 13px; }
+.oh-proof .proof-thumb { width: 64px; height: 64px; }
+.oh-h { margin: 6px 0 8px; font-size: 14px; }
+.oh-list { list-style: none; margin: 0; padding: 0 0 4px 4px; }
+.oh-ev { position: relative; display: grid; grid-template-columns: 14px 1fr; gap: 10px; padding-bottom: 14px; font-size: 13px; }
+.oh-ev:not(:last-child)::before { content: ""; position: absolute; left: 5px; top: 14px; bottom: 0; width: 2px; background: var(--stroke); }
+.oh-dot { width: 12px; height: 12px; margin-top: 3px; border-radius: 50%; background: var(--muted); box-shadow: 0 0 0 3px rgba(127,127,127,.15); }
+.oh-ev.info .oh-dot { background: var(--accent); }
+.oh-ev.go .oh-dot { background: var(--accent-2); }
+.oh-ev.photo .oh-dot { background: #a78bfa; }
+.oh-ev.ok .oh-dot { background: var(--ok); }
+.oh-ev.warn .oh-dot { background: var(--warn); }
+.oh-ev-top { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.oh-time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.oh-note { margin-top: 2px; overflow-wrap: anywhere; }
+.oh-derived { margin-top: 2px; font-size: 11px; color: var(--muted); font-style: italic; }
+
+/* Admin > Baza: saqlangan nusxalar va umumiy tozalash */
+.bk-saved-card, .bk-wipe { margin-top: 14px; }
+.bk-saved-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.bk-saved-head p { margin: 6px 0 4px; }
+.bk-total { margin: 8px 0 0; font-size: 12px; }
+.bk-wipe { border-color: rgba(220, 38, 38, 0.35); }
+.bk-wipe > p { margin: 6px 0 12px; }
+.bk-wipe-all { margin: 0 0 8px; font-weight: 600; }
+.bk-wipe-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; margin-bottom: 12px; max-width: 980px; }
+.bk-wipe-item { display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px 10px; font-size: 13px; border: 1px solid var(--stroke); border-radius: 10px; cursor: pointer; }
+.bk-wipe-item span:first-of-type { flex: 1; line-height: 1.35; }
+.bk-wipe-item .adm-pill { flex: none; }
+.bk-wipe-after { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.oh-ev-main .muted, .oh-proof .muted { margin: 0; }

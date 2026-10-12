@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=83";
-import { mountOfficePicker } from "../office-picker.js?v=83";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=83";
+import { openDriverAccess } from "../driver-access.js?v=84";
+import { mountOfficePicker } from "../office-picker.js?v=84";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=84";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -1355,6 +1355,214 @@ function bindBackup(root) {
       }
     };
   }
+  bindSavedBackups(root, setErr);
+  bindWipe(root, setErr);
+}
+
+function fmtSize(n) {
+  const v = Number(n || 0);
+  if (v >= 1024 * 1024 * 1024) return `${(v / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (v >= 1024 * 1024) return `${(v / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(v / 1024))} KB`;
+}
+
+function fmtStamp(iso) {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime())
+    ? d.toLocaleString("uz-UZ", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "—";
+}
+
+async function loadSavedBackups(root) {
+  const box = $("#bk-saved", root);
+  if (!box) return;
+  const data = await api("/admin/backup/saved");
+  const items = (data.items || []).filter((b) => b.complete);
+  if (!items.length) {
+    box.innerHTML = `<p class="muted adm-empty">Hozircha saqlangan nusxa yo‘q.</p>`;
+    return;
+  }
+  const rows = items
+    .map(
+      (b) => `<tr>
+        <td class="nowrap">${escapeHtml(fmtStamp(b.created_at))}</td>
+        <td class="cell-wide">${escapeHtml(b.reason || "—")}<span class="cl-sub">${escapeHtml(b.created_by || "")}</span></td>
+        <td class="nowrap">${fmtSize(b.size)}</td>
+        <td class="nowrap">${Number(b.rows || 0).toLocaleString("uz-UZ")}</td>
+        <td class="col-actions">
+          <button class="btn tiny" type="button" data-bk-get="${b.id}">Yuklab olish</button>
+          <button class="btn tiny" type="button" data-bk-back="${b.id}">Shu holatga qaytarish</button>
+          <button class="btn tiny danger-text" type="button" data-bk-del="${b.id}">O‘chirish</button>
+        </td>
+      </tr>`
+    )
+    .join("");
+  box.innerHTML =
+    table(["Sana", "Sabab", "Hajmi", "Yozuvlar", ""], rows) +
+    `<p class="muted bk-total">Jami: ${items.length} ta, ${fmtSize(data.total_size)} (server bazasida joy egallaydi — keraksizlarini o‘chiring)</p>`;
+}
+
+function bindSavedBackups(root, setErr) {
+  const box = $("#bk-saved", root);
+  const msg = $("#bk-saved-msg", root);
+  if (!box) return;
+  loadSavedBackups(root).catch((ex) => setErr(ex.message));
+  const saveBtn = $("#bk-save-now", root);
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      setErr("");
+      saveBtn.disabled = true;
+      msg.textContent = "Nusxa olinmoqda… baza katta bo‘lsa bir necha daqiqa olishi mumkin.";
+      try {
+        const b = await api("/admin/backup/saved", { method: "POST" });
+        msg.textContent = `Saqlandi: ${fmtStamp(b.created_at)}, ${fmtSize(b.size)}.`;
+        await loadSavedBackups(root);
+      } catch (ex) {
+        msg.textContent = "";
+        setErr(ex.message || "Nusxa saqlanmadi");
+      } finally {
+        saveBtn.disabled = false;
+      }
+    };
+  }
+  box.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const id = btn.dataset.bkGet || btn.dataset.bkBack || btn.dataset.bkDel;
+    if (!id) return;
+    setErr("");
+    if (btn.dataset.bkGet) {
+      btn.disabled = true;
+      try {
+        await apiDownload(`/admin/backup/saved/${id}/download`, `nexus-baza-${id}.zip`);
+      } catch (ex) {
+        setErr(ex.message || "Yuklab bo‘lmadi");
+      } finally {
+        btn.disabled = false;
+      }
+      return;
+    }
+    if (btn.dataset.bkDel) {
+      const ok = await askConfirm("Bu nusxa serverdan butunlay o‘chiriladi. Kerak bo‘lsa avval yuklab oling.", {
+        title: "Nusxani o‘chirish",
+        ok: "O‘chirish",
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await api(`/admin/backup/saved/${id}`, { method: "DELETE" });
+        await loadSavedBackups(root);
+      } catch (ex) {
+        setErr(ex.message);
+      }
+      return;
+    }
+    const ok = await askConfirm(
+      "Hozirgi bazadagi barcha ma’lumot o‘chiriladi va shu nusxadagi holatga qaytariladi. Tiklangandan keyin hamma (haydovchilar ham) qayta kiradi. Davom etasizmi?",
+      { title: "Bazani shu holatga qaytarish", ok: "Qaytarish", danger: true }
+    );
+    if (!ok) return;
+    btn.disabled = true;
+    msg.textContent = "Tiklanmoqda… sahifani yopmang.";
+    const fd = new FormData();
+    fd.append("confirm", "TIKLASH");
+    try {
+      const res = await api(`/admin/backup/saved/${id}/restore`, { method: "POST", body: fd });
+      const total = Object.values(res.tables || {}).reduce((s, n) => s + n, 0);
+      msg.textContent = `Baza tiklandi (${total} ta yozuv). Bir necha soniyadan keyin qayta kirish oynasi ochiladi.`;
+      setTimeout(() => api("/auth/me").catch(() => {}), 5000);
+    } catch (ex) {
+      msg.textContent = "";
+      setErr(`${ex.message || "Tiklanmadi"}. Hozirgi baza o‘zgarmadi.`);
+      btn.disabled = false;
+    }
+  });
+}
+
+async function loadWipeScopes(root) {
+  const list = $("#bk-wipe-list", root);
+  if (!list) return;
+  const data = await api("/admin/backup/wipe/scopes");
+  list.innerHTML = (data.items || [])
+    .map(
+      (s) => `<label class="chk bk-wipe-item"><input type="checkbox" data-wipe="${escapeHtml(s.key)}" checked />
+        <span>${escapeHtml(s.label)}</span><span class="adm-pill">${Number(s.count || 0).toLocaleString("uz-UZ")}</span></label>`
+    )
+    .join("");
+}
+
+function bindWipe(root, setErr) {
+  const list = $("#bk-wipe-list", root);
+  const all = $("#bk-wipe-all", root);
+  const confirmEl = $("#bk-wipe-confirm", root);
+  const btn = $("#bk-wipe", root);
+  const msg = $("#bk-wipe-msg", root);
+  if (!list || !btn) return;
+  const picked = () => [...list.querySelectorAll("[data-wipe]:checked")].map((el) => el.dataset.wipe);
+  const sync = () => {
+    const boxes = [...list.querySelectorAll("[data-wipe]")];
+    const n = picked().length;
+    if (all) {
+      all.checked = boxes.length > 0 && n === boxes.length;
+      all.indeterminate = n > 0 && n < boxes.length;
+    }
+    btn.disabled = !n || confirmEl.value.trim().toUpperCase() !== "TOZALASH";
+  };
+  loadWipeScopes(root)
+    .then(sync)
+    .catch((ex) => setErr(ex.message));
+  list.addEventListener("change", sync);
+  all?.addEventListener("change", () => {
+    list.querySelectorAll("[data-wipe]").forEach((el) => (el.checked = all.checked));
+    sync();
+  });
+  confirmEl.addEventListener("input", sync);
+  btn.onclick = async () => {
+    const scopes = picked();
+    if (!scopes.length) return;
+    const names = [...list.querySelectorAll("[data-wipe]:checked")].map((el) => el.closest("label").querySelector("span").textContent);
+    const ok = await askConfirm(
+      `Quyidagilar butun tizimdan o‘chiriladi: ${names.join("; ")}. Oldin baza nusxasi serverda saqlanadi. Davom etasizmi?`,
+      { title: "Umumiy tozalash", ok: "Tozalash", danger: true }
+    );
+    if (!ok) return;
+    setErr("");
+    btn.disabled = true;
+    msg.textContent = "Avval baza nusxasi saqlanmoqda, keyin tozalanadi… sahifani yopmang.";
+    try {
+      const res = await api("/admin/backup/wipe", { method: "POST", body: { scopes, confirm: confirmEl.value.trim() } });
+      const total = Object.values(res.deleted || {}).reduce((s, n) => s + n, 0);
+      msg.innerHTML = `Tozalandi: ${total.toLocaleString("uz-UZ")} ta yozuv o‘chirildi. Nusxa saqlandi (${escapeHtml(fmtStamp(res.backup?.created_at))}, ${fmtSize(res.backup?.size)}).
+        <div class="bk-wipe-after">
+          <button class="btn tiny" type="button" data-bk-get-new="${res.backup?.id}">Nusxani yuklab olish</button>
+          <button class="btn tiny primary" type="button" data-bk-reload>Sahifani yangilash</button>
+        </div>`;
+      confirmEl.value = "";
+      await Promise.all([loadSavedBackups(root), loadWipeScopes(root)]);
+      window.__nxWorkspace?.refreshWorkspace?.().catch(() => {});
+    } catch (ex) {
+      msg.textContent = "";
+      setErr(ex.message || "Tozalanmadi");
+    } finally {
+      sync();
+    }
+  };
+  msg.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-bk-reload]")) {
+      location.reload();
+      return;
+    }
+    const get = e.target.closest("[data-bk-get-new]");
+    if (!get) return;
+    get.disabled = true;
+    try {
+      await apiDownload(`/admin/backup/saved/${get.dataset.bkGetNew}/download`, `nexus-baza-${get.dataset.bkGetNew}.zip`);
+    } catch (ex) {
+      setErr(ex.message || "Yuklab bo‘lmadi");
+    } finally {
+      get.disabled = false;
+    }
+  });
 }
 
 export async function init(root) {

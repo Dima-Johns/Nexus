@@ -1420,9 +1420,10 @@ async function shootCamera() {
   setProofPhoto(blob);
 }
 
-function setProofPhoto(blob) {
+function setProofPhoto(blob, takenAt = Date.now()) {
   if (proof.url) URL.revokeObjectURL(proof.url);
   proof.blob = blob;
+  proof.photoAt = new Date(takenAt).toISOString();
   proof.url = URL.createObjectURL(blob);
   $("proof-img").src = proof.url;
   $("proof-tag").textContent = proof.result === "delivered" ? PROOF_REASONS[proof.reason] || "" : "Qaytarildi";
@@ -1457,8 +1458,10 @@ async function onProofFile() {
   const file = $("proof-file")?.files?.[0];
   if (!file || !proof.id) return;
   proofErr("");
+  // Galereyadan tanlangan rasm — fayl vaqti (agar yaqinda olingan bo‘lsa), aks holda hozirgi vaqt
+  const fresh = file.lastModified && Math.abs(Date.now() - file.lastModified) < 3 * 86400000;
   try {
-    setProofPhoto(await compressImage(file).catch(() => file));
+    setProofPhoto(await compressImage(file).catch(() => file), fresh ? file.lastModified : Date.now());
   } catch (err) {
     proofErr(err.message || "Rasm o‘qilmadi");
   }
@@ -1482,6 +1485,7 @@ async function sendProof() {
     reason: proof.result === "delivered" ? proof.reason : "",
     comment,
     done_at: new Date().toISOString(),
+    photo_at: proof.photoAt || "",
     blob: proof.blob,
   };
   try {
@@ -1544,6 +1548,7 @@ function sendQueued(item) {
     form.append("reason", item.reason || "");
     form.append("comment", item.comment || "");
     form.append("done_at", item.done_at || "");
+    form.append("photo_at", item.photo_at || "");
     form.append("photo", item.blob, `proof_${item.orderId}.jpg`);
     return api(`/driver/orders/${item.orderId}/proof`, { method: "POST", body: form, timeout: 90000 });
   }

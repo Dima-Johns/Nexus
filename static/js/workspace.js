@@ -1,6 +1,7 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=83";
-import { proofThumb } from "./proof-photo.js?v=83";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=84";
+import { proofThumb } from "./proof-photo.js?v=84";
+import { openOrderHistory } from "./order-history.js?v=84";
 
 let orders = [];
 let filter = "incoming";
@@ -383,13 +384,13 @@ function orderCardHtml(o) {
         <label class="chk card-chk"><input type="checkbox" data-check="${o.id}" ${checked ? "checked" : ""} /></label>
         <div class="order-body">
           <div class="order-card-top">
-          <b>${escapeHtml(o.code)}</b>
+          <button type="button" class="oc-name" data-history="${o.id}" title="Zayavka tarixini ko‘rish">${escapeHtml(o.code)}</button>
           <span class="card-top-right">
             ${Number(o.stop_no) > 0 ? `<span class="stop-chip">${o.stop_no}</span>` : ""}
             <span class="badge ${o.status}">${escapeHtml(o.route_code || o.status)}</span>
           </span>
         </div>
-          <div>${escapeHtml(o.client_name || "—")}</div>
+          <div><button type="button" class="oc-name oc-client" data-history="${o.id}" title="Zayavka tarixini ko‘rish">${escapeHtml(o.client_name || "—")}</button></div>
           <div class="muted">${
             o.agent_code
               ? `Agent ${escapeHtml(o.agent_code)}${o.sales_rep ? " · " + escapeHtml(o.sales_rep) : ""}`
@@ -1363,6 +1364,13 @@ export function bindWorkspace() {
     }
   };
   $("#order-list").addEventListener("click", (e) => {
+    const hist = e.target.closest("[data-history]");
+    if (hist) {
+      e.stopPropagation();
+      const o = orders.find((x) => x.id === Number(hist.dataset.history));
+      openOrderHistory(hist.dataset.history, { code: o?.code, client: o?.client_name });
+      return;
+    }
     const drvCheck = e.target.closest("[data-drv-check]");
     if (drvCheck) {
       e.stopPropagation();

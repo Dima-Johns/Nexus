@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -258,6 +258,45 @@ class ReportLayout(Base):
     shared: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OrderEvent(Base):
+    """Zayavka tarixi: kim, qachon, nima qildi (import, biriktirish, rasm, yakunlash...)."""
+
+    __tablename__ = "order_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    order_id: Mapped[int] = mapped_column(Integer, index=True)
+    org_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    note: Mapped[str] = mapped_column(String(500), default="")
+    actor: Mapped[str] = mapped_column(String(160), default="")
+    # user | driver | system
+    actor_type: Mapped[str] = mapped_column(String(16), default="system")
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SystemBackup(Base):
+    """Server ichida saqlangan zaxira nusxa (masalan, umumiy tozalashdan oldin). Fayl bo‘laklari alohida jadvalda."""
+
+    __tablename__ = "system_backups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    reason: Mapped[str] = mapped_column(String(160), default="")
+    created_by: Mapped[str] = mapped_column(String(160), default="")
+    size: Mapped[int] = mapped_column(BigInteger, default=0)
+    rows: Mapped[int] = mapped_column(Integer, default=0)
+    manifest_json: Mapped[str] = mapped_column(Text, default="{}")
+    complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SystemBackupChunk(Base):
+    __tablename__ = "system_backup_chunks"
+
+    backup_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
 
 
 class DeletedRecord(Base):
