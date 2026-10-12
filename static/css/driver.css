@@ -833,6 +833,7 @@ input, textarea, [contenteditable="true"] {
 .profile-row + .profile-row { border-top: 1px solid var(--stroke-soft); }
 .profile-row span:first-child { color: var(--muted); }
 .profile-row span:last-child { text-align: right; font-weight: 600; overflow-wrap: anywhere; }
+.profile-row .profile-sub { display: block; margin-top: 2px; font-size: 13px; font-weight: 500; color: var(--muted); }
 .profile-ver { text-align: center; margin: 12px 0 0; font-size: 12px; }
 .btn.danger { border-color: rgba(251, 113, 133, 0.35); font-weight: 600; }
 .btn.danger.confirm { background: rgba(251, 113, 133, 0.32); color: #fff; }

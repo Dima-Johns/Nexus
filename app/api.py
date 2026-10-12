@@ -319,6 +319,7 @@ def _driver_out(d: Driver) -> DriverOut:
         agent_id=d.agent_id,
         agent_name=d.agent.name if d.agent else None,
         agent_code=(d.agent.code if d.agent else "") or "",
+        agent_phone=format_uz_phone(d.agent.phone or "") if d.agent else "",
         is_active=d.is_active,
         username=d.username or "",
         has_password=bool(d.password_hash),

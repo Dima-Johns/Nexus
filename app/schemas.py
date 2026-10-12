@@ -263,6 +263,7 @@ class DriverOut(Schema):
     agent_id: int | None
     agent_name: str | None = None
     agent_code: str = ""
+    agent_phone: str = ""
     is_active: bool
     username: str = ""
     has_password: bool = False

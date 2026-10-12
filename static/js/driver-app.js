@@ -305,15 +305,21 @@ function renderProfile() {
   $("drv-name").textContent = name;
   $("drv-plate").textContent = driver?.vehicle_plate || "";
   $("drv-initials").textContent = initials(name);
+  const agent = driver?.agent_name ? `${driver.agent_code ? driver.agent_code + " · " : ""}${driver.agent_name}` : "";
   const rows = [
     ["Telefon", driver?.phone],
     ["Mashina", [driver?.vehicle_plate, driver?.vehicle_type].filter(Boolean).join(" · ")],
-    ["Agent", driver?.agent_name ? `${driver.agent_code ? driver.agent_code + " · " : ""}${driver.agent_name}` : ""],
+    ["Agent", agent, agent && driver?.agent_phone],
     ["Login", driver?.username],
     ["GPS", gpsState.text],
     ["Marshrut", syncState.text],
   ].filter(([, v]) => v);
-  $("profile-rows").innerHTML = rows.map(([k, v]) => `<div class="profile-row"><span>${k}</span><span>${esc(v)}</span></div>`).join("");
+  $("profile-rows").innerHTML = rows
+    .map(
+      ([k, v, sub]) =>
+        `<div class="profile-row"><span>${k}</span><span>${esc(v)}${sub ? `<small class="profile-sub">${esc(sub)}</small>` : ""}</span></div>`
+    )
+    .join("");
   $("profile-rows").classList.toggle("hidden", !rows.length);
 }
 
