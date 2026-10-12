@@ -20,7 +20,7 @@ from .reports_api import router as reports_router
 from .database import Base, SessionLocal, engine
 from .migrate import migrate_schema
 from .seed import ensure_agents, ensure_default_templates, ensure_driver_logins, ensure_phone_format, seed_if_empty
-from .tracking import start_simulator, stop_simulator
+from .tracking import start_gps_pruner, start_simulator, stop_simulator
 
 log = logging.getLogger("nexus")
 
@@ -28,7 +28,7 @@ log = logging.getLogger("nexus")
 mimetypes.add_type("image/webp", ".webp")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-SPA_ROUTES = {"", "login", "dashboard", "orders", "drivers", "agents", "warehouses", "settings", "admin", "reports"}
+SPA_ROUTES = {"", "login", "dashboard", "orders", "drivers", "agents", "warehouses", "settings", "admin", "reports", "gps"}
 
 
 def _move_photos() -> None:
@@ -66,6 +66,7 @@ async def lifespan(_: FastAPI):
         db.close()
     if storage.enabled():
         threading.Thread(target=_move_photos, daemon=True).start()
+    start_gps_pruner()
     start_simulator()
     yield
     stop_simulator()

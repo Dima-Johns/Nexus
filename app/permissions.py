@@ -8,7 +8,7 @@ PERMISSIONS = [
     {"key": "orders.delete", "group": "Zayavkalar", "label": "O‘chirish"},
     {"key": "proofs.view", "group": "Zayavkalar", "label": "Tasdiq rasmlarini ko‘rish"},
     {"key": "map.view", "group": "Xarita", "label": "Xaritani ko‘rish"},
-    {"key": "tracking.live", "group": "Xarita", "label": "Haydovchi joylashuvi (real-time GPS)"},
+    {"key": "tracking.live", "group": "Xarita", "label": "Haydovchi joylashuvi (real-time GPS va GPS hisobot)"},
     {"key": "drivers.view", "group": "Haydovchilar", "label": "Ro‘yxatni ko‘rish"},
     {"key": "drivers.manage", "group": "Haydovchilar", "label": "Qo‘shish / tahrirlash / o‘chirish"},
     {"key": "drivers.access", "group": "Haydovchilar", "label": "Ilovaga kirish berish (login, parol, QR)"},

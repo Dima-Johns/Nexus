@@ -160,6 +160,12 @@ from .tenancy import (
     user_payload,
     users_scope,
 )
+from .gps_report import MAX_DAYS_ALL as GPS_MAX_DAYS_ALL
+from .gps_report import MAX_DAYS_ONE as GPS_MAX_DAYS_ONE
+from .gps_report import driver_report as gps_driver_report
+from .gps_report import drivers_overview as gps_drivers_overview
+from .gps_report import parse_range as parse_gps_range
+from .gps_report import report_xlsx as gps_report_xlsx_bytes
 from .tracking import (
     ONLINE_TTL,
     _aware,
@@ -1949,6 +1955,52 @@ def delete_warehouse(item_id: int, db: Session = Depends(get_db), user: User = D
     resequence_org(db, oid)
     db.commit()
     return {"ok": True}
+
+
+def _gps_range(driver_id: int | None, date_from: str, date_to: str):
+    try:
+        return parse_gps_range(date_from, date_to, GPS_MAX_DAYS_ONE if driver_id else GPS_MAX_DAYS_ALL)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.get("/gps/report")
+def gps_report(
+    driver_id: int | None = Query(None),
+    date_from: str = Query("", max_length=10),
+    date_to: str = Query("", max_length=10),
+    min_stop: int = Query(5, ge=1, le=240),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("tracking.live")),
+):
+    d1, d2 = _gps_range(driver_id, date_from, date_to)
+    if driver_id:
+        drv = get_org_row(db, Driver, driver_id, user, "Haydovchi topilmadi")
+        return gps_driver_report(db, drv, d1, d2, min_stop)
+    drivers = q_org(db, Driver, user).order_by(Driver.name.asc()).all()
+    return gps_drivers_overview(db, drivers, d1, d2, min_stop)
+
+
+@router.get("/gps/report.xlsx")
+def gps_report_xlsx(
+    driver_id: int | None = Query(None),
+    date_from: str = Query("", max_length=10),
+    date_to: str = Query("", max_length=10),
+    min_stop: int = Query(5, ge=1, le=240),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("tracking.live")),
+):
+    d1, d2 = _gps_range(driver_id, date_from, date_to)
+    if driver_id:
+        drivers = [get_org_row(db, Driver, driver_id, user, "Haydovchi topilmadi")]
+    else:
+        drivers = q_org(db, Driver, user).order_by(Driver.name.asc()).all()
+    reports = [r for r in (gps_driver_report(db, d, d1, d2, min_stop) for d in drivers) if r["days"]]
+    if not reports:
+        raise HTTPException(404, "Tanlangan kunlarda GPS ma’lumoti yo‘q")
+    span = d1.isoformat() if d1 == d2 else f"{d1.isoformat()}_{d2.isoformat()}"
+    who = drivers[0].name if driver_id else "barcha"
+    return _excel_file(gps_report_xlsx_bytes(reports), f"GPS_{who}_{span}.xlsx")
 
 
 @router.get("/drivers", response_model=list[DriverOut])

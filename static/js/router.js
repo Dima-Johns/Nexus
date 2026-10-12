@@ -1,7 +1,7 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
-import { $, $$ } from "./ui.js?v=84";
-import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=84";
-import { renderProfile } from "./profile.js?v=84";
+import { $, $$ } from "./ui.js?v=85";
+import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=85";
+import { renderProfile } from "./profile.js?v=85";
 
 const ROUTES = {
   "/": "dashboard",
@@ -13,6 +13,7 @@ const ROUTES = {
   "/settings": "settings",
   "/admin": "admin",
   "/reports": "reports",
+  "/gps": "gps",
   "/login": "login",
 };
 
@@ -58,8 +59,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=84`),
-    import(`/static/js/pages/${name}.js?v=84`),
+    fetch(`/static/pages/${name}.html?v=85`),
+    import(`/static/js/pages/${name}.js?v=85`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;
@@ -179,6 +180,10 @@ export async function render() {
     go("/dashboard", true);
     return;
   }
+  if (name === "gps" && !can("tracking.live")) {
+    go("/drivers", true);
+    return;
+  }
 
   $("#login-view").classList.add("hidden");
   $("#app-view").classList.remove("hidden");
@@ -186,7 +191,7 @@ export async function render() {
   applyPerms();
   $$("a.icon-btn[data-link], a.htab[data-link]").forEach((a) => {
     const href = a.getAttribute("href");
-    a.classList.toggle("active", href === `/${name}` || (name === "dashboard" && href === "/dashboard"));
+    a.classList.toggle("active", href === `/${name}` || (name === "dashboard" && href === "/dashboard") || (name === "gps" && href === "/drivers"));
   });
   $("#page-root").classList.toggle("page-map", name === "dashboard");
   $(".app-body")?.classList.toggle("no-rail", name !== "dashboard");

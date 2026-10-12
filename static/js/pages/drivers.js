@@ -1,6 +1,6 @@
 import { api, apiDownload, apiUpload, can } from "../api.js";
-import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=84";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=84";
+import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=85";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=85";
 
 const REFRESH_MS = 60000;
 
@@ -85,6 +85,7 @@ async function load(root) {
     }
     const manage = can("drivers.manage");
     const access = can("drivers.access");
+    const gps = can("tracking.live");
     if (!drivers.length) {
       box.innerHTML = `<div class="empty-list">Haydovchi yo‘q. ${manage ? "Yuqoridan qo‘shing yoki Excel import qiling." : "Qo‘shish uchun dostup kerak."}</div>`;
       return;
@@ -109,6 +110,8 @@ async function load(root) {
               : escapeHtml(d.agent_code ? `${d.agent_code} · ${d.agent_name}` : d.agent_name || "—")
           }</td>
           <td class="col-actions">${
+            gps ? `<a class="btn tiny" href="/gps?driver=${d.id}" data-link title="Bugungi GPS hisobot: qayerda qancha turgani">GPS</a> ` : ""
+          }${
             access ? `<button class="btn tiny" type="button" data-access="${d.id}" title="Ilovaga kirish: login, parol, QR">Kirish</button>` : ""
           }${manage ? ` <button class="btn tiny" type="button" data-del="${d.id}">O‘chirish</button>` : ""}</td>
         </tr>`

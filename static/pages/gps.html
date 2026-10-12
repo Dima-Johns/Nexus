@@ -1,0 +1,44 @@
+<div class="glass panel rep-page gps-page">
+  <div class="panel-head">
+    <div class="rep-title">
+      <h3>GPS hisobot</h3>
+      <p class="muted gps-sub">Haydovchi telefonining GPS ma’lumoti asosida: qayerda va qancha turgani, qancha yo‘l yurgani, signal qachon bo‘lmagani.</p>
+    </div>
+    <div class="row-actions">
+      <a class="btn" href="/drivers" data-link>← Haydovchilar</a>
+      <button class="btn" type="button" id="gps-excel">Excel yuklab olish</button>
+    </div>
+  </div>
+
+  <div class="rep-presets" id="gps-presets">
+    <button type="button" class="rep-chip" data-gps-preset="today">Bugun</button>
+    <button type="button" class="rep-chip" data-gps-preset="yesterday">Kecha</button>
+    <button type="button" class="rep-chip" data-gps-preset="7">7 kun</button>
+  </div>
+
+  <div class="rep-filters gps-filters">
+    <label>Dan<input type="date" id="gps-from" /></label>
+    <label>Gacha<input type="date" id="gps-to" /></label>
+    <label class="gps-driver-box">Haydovchi<select id="gps-driver"></select></label>
+    <label>To‘xtash kamida
+      <select id="gps-min">
+        <option value="2">2 daqiqa</option>
+        <option value="3">3 daqiqa</option>
+        <option value="5" selected>5 daqiqa</option>
+        <option value="10">10 daqiqa</option>
+        <option value="15">15 daqiqa</option>
+        <option value="30">30 daqiqa</option>
+      </select>
+    </label>
+    <button class="btn primary" type="button" id="gps-show">Ko‘rsatish</button>
+  </div>
+
+  <div class="gps-status" id="gps-status"></div>
+  <p class="error hidden" id="gps-err"></p>
+  <div class="rep-kpis" id="gps-kpis"></div>
+  <div class="gps-body" id="gps-body">
+    <div class="gps-map-wrap"><div id="gps-map" class="gps-map"></div></div>
+    <div class="gps-list" id="gps-list"></div>
+  </div>
+  <div id="gps-all"></div>
+</div>

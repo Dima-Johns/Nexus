@@ -80,6 +80,7 @@ def migrate_schema() -> None:
         )
         """,
         "CREATE INDEX IF NOT EXISTS ix_gps_pings_driver_time ON gps_pings (driver_id, recorded_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_gps_pings_recorded_at ON gps_pings (recorded_at)",
         """
         CREATE TABLE IF NOT EXISTS warehouses (
             id SERIAL PRIMARY KEY,

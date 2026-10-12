@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import or_
+from sqlalchemy import insert, or_
 from sqlalchemy.orm import Session, joinedload
 
 from .database import SessionLocal
@@ -207,51 +207,87 @@ def schedule_geocode(driver: Driver) -> None:
     threading.Thread(target=_geocode_job, args=(driver.id, lat, lng), daemon=True).start()
 
 
+def _gps_keep_days() -> int:
+    try:
+        return max(7, int(os.getenv("GPS_KEEP_DAYS", "") or 90))
+    except ValueError:
+        return 90
+
+
+GPS_KEEP_DAYS = _gps_keep_days()
+
+
+def _sec_key(value: datetime) -> int:
+    return int(_aware(value).timestamp())
+
+
 def ingest_gps(db: Session, driver: Driver, points: list) -> dict:
     if not points:
         return {"accepted": 0, "lat": driver.lat, "lng": driver.lng}
     now = datetime.now(timezone.utc)
-    rows = []
-    latest = None
-    for item in points[-200:]:
+    oldest = now - timedelta(days=GPS_KEEP_DAYS)
+    parsed = []
+    # Ilova oflayn keshni to‘liq yuborib, keyin tozalaydi — hammasi tarixga yozilishi kerak (hajm sxemada cheklangan)
+    for item in points:
         lat = float(getattr(item, "lat", 0) or 0)
         lng = float(getattr(item, "lng", 0) or 0)
         if not (37 < lat < 46 and 55 < lng < 76):
             continue
         recorded = parse_device_time(getattr(item, "recorded_at", None))
-        ping = GpsPing(
-            driver_id=driver.id,
-            lat=lat,
-            lng=lng,
-            heading=float(getattr(item, "heading", 0) or 0),
-            accuracy=float(getattr(item, "accuracy", 0) or 0),
-            speed=float(getattr(item, "speed", 0) or 0),
-            offline_cached=bool(getattr(item, "offline", False)),
-            recorded_at=recorded,
-            received_at=now,
-        )
-        rows.append(ping)
-        if latest is None or recorded >= latest.recorded_at:
-            latest = ping
+        # Telefon soati oldinda bo‘lsa nuqta kelajakka yozilib, tarix va xaritadagi joylashuv buzilmasin
+        if recorded > now + timedelta(minutes=5):
+            recorded = now
+        if recorded < oldest:
+            continue
+        parsed.append((recorded, lat, lng, item))
+    if not parsed:
+        return {"accepted": 0, "lat": driver.lat, "lng": driver.lng}
+    lo = min(p[0] for p in parsed) - timedelta(seconds=1)
+    hi = max(p[0] for p in parsed) + timedelta(seconds=1)
+    # Android xizmati turgan joyda bitta o‘lchovni bir necha marta yuboradi, veb-ilova ham parallel yuboradi
+    seen = {
+        _sec_key(t)
+        for (t,) in db.query(GpsPing.recorded_at)
+        .filter(GpsPing.driver_id == driver.id, GpsPing.recorded_at >= lo, GpsPing.recorded_at <= hi)
+        .all()
+        if t
+    }
+    rows = []
+    latest = None
+    for recorded, lat, lng, item in parsed:
+        key = _sec_key(recorded)
+        if key in seen:
+            continue
+        seen.add(key)
+        row = {
+            "driver_id": driver.id,
+            "lat": lat,
+            "lng": lng,
+            "heading": float(getattr(item, "heading", 0) or 0),
+            "accuracy": float(getattr(item, "accuracy", 0) or 0),
+            "speed": float(getattr(item, "speed", 0) or 0),
+            "offline_cached": bool(getattr(item, "offline", False)),
+            "recorded_at": recorded,
+            "received_at": now,
+        }
+        rows.append(row)
+        if latest is None or recorded >= latest["recorded_at"]:
+            latest = row
     if not rows or latest is None:
         return {"accepted": 0, "lat": driver.lat, "lng": driver.lng}
-    db.add_all(rows)
-    driver.lat = latest.lat
-    driver.lng = latest.lng
-    driver.heading = latest.heading or driver.heading
-    driver.gps_at = latest.recorded_at
-    driver.gps_accuracy = latest.accuracy or 0
+    for i in range(0, len(rows), 2000):
+        db.execute(insert(GpsPing), rows[i : i + 2000])
+    prev_at = _aware(driver.gps_at)
+    if prev_at is not None and prev_at > now + timedelta(minutes=5):
+        prev_at = None
+    # Kechikib kelgan oflayn nuqtalar tarixga yoziladi, lekin xaritadagi joriy joylashuvni orqaga qaytarmaydi
+    if prev_at is None or latest["recorded_at"] >= prev_at:
+        driver.lat = latest["lat"]
+        driver.lng = latest["lng"]
+        driver.heading = latest["heading"] or driver.heading
+        driver.gps_at = latest["recorded_at"]
+        driver.gps_accuracy = latest["accuracy"] or 0
     db.flush()
-    old = (
-        db.query(GpsPing.id)
-        .filter(GpsPing.driver_id == driver.id)
-        .order_by(GpsPing.recorded_at.desc())
-        .offset(400)
-        .all()
-    )
-    if old:
-        db.query(GpsPing).filter(GpsPing.id.in_([x[0] for x in old])).delete(synchronize_session=False)
-        db.flush()
     schedule_geocode(driver)
     return {
         "accepted": len(rows),
@@ -259,6 +295,39 @@ def ingest_gps(db: Session, driver: Driver, points: list) -> dict:
         "lng": driver.lng,
         "gps_at": driver.gps_at.isoformat() if driver.gps_at else None,
     }
+
+
+def prune_gps(batch: int = 5000) -> int:
+    """GPS_KEEP_DAYS kundan eski nuqtalar kichik bo‘laklarda o‘chiriladi — jadval uzoq qulflanmasin."""
+    cut = datetime.now(timezone.utc) - timedelta(days=GPS_KEEP_DAYS)
+    total = 0
+    while True:
+        db: Session = SessionLocal()
+        try:
+            ids = [x[0] for x in db.query(GpsPing.id).filter(GpsPing.recorded_at < cut).limit(batch).all()]
+            if not ids:
+                return total
+            db.query(GpsPing).filter(GpsPing.id.in_(ids)).delete(synchronize_session=False)
+            db.commit()
+            total += len(ids)
+        finally:
+            db.close()
+        if len(ids) < batch:
+            return total
+        time.sleep(0.2)
+
+
+def _prune_loop() -> None:
+    while True:
+        try:
+            prune_gps()
+        except Exception:
+            pass
+        time.sleep(6 * 3600)
+
+
+def start_gps_pruner() -> None:
+    threading.Thread(target=_prune_loop, daemon=True, name="gps-prune").start()
 
 
 def osrm_geometry(coords: list[tuple[float, float]]) -> list[list[float]]:

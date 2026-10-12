@@ -1,6 +1,6 @@
 import { api } from "./api.js";
-import { escapeHtml } from "./ui.js?v=84";
-import { proofThumb } from "./proof-photo.js?v=84";
+import { escapeHtml } from "./ui.js?v=85";
+import { proofThumb } from "./proof-photo.js?v=85";
 
 const STATUS = {
   new: "Yangi",

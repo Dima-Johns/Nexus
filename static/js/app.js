@@ -1,11 +1,11 @@
-import "./i18n.js?v=84";
-import { bindNavigation, render } from "./router.js?v=84";
-import { bindProfile } from "./profile.js?v=84";
-import { bindWorkspace } from "./workspace.js?v=84";
-import { bindDriverAccessModal } from "./driver-access.js?v=84";
+import "./i18n.js?v=85";
+import { bindNavigation, render } from "./router.js?v=85";
+import { bindProfile } from "./profile.js?v=85";
+import { bindWorkspace } from "./workspace.js?v=85";
+import { bindDriverAccessModal } from "./driver-access.js?v=85";
 import { me, setMe, setToken, token } from "./api.js";
-import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=84";
-import { watchInputLimits } from "./input-limits.js?v=84";
+import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=85";
+import { watchInputLimits } from "./input-limits.js?v=85";
 
 applyTheme(currentTheme());
 
@@ -30,7 +30,7 @@ function bindIdleWatch() {
 }
 
 // index.html dagi app.js?v= bilan bir xil bo‘lishi shart — server /api/version shundan oladi
-const BUILD = "v=84";
+const BUILD = "v=85";
 let reloading = false;
 async function checkBuild() {
   if (reloading || document.hidden) return;
