@@ -187,6 +187,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         web.webChromeClient = object : WebChromeClient() {
+            // Kamera kadri kelguncha WebView chizadigan kulrang "play" belgisi o'rniga shaffof rasm
+            override fun getDefaultVideoPoster(): Bitmap =
+                Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.TRANSPARENT) }
+
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String,
                 callback: GeolocationPermissions.Callback,
@@ -613,7 +617,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun shrinkPhoto(src: File, maxSide: Int = 1600): File? {
+    private fun shrinkPhoto(src: File, maxSide: Int = 1280): File? {
         return try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(src.path, bounds)
@@ -635,7 +639,7 @@ class MainActivity : AppCompatActivity() {
             }
             val bmp = if (scale < 1f || rotate != 0f) Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true) else raw
             val out = File(src.parentFile, src.nameWithoutExtension + "_s.jpg")
-            out.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+            out.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 70, it) }
             if (bmp !== raw) bmp.recycle()
             raw.recycle()
             src.delete()

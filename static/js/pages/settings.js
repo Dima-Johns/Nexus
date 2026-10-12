@@ -1,7 +1,7 @@
 import { api, me, setMe } from "../api.js";
-import { $, formData } from "../ui.js?v=81";
-import { loadRemembered, saveRemembered } from "../theme.js?v=81";
-import { renderProfile } from "../profile.js?v=81";
+import { $, formData } from "../ui.js?v=82";
+import { loadRemembered, saveRemembered } from "../theme.js?v=82";
+import { renderProfile } from "../profile.js?v=82";
 
 function loadIdle(root) {
   const sel = $("#idle-mins", root);

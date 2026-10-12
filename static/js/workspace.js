@@ -1,6 +1,6 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=81";
-import { proofThumb } from "./proof-photo.js?v=81";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=82";
+import { proofThumb } from "./proof-photo.js?v=82";
 
 let orders = [];
 let filter = "incoming";

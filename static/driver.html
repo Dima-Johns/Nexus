@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/static/brand/nexus-logo.webp" />
   <link rel="preload" href="/static/brand/nexus-logo.webp" as="image" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=22" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=23" />
 </head>
 <body>
   <div id="intro" class="intro" aria-hidden="true">
@@ -246,7 +246,7 @@
     </div>
   </div>
   <div id="cam" class="cam hidden" role="dialog" aria-label="Kamera">
-    <video id="cam-video" playsinline muted autoplay></video>
+    <video id="cam-video" playsinline muted autoplay disablepictureinpicture poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
     <div class="cam-top">
       <button type="button" class="cam-btn" id="cam-close" aria-label="Yopish">×</button>
       <b id="cam-title">Rasmga oling</b>
@@ -262,6 +262,6 @@
   <input type="file" id="proof-file" accept="image/*" capture="environment" hidden />
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/driver-app.js?v=24"></script>
+  <script src="/static/js/driver-app.js?v=25"></script>
 </body>
 </html>

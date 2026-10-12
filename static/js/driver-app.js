@@ -542,12 +542,12 @@ function visibleOrders() {
   return rows.filter((o) => reysKey(o) === reysFilter);
 }
 
-// Yopilganlar (yetkazilgan/qaytarilgan) yopilgan vaqti bo‘yicha boshida, kutilayotganlar — borish tartibida
+// Kutilayotganlar — borish tartibida tepada; yopilganlar (yetkazilgan/qaytarilgan) pastda, oxirgi yopilgani birinchi
 function orderedStops() {
   const byStop = (a, b) => Number(a.stop_no || 0) - Number(b.stop_no || 0) || a.id - b.id;
   const rows = visibleOrders();
-  const done = rows.filter(isDone).sort((a, b) => (Date.parse(a.proof_at || "") || 0) - (Date.parse(b.proof_at || "") || 0) || byStop(a, b));
-  return [...done, ...rows.filter((o) => !isDone(o)).sort(byStop)];
+  const done = rows.filter(isDone).sort((a, b) => (Date.parse(b.proof_at || "") || 0) - (Date.parse(a.proof_at || "") || 0) || byStop(a, b));
+  return [...rows.filter((o) => !isDone(o)).sort(byStop), ...done];
 }
 
 function pendingStops() {
@@ -895,8 +895,10 @@ async function saveOrder(ids) {
   }
 }
 
+// Serverdagi stop_no: yopilganlar boshida, keyin kutilayotganlar (saveOrder bilan bir xil)
 function currentFullOrder() {
-  return orderedStops().map((o) => o.id);
+  const rows = orderedStops();
+  return [...rows.filter(isDone), ...rows.filter((o) => !isDone(o))].map((o) => o.id);
 }
 
 async function replan(firstId) {
@@ -1318,6 +1320,12 @@ async function startCamStream() {
   return cam.stream;
 }
 
+// Android WebView kadr kelguncha <video> ustida kulrang "play" belgisini chizadi — shaffof poster uni yopadi
+const BLANK_POSTER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+// Isbot rasmi: uzun tomoni 1280px, JPEG ~0.7 (odatda 150–300 KB)
+const PHOTO_MAX_SIDE = 1280;
+const PHOTO_QUALITY = 0.7;
+
 function stopCamStream() {
   cam.stream?.getTracks().forEach((t) => t.stop());
   cam.stream = null;
@@ -1394,7 +1402,7 @@ async function shootCamera() {
   const v = $("cam-video");
   const box = $("cam");
   if (!v?.videoWidth || !proof.id) return;
-  const scale = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
+  const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(v.videoWidth, v.videoHeight));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(v.videoWidth * scale);
   canvas.height = Math.round(v.videoHeight * scale);
@@ -1403,7 +1411,7 @@ async function shootCamera() {
   void box.offsetWidth;
   box.classList.add("flash");
   if (navigator.vibrate) navigator.vibrate(30);
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", PHOTO_QUALITY));
   if (!blob) {
     $("cam-err").textContent = "Rasm olinmadi — yana bosing";
     return;
@@ -1422,7 +1430,7 @@ function setProofPhoto(blob) {
   if (proof.result === "returned" && !proofComment()) setTimeout(() => $("proof-comment")?.focus(), 150);
 }
 
-function compressImage(file, maxSide = 1600, quality = 0.78) {
+function compressImage(file, maxSide = PHOTO_MAX_SIDE, quality = PHOTO_QUALITY) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -1640,18 +1648,16 @@ function editRows() {
 }
 
 function renderEditList(box) {
-  const doneN = orderedStops().filter(isDone).length;
   const rows = editRows();
   const last = rows.length - 1;
   box.innerHTML =
-    (doneN ? `<div class="re-done muted">${doneN} ta zayavka yakunlangan — ular ro‘yxat boshida qoladi</div>` : "") +
     rows
       .map(
         (o, i) => `<div class="re-row" data-id="${o.id}">
         <span class="re-grip" data-grip aria-label="Sudrash">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
         </span>
-        <span class="stop">${doneN + i + 1}</span>
+        <span class="stop">${i + 1}</span>
         <span class="re-txt"><b>${esc(o.client_name || o.code || "Do‘kon")}</b><span class="muted">${esc(o.dropoff_address || o.code || "")}</span></span>
         <span class="re-arrows">
           <button type="button" data-move="-1" ${i === 0 ? "disabled" : ""} aria-label="Yuqoriga">
@@ -1882,9 +1888,7 @@ function renderList() {
   const cur = run.active ? currentStop() : null;
   const queued = new Set(outboxMeta.filter((x) => x.type === "proof").map((x) => Number(x.orderId)));
   const pendingN = rows.filter((o) => !isDone(o)).length;
-  box.innerHTML =
-    rows
-      .map((o, i) => {
+  const cards = rows.map((o, i) => {
         const meta = `<div class="muted">${esc(o.dropoff_address || "")}</div>
           <div class="muted">${[o.route_code, o.delivery_date, o.window_start && o.window_end ? `${o.window_start}–${o.window_end}` : ""].filter(Boolean).map(esc).join(" · ")}</div>`;
         if (isDone(o)) {
@@ -1927,9 +1931,13 @@ function renderList() {
             <button class="btn warn" data-return="${o.id}" type="button">Qaytarildi</button>
           </div>
         </article>`;
-      })
-      .join("") +
-    (pendingN > 1 ? `<p class="list-hint muted">Tartibni o‘zgartirish uchun zayavka ustida barmoqni ushlab turing va suring</p>` : "");
+      });
+  const doneN = rows.length - pendingN;
+  box.innerHTML =
+    cards.slice(0, pendingN).join("") +
+    (pendingN > 1 ? `<p class="list-hint muted">Tartibni o‘zgartirish uchun zayavka ustida barmoqni ushlab turing va suring</p>` : "") +
+    (doneN ? `<div class="list-sep muted">Yopilgan zayavkalar · ${doneN}</div>` : "") +
+    cards.slice(pendingN).join("");
   freshDoneId = null;
 }
 
@@ -2269,6 +2277,7 @@ async function startScan() {
   try {
     scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
     const video = document.createElement("video");
+    video.poster = BLANK_POSTER;
     video.setAttribute("playsinline", "true");
     video.autoplay = true;
     video.srcObject = scanStream;

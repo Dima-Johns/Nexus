@@ -900,7 +900,7 @@ def shrink_proof_photo(data: bytes, mime: str | None) -> tuple[bytes, str | None
                 img = img.convert("RGB")
             img.thumbnail((PROOF_MAX_SIDE, PROOF_MAX_SIDE))
             out = io.BytesIO()
-            img.save(out, "JPEG", quality=75, optimize=True, progressive=True)
+            img.save(out, "JPEG", quality=70, optimize=True, progressive=True)
         packed = out.getvalue()
         if len(packed) < len(data) * 0.9:
             return packed, "image/jpeg"
@@ -1621,6 +1621,21 @@ def delete_client_base(item_id: int, db: Session = Depends(get_db), user: User =
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/clients/base/bulk-delete")
+def bulk_delete_clients_base(payload: BulkIdsIn, db: Session = Depends(get_db), user: User = Depends(require_perm("clients.manage"))):
+    rows = _clients_scope(db, user, None).filter(Client.id.in_(payload.ids)).all()
+    if not rows:
+        raise HTTPException(404, "Klientlar topilmadi")
+    ids = [r.id for r in rows]
+    for row in rows:
+        archive_deleted(db, user, "client", row, f"{row.name}{f' · {row.code}' if row.code else ''}")
+    db.query(Order).filter(Order.client_id.in_(ids)).update({Order.client_id: None}, synchronize_session=False)
+    for row in rows:
+        db.delete(row)
+    db.commit()
+    return {"ok": True, "deleted": len(ids)}
 
 
 @router.get("/trash")

@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=81";
-import { mountOfficePicker } from "../office-picker.js?v=81";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=81";
+import { openDriverAccess } from "../driver-access.js?v=82";
+import { mountOfficePicker } from "../office-picker.js?v=82";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=82";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -13,6 +13,9 @@ let orgsCache = [];
 const openOrgs = new Set();
 let usersCache = [];
 let clientsCache = [];
+// Filtrdagi klientlar (CL_LIMIT dan tashqaridagilari ham) — «Hammasini belgilash» shularni oladi
+let clVisible = [];
+const clPicked = new Set();
 let createPicker = null;
 let editPicker = null;
 let officeOrgId = null;
@@ -609,6 +612,12 @@ function renderClients(root) {
   const org = $("#cl-org", root)?.value || "";
   const scoped = org ? clientsCache.filter((c) => String(c.org_id) === org) : clientsCache;
   const rows = scoped.filter((c) => clientMatches(c, q, since));
+  clVisible = rows;
+  const visibleIds = new Set(rows.map((c) => c.id));
+  [...clPicked].forEach((id) => {
+    if (!visibleIds.has(id)) clPicked.delete(id);
+  });
+  syncClBulk(root);
   const today = scoped.filter((c) => clientMatches(c, "", addedSince("0"))).length;
   const noGps = scoped.filter((c) => !c.lat || !c.lng).length;
   $("#cl-summary", root).innerHTML = `<span class="adm-pill">Jami <b>${scoped.length}</b></span>
@@ -624,12 +633,13 @@ function renderClients(root) {
   }
   const multiOrg = crossOrg() || new Set(rows.map((c) => c.org_id)).size > 1;
   const manage = can("clients.manage");
-  const headers = ["#", "Klient", ...(multiOrg ? ["Tashkilot"] : []), "Manzil", "Agent", "Zayavkalar", "Qo‘shilgan", ...(manage ? [""] : [])];
+  const headers = [...(manage ? [""] : []), "#", "Klient", ...(multiOrg ? ["Tashkilot"] : []), "Manzil", "Agent", "Zayavkalar", "Qo‘shilgan", ...(manage ? [""] : [])];
   const body = rows
     .slice(0, CL_LIMIT)
     .map((c, i) => {
       const gps = c.lat && c.lng ? `${Number(c.lat).toFixed(5)}, ${Number(c.lng).toFixed(5)}` : "koordinata yo‘q";
       return `<tr>
+        ${manage ? `<td class="col-check"><input type="checkbox" data-cl-pick="${c.id}" ${clPicked.has(c.id) ? "checked" : ""} aria-label="Belgilash" /></td>` : ""}
         <td class="adm-num">${i + 1}</td>
         <td class="cell-main"><b>${escapeHtml(c.name)}</b><span class="cl-sub">${c.code ? `kod: ${escapeHtml(c.code)}` : "kodsiz"}${c.phone ? ` · ${escapeHtml(c.phone)}` : ""}</span></td>
         ${multiOrg ? `<td class="cell-inline"><span class="usr-org">${escapeHtml(c.org_name || "—")}</span></td>` : ""}
@@ -653,6 +663,24 @@ function renderClients(root) {
       ? `<p class="muted cl-more">Birinchi ${CL_LIMIT} tasi ko‘rsatildi (topilgan: ${rows.length}). Qidiruvdan foydalaning yoki to‘liq ro‘yxatni Excel'da yuklab oling.</p>`
       : "";
   box.innerHTML = table(headers, body) + more;
+}
+
+function syncClBulk(root) {
+  const bar = $("#cl-bulk", root);
+  if (!bar) return;
+  bar.classList.toggle("hidden", !can("clients.manage") || !clVisible.length);
+  const n = clPicked.size;
+  const all = $("#cl-all", root);
+  if (all) {
+    all.checked = n > 0 && n === clVisible.length;
+    all.indeterminate = n > 0 && n < clVisible.length;
+  }
+  const label = $("#cl-all-label", root);
+  if (label) label.textContent = `Hammasini belgilash (${clVisible.length})`;
+  const count = $("#cl-sel-count", root);
+  if (count) count.textContent = n ? `${n} ta tanlandi` : "";
+  const del = $("#cl-bulk-del", root);
+  if (del) del.disabled = !n;
 }
 
 async function loadClients(root) {
@@ -735,6 +763,54 @@ function bindClients(root) {
       clErr(root, `«${c.name}» o‘chirildi.`, true);
     } catch (ex) {
       clErr(root, ex.message);
+    }
+  });
+
+  box.addEventListener("change", (e) => {
+    const pick = e.target.closest("[data-cl-pick]");
+    if (!pick) return;
+    const id = Number(pick.dataset.clPick);
+    if (pick.checked) clPicked.add(id);
+    else clPicked.delete(id);
+    syncClBulk(root);
+  });
+  $("#cl-all", root)?.addEventListener("change", (e) => {
+    clPicked.clear();
+    if (e.target.checked) clVisible.forEach((c) => clPicked.add(c.id));
+    box.querySelectorAll("[data-cl-pick]").forEach((el) => {
+      el.checked = clPicked.has(Number(el.dataset.clPick));
+    });
+    syncClBulk(root);
+  });
+  $("#cl-bulk-del", root)?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const ids = [...clPicked];
+    if (!ids.length) return;
+    clErr(root, "");
+    const ok = await askConfirm(
+      `${ids.length} ta klient bazadan o‘chiriladi. Zayavkalar o‘chmaydi, faqat klientga bog‘lanishi uziladi. Ular «O‘chirilganlar» bo‘limida saqlanadi.`,
+      { title: "Klientlarni o‘chirish", ok: `${ids.length} tasini o‘chirish`, danger: true }
+    );
+    if (!ok) return;
+    btn.disabled = true;
+    let deleted = 0;
+    try {
+      for (let i = 0; i < ids.length; i += 5000) {
+        const part = ids.slice(i, i + 5000);
+        const res = await api("/clients/base/bulk-delete", { method: "POST", body: { ids: part } });
+        deleted += res?.deleted || 0;
+        const gone = new Set(part);
+        clientsCache = clientsCache.filter((x) => !gone.has(x.id));
+        part.forEach((id) => clPicked.delete(id));
+      }
+      clErr(root, `${deleted} ta klient o‘chirildi.`, true);
+    } catch (ex) {
+      clErr(root, deleted ? `${deleted} ta o‘chirildi, qolganida xato: ${ex.message}` : ex.message);
+    } finally {
+      setCount(root, "cnt-clients", clientsCache.length);
+      fillClientOrgFilter(root);
+      loadTrash(root).catch(() => {});
+      renderClients(root);
     }
   });
 
