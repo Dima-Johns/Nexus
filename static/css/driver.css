@@ -218,6 +218,24 @@ input {
   display: none;
 }
 .head-icon-dot.on { display: block; }
+.notice-badge {
+  position: absolute; right: -4px; top: -4px;
+  min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px;
+  background: var(--danger); color: #fff; border: 2px solid #0c101c;
+  font-size: 11px; line-height: 15px; text-align: center;
+}
+.head-icon.ring svg { animation: nx-ring 1s ease-in-out 2; transform-origin: 50% 10%; }
+@keyframes nx-ring {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(16deg); }
+  40% { transform: rotate(-14deg); }
+  60% { transform: rotate(9deg); }
+  80% { transform: rotate(-5deg); }
+}
+.notice-row.unread { border-color: rgba(122, 162, 255, 0.55); background: var(--glass-shine), rgba(122, 162, 255, 0.12); }
+.notice-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.notice-row:not(.unread) .notice-dot { background: transparent; }
+.notice-clear { margin-top: 10px; }
 @keyframes nx-spin { to { transform: rotate(360deg); } }
 .pill {
   padding: 3px 8px;

@@ -20,6 +20,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -151,7 +152,7 @@ class TrackingService : Service() {
         val body = JSONObject().put("points", points).toString()
         Thread {
             try {
-                val c = URL("$base/api/driver/location").openConnection() as HttpURLConnection
+                val c = URL("$base/api/driver/location?reys=true").openConnection() as HttpURLConnection
                 c.connectTimeout = 8000
                 c.readTimeout = 8000
                 c.requestMethod = "POST"
@@ -160,14 +161,90 @@ class TrackingService : Service() {
                 c.setRequestProperty("Authorization", "Bearer $token")
                 c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
                 val code = c.responseCode
+                val reply = if (code in 200..299) c.inputStream.bufferedReader().use { it.readText() } else ""
                 c.disconnect()
                 if (code == 401) {
                     prefs.edit().remove("drv_token").putBoolean(PREF_ON, false).apply()
                     handler.post { stopSelf() }
                 }
+                if (reply.isNotEmpty()) {
+                    JSONObject(reply).optJSONArray("reys")?.let { checkNewReys(it, token) }
+                }
             } catch (_: Exception) {
             }
         }.start()
+    }
+
+    /**
+     * Serverdagi faol reyslar oldingi ro‘yxat bilan solishtiriladi; yangisi bo‘lsa va ilova ekranda bo‘lmasa — bildirishnoma.
+     * Har yangi kirishdagi (yangi token) birinchi ro‘yxat faqat boshlang‘ich nuqta bo‘ladi.
+     */
+    private fun checkNewReys(list: JSONArray, token: String) {
+        val prefs = getSharedPreferences("nexus", MODE_PRIVATE)
+        val items = (0 until list.length()).mapNotNull { list.optJSONObject(it) }.filter { it.optString("key").isNotEmpty() }
+        val keys = items.map { it.optString("key") }
+        val tokenTag = token.takeLast(16)
+        val baseline = prefs.getString(PREF_REYS_TOKEN, "") != tokenTag
+        val seen = if (baseline) emptySet() else
+            prefs.getString(PREF_REYS_SEEN, "[]").orEmpty().let { raw ->
+                try {
+                    JSONArray(raw).let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }
+                } catch (_: Exception) {
+                    emptySet()
+                }
+            }
+        prefs.edit().putString(PREF_REYS_TOKEN, tokenTag).putString(PREF_REYS_SEEN, JSONArray(keys).toString()).apply()
+        if (baseline || MainActivity.visible) return
+        items.filter { it.optString("key") !in seen }.forEach { showReysNotice(it) }
+    }
+
+    private fun showReysNotice(item: JSONObject) {
+        val nmc = NotificationManagerCompat.from(this)
+        if (!nmc.areNotificationsEnabled()) return
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = NotificationChannel(REYS_CHANNEL, "Yangi reyslar", NotificationManager.IMPORTANCE_HIGH)
+            ch.description = "Sizga yangi reys biriktirilganda xabar beradi"
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
+        }
+        val key = item.optString("key")
+        val code = item.optString("route_code").trim().ifEmpty { "Reys" }
+        val count = item.optInt("count", 0)
+        val text = "${dayLabel(item.optString("delivery_date"))} · $count ta zayavka"
+        val open = PendingIntent.getActivity(
+            this,
+            REYS_REQUEST,
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(MainActivity.EXTRA_NOTICES, true),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = NotificationCompat.Builder(this, REYS_CHANNEL)
+            .setContentTitle("Yangi reys: $code")
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_stat_nexus)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        try {
+            nmc.notify(REYS_NOTIF_BASE + (key.hashCode() and 0xFFFF), n)
+        } catch (_: SecurityException) {
+        }
+    }
+
+    private fun dayLabel(raw: String): String {
+        val day = raw.take(10)
+        if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(day)) return "Sanasiz"
+        val f = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val now = Date()
+        if (day == f.format(now)) return "Bugun"
+        if (day == f.format(Date(now.time + 86_400_000L))) return "Ertaga"
+        return "${day.substring(8, 10)}.${day.substring(5, 7)}"
     }
 
     private fun iso(d: Date): String {
@@ -191,5 +268,10 @@ class TrackingService : Service() {
         private const val CHANNEL = "nexus_tracking"
         private const val NOTIF_ID = 42
         private const val BEAT_MS = 60_000L
+        private const val REYS_CHANNEL = "nexus_reys"
+        private const val REYS_REQUEST = 7
+        private const val REYS_NOTIF_BASE = 10_000
+        private const val PREF_REYS_SEEN = "reys_seen"
+        private const val PREF_REYS_TOKEN = "reys_seen_tok"
     }
 }

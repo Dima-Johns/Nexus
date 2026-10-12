@@ -1033,6 +1033,193 @@ function closePick() {
   $("pick-sheet")?.classList.add("hidden");
 }
 
+// Yangi reys bildirishnomalari: serverdagi faol reyslar oldingi tekshiruvdagisi bilan solishtiriladi.
+// Kirgandan keyingi birinchi ro‘yxat faqat boshlang‘ich nuqta — mavjud reyslar "yangi" deb chiqmaydi.
+const NOTICE_KEY = "nx_drv_notices";
+const NOTICE_MAX = 30;
+const NOTICE_EMPTY = () => ({ driverId: null, seen: null, items: [] });
+let notices = loadNotices();
+let noticeBusy = false;
+
+function loadNotices() {
+  try {
+    const v = JSON.parse(localStorage.getItem(NOTICE_KEY) || "null");
+    if (v && Array.isArray(v.items)) return v;
+  } catch {
+    /* buzilgan yozuv */
+  }
+  return NOTICE_EMPTY();
+}
+
+function saveNotices() {
+  try {
+    localStorage.setItem(NOTICE_KEY, JSON.stringify(notices));
+  } catch {
+    /* joy yo‘q */
+  }
+}
+
+function clearNotices() {
+  notices = NOTICE_EMPTY();
+  localStorage.removeItem(NOTICE_KEY);
+  renderNoticeBadge();
+}
+
+function noticeOwnerOk() {
+  if (!driver?.id) return false;
+  if (notices.driverId !== driver.id) notices = { ...NOTICE_EMPTY(), driverId: driver.id };
+  return true;
+}
+
+function unreadNotices() {
+  return notices.items.filter((n) => !n.read).length;
+}
+
+function renderNoticeBadge() {
+  const badge = $("notice-badge");
+  if (!badge) return;
+  const n = driver?.id && notices.driverId === driver.id ? unreadNotices() : 0;
+  badge.textContent = n > 9 ? "9+" : String(n);
+  badge.classList.toggle("hidden", !n);
+}
+
+function noticeOpen() {
+  return !$("notice-sheet")?.classList.contains("hidden");
+}
+
+function noticeTime(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (v) => String(v).padStart(2, "0");
+  const time = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  return isoDay(d) === todayIso() ? time : `${p(d.getDate())}.${p(d.getMonth() + 1)} ${time}`;
+}
+
+function renderNotices() {
+  const box = $("notice-list");
+  if (!box) return;
+  const items = noticeOwnerOk() ? notices.items : [];
+  $("notice-clear")?.classList.toggle("hidden", !items.length);
+  if (!items.length) {
+    box.innerHTML = `<p class="empty">Hozircha yangi reys yo‘q</p>`;
+    return;
+  }
+  box.innerHTML = items
+    .map((n) => {
+      const day = n.day ? formatDayLong(n.day) : "Sanasiz";
+      return `<button type="button" class="pick-row notice-row${n.read ? "" : " unread"}" data-notice="${esc(n.key)}">
+        <span class="notice-dot"></span>
+        <span class="pick-txt"><b>Yangi reys: ${esc(n.label)}</b><span class="muted">${esc(day)} · ${Number(n.count) || 0} ta zayavka</span></span>
+        <span class="pick-side muted">${esc(noticeTime(n.at))}</span>
+      </button>`;
+    })
+    .join("");
+}
+
+function openNotices() {
+  renderNotices();
+  $("notice-sheet")?.classList.remove("hidden");
+  if (unreadNotices()) {
+    notices.items.forEach((n) => {
+      n.read = true;
+    });
+    saveNotices();
+    renderNoticeBadge();
+  }
+}
+
+function closeNotices() {
+  $("notice-sheet")?.classList.add("hidden");
+}
+
+async function openNoticeReys(key) {
+  closeNotices();
+  const has = () => allOrders().some((o) => reysKey(o) === key && !isDone(o));
+  if (!has() && navigator.onLine) await pullRoute().catch(() => {});
+  if (!has()) {
+    toast("Bu reys endi faol emas", true);
+    return;
+  }
+  const day = key.slice(0, key.indexOf("|"));
+  setDateFilter(/^\d{4}-\d{2}-\d{2}$/.test(day) ? day : todayIso(), false);
+  onReysChange(key);
+}
+
+/** Serverdan kelgan faol reyslar ro‘yxatini eslab qoladi va yangi qo‘shilganlarini qaytaradi. */
+function noteReys(groups) {
+  if (!noticeOwnerOk()) return [];
+  const rows = groups.filter((g) => g && typeof g.key === "string");
+  const first = !Array.isArray(notices.seen);
+  const seen = new Set(notices.seen || []);
+  notices.seen = rows.map((g) => g.key);
+  const fresh = first ? [] : rows.filter((g) => !seen.has(g.key));
+  const at = new Date().toISOString();
+  fresh.forEach((g) => {
+    notices.items = notices.items.filter((n) => n.key !== g.key);
+    notices.items.unshift({
+      key: g.key,
+      label: String(g.route_code || "").trim() || "Reys",
+      day: String(g.delivery_date || "").slice(0, 10),
+      count: Number(g.count) || 0,
+      at,
+      read: false,
+    });
+  });
+  notices.items = notices.items.slice(0, NOTICE_MAX);
+  if (noticeOpen()) {
+    renderNotices();
+    notices.items.forEach((n) => {
+      n.read = true;
+    });
+  }
+  saveNotices();
+  renderNoticeBadge();
+  return fresh;
+}
+
+// Android: "Yangi reys" tizim bildirishnomasi bosildi
+window.nexusOpenNotices = () => {
+  if (!token || $("view-app").classList.contains("hidden")) return;
+  closeProfile();
+  closePick();
+  openNotices();
+  pollNotices();
+};
+
+function busyScreen() {
+  return Boolean(editing || drag || refreshing || !$("proof-sheet")?.classList.contains("hidden") || !$("cam")?.classList.contains("hidden"));
+}
+
+function announceReys(fresh) {
+  const g = fresh[0];
+  const label = String(g.route_code || "").trim() || "Reys";
+  toast(fresh.length > 1 ? `${fresh.length} ta yangi reys qo‘shildi` : `Yangi reys: ${label} · ${formatDayShort(g.delivery_date)} · ${Number(g.count) || 0} ta zayavka`, false);
+  if (navigator.vibrate) navigator.vibrate([180, 90, 180]);
+  const bell = $("btn-notices");
+  if (bell) {
+    bell.classList.remove("ring");
+    void bell.offsetWidth;
+    bell.classList.add("ring");
+    setTimeout(() => bell.classList.remove("ring"), 2200);
+  }
+  // Yangi zayavkalar ro‘yxatga darhol tushsin; haydovchi biror ish ustida bo‘lsa — keyingi yangilashda
+  if (!busyScreen()) pullRoute().catch(() => {});
+}
+
+async function pollNotices() {
+  if (noticeBusy || !token || !navigator.onLine || !driver?.id) return;
+  noticeBusy = true;
+  try {
+    const data = await api("/driver/notices", { timeout: 15000 });
+    const fresh = noteReys(Array.isArray(data.items) ? data.items : []);
+    if (fresh.length) announceReys(fresh);
+  } catch {
+    /* keyingi daqiqada qayta */
+  } finally {
+    noticeBusy = false;
+  }
+}
+
 const PROOF_REASONS = {
   fridge_yes: "Muzlatgich bor",
   foreign_goods: "Begona mahsulot bor",
@@ -1842,6 +2029,7 @@ async function heartbeat() {
   }
   await flushGps();
   if (outboxMeta.length) await flushOutbox();
+  await pollNotices();
 }
 
 function startHeartbeat() {
@@ -1981,6 +2169,7 @@ async function enterApp(payload) {
   saveSession();
   show("view-app");
   renderProfile();
+  renderNoticeBadge();
   drawMap();
   startGps();
   startHeartbeat();
@@ -2149,6 +2338,8 @@ function logout() {
   ["token", "driver", "route"].forEach((k) => kvSet(k, null).catch(() => {}));
   gpsClear().catch(() => {});
   outboxClear().catch(() => {});
+  closeNotices();
+  clearNotices();
   if (watchId != null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
@@ -2204,6 +2395,19 @@ function bind() {
     if (e.target === $("profile-sheet")) closeProfile();
   });
   $("btn-sync").addEventListener("click", refresh);
+  $("btn-notices")?.addEventListener("click", openNotices);
+  $("notice-close")?.addEventListener("click", closeNotices);
+  $("notice-clear")?.addEventListener("click", () => {
+    notices.items = [];
+    saveNotices();
+    renderNotices();
+    renderNoticeBadge();
+  });
+  $("notice-sheet")?.addEventListener("click", (e) => {
+    if (e.target === $("notice-sheet")) return closeNotices();
+    const row = e.target.closest("[data-notice]");
+    if (row) openNoticeReys(row.dataset.notice);
+  });
   $("btn-start")?.addEventListener("click", startRun);
   const onPick = () => {
     const val = $("date-pick")?.value;
@@ -2329,7 +2533,10 @@ function bind() {
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) closeCamera();
-    else if (outboxMeta.length && navigator.onLine) flushOutbox().catch(() => {});
+    else {
+      if (outboxMeta.length && navigator.onLine) flushOutbox().catch(() => {});
+      pollNotices();
+    }
   });
   window.addEventListener("offline", setNet);
   // Zayavka matnini uzoq bosib belgilab/nusxalab bo‘lmasin — kiritish maydonlari bundan mustasno
@@ -2369,6 +2576,7 @@ async function boot() {
     show("view-app");
     hideIntro();
     renderProfile();
+    renderNoticeBadge();
     fillReysFilter();
     drawMap();
     renderList();
@@ -2379,6 +2587,7 @@ async function boot() {
     try {
       await api("/driver/me");
       await pullRoute();
+      pollNotices();
     } catch (err) {
       if (err?.status === 401) {
         // onSessionLost login oynasini ochdi; navbatdagi tasdiqlar o‘chirilmaydi

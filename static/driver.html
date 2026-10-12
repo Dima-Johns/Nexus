@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/static/brand/nexus-logo.webp" />
   <link rel="preload" href="/static/brand/nexus-logo.webp" as="image" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=21" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=22" />
 </head>
 <body>
   <div id="intro" class="intro" aria-hidden="true">
@@ -61,6 +61,13 @@
   <section id="view-app" class="view hidden">
     <header class="app-head">
       <div class="head-brand">
+        <button class="profile-btn" id="btn-profile" type="button" aria-label="Profil">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8.2" r="4.6" />
+            <path d="M6.9 13.7A8.6 8.6 0 0 0 3.5 20.5h17a8.6 8.6 0 0 0-5.2-7.9" />
+          </svg>
+          <span class="profile-dot" id="profile-dot"></span>
+        </button>
         <img class="nx-mark xs" src="/static/brand/nexus-logo.webp" alt="" aria-hidden="true" />
         <span class="nx-word xs">NEXUS</span>
       </div>
@@ -74,12 +81,12 @@
           </svg>
           <span class="head-icon-dot" id="sync-dot"></span>
         </button>
-        <button class="profile-btn" id="btn-profile" type="button" aria-label="Profil">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="8.2" r="4.6" />
-            <path d="M6.9 13.7A8.6 8.6 0 0 0 3.5 20.5h17a8.6 8.6 0 0 0-5.2-7.9" />
+        <button class="head-icon" id="btn-notices" type="button" aria-label="Bildirishnomalar" title="Bildirishnomalar">
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 9a6 6 0 0 1 12 0c0 6.2 2.5 7.8 2.5 7.8h-17S6 15.2 6 9z" />
+            <path d="M10.2 20.2a2 2 0 0 0 3.6 0" />
           </svg>
-          <span class="profile-dot" id="profile-dot"></span>
+          <b class="notice-badge hidden" id="notice-badge"></b>
         </button>
       </div>
     </header>
@@ -217,6 +224,17 @@
     </div>
   </div>
 
+  <div id="notice-sheet" class="sheet-overlay hidden">
+    <div class="sheet-card pick-card">
+      <div class="sheet-head">
+        <b>Bildirishnomalar</b>
+        <button type="button" class="icon-x" id="notice-close" aria-label="Yopish">×</button>
+      </div>
+      <p class="muted sheet-sub">Sizga biriktirilgan yangi reyslar. Bosing — shu reys ochiladi.</p>
+      <div id="notice-list" class="pick-list"></div>
+      <button class="btn full notice-clear hidden" id="notice-clear" type="button">Ro‘yxatni tozalash</button>
+    </div>
+  </div>
   <div id="pick-sheet" class="sheet-overlay hidden">
     <div class="sheet-card pick-card">
       <div class="sheet-head">
@@ -244,6 +262,6 @@
   <input type="file" id="proof-file" accept="image/*" capture="environment" hidden />
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/driver-app.js?v=23"></script>
+  <script src="/static/js/driver-app.js?v=24"></script>
 </body>
 </html>

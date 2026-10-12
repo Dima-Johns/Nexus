@@ -73,6 +73,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
     private var pendingScan = false
     private var showingError = false
+    private var pendingNotices = false
     private val retry = Handler(Looper.getMainLooper())
 
     private val qrLauncher = registerForActivityResult(ScanContract()) { result ->
@@ -178,6 +179,10 @@ class MainActivity : AppCompatActivity() {
                     hideSplash()
                     web.visibility = View.VISIBLE
                     prefs().edit().putString("last_ok_url", activeUrl).apply()
+                    if (pendingNotices) {
+                        pendingNotices = false
+                        web.postDelayed({ openNoticesInWeb() }, 1500)
+                    }
                 }
             }
         }
@@ -219,8 +224,22 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        pendingNotices = intent?.getBooleanExtra(EXTRA_NOTICES, false) == true
         dropStaleLanUrls()
         connect()
+    }
+
+    // "Yangi reys" bildirishnomasi bosilganda ilova ochiq bo‘lsa — bildirishnomalar oynasi ochiladi
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (!intent.getBooleanExtra(EXTRA_NOTICES, false)) return
+        if (this::web.isInitialized && web.visibility == View.VISIBLE && !showingError) openNoticesInWeb() else pendingNotices = true
+    }
+
+    private fun openNoticesInWeb() {
+        if (!this::web.isInitialized) return
+        web.evaluateJavascript("(function(){try{if(window.nexusOpenNotices)window.nexusOpenNotices();}catch(e){}})()", null)
     }
 
     inner class JsBridge {
@@ -810,6 +829,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        visible = true
         ContextCompat.registerReceiver(
             this,
             locationSwitch,
@@ -820,6 +840,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        visible = false
         try {
             unregisterReceiver(locationSwitch)
         } catch (_: Exception) {
@@ -1034,5 +1055,13 @@ class MainActivity : AppCompatActivity() {
     override fun onBackPressed() {
         // Orqaga tugmasi ilovani yopmaydi, faqat fonga o‘tkazadi — GPS faqat ilova to‘liq yopilganda to‘xtaydi
         if (this::web.isInitialized && web.canGoBack()) web.goBack() else moveTaskToBack(true)
+    }
+
+    companion object {
+        const val EXTRA_NOTICES = "uz.nexus.logistika.driver.OPEN_NOTICES"
+
+        /** Ilova ekranda bo‘lsa yangi reys haqida ilovaning o‘zi xabar beradi, tizim bildirishnomasi kerak emas. */
+        @Volatile
+        var visible = false
     }
 }

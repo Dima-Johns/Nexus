@@ -196,7 +196,7 @@ def parse_qr_token(raw: str) -> str:
     return text
 
 
-POLL_PATHS = {"/api/tracking/live", "/api/dashboard/stats", "/api/driver/location"}
+POLL_PATHS = {"/api/tracking/live", "/api/dashboard/stats", "/api/driver/location", "/api/driver/notices"}
 
 
 def release_connection(db: Session) -> None:

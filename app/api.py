@@ -685,15 +685,47 @@ def driver_route(db: Session = Depends(get_db), driver: Driver = Depends(get_cur
     return _driver_route_payload(db, driver)
 
 
+def _driver_reys(db: Session, driver: Driver) -> list[dict]:
+    """Haydovchining faol reyslari (sana|reys bo‘yicha) — ilova yangi qo‘shilgan reysni shundan biladi."""
+    today = local_today()
+    rows = (
+        db.query(Order.delivery_date, Order.route_code, func.count(Order.id))
+        .filter(
+            Order.driver_id == driver.id,
+            Order.status.notin_((*DONE_STATUSES, "cancelled")),
+            or_(Order.delivery_date >= today, Order.delivery_date.is_(None), Order.delivery_date == ""),
+        )
+        .group_by(Order.delivery_date, Order.route_code)
+        .all()
+    )
+    groups: dict[str, dict] = {}
+    for day_raw, code_raw, n in rows:
+        day = (day_raw or "")[:10]
+        code = (code_raw or "").strip()
+        key = f"{day}|{code}"
+        g = groups.setdefault(key, {"key": key, "delivery_date": day, "route_code": code, "count": 0})
+        g["count"] += int(n or 0)
+    return sorted(groups.values(), key=lambda g: (g["delivery_date"], g["route_code"]))
+
+
+@router.get("/driver/notices")
+def driver_notices(db: Session = Depends(get_db), driver: Driver = Depends(get_current_driver)):
+    return {"items": _driver_reys(db, driver)}
+
+
 @router.post("/driver/location")
 def driver_location(
     payload: GpsBatchIn,
+    reys: bool = False,
     db: Session = Depends(get_db),
     driver: Driver = Depends(get_current_driver),
 ):
     result = ingest_gps(db, driver, payload.points or [])
     db.commit()
-    return {"ok": True, **result}
+    out = {"ok": True, **result}
+    if reys:
+        out["reys"] = _driver_reys(db, driver)
+    return out
 
 
 @router.post("/driver/sync")
