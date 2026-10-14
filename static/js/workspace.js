@@ -1,7 +1,7 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=87";
-import { proofThumb } from "./proof-photo.js?v=87";
-import { openOrderHistory } from "./order-history.js?v=87";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=88";
+import { proofThumb } from "./proof-photo.js?v=88";
+import { openOrderHistory } from "./order-history.js?v=88";
 
 let orders = [];
 let filter = "incoming";

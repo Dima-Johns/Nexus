@@ -145,6 +145,13 @@
     <p class="error hidden" id="cl-err"></p>
     <div class="adm-toolbar">
       <input type="search" id="cl-search" class="adm-search" placeholder="Qidirish: nom, kod, manzil, agent" />
+      <select id="cl-size" class="usr-filter cl-size" title="Sahifada nechta" aria-label="Sahifada nechta">
+        <option value="10">10 tadan</option>
+        <option value="50">50 tadan</option>
+        <option value="100">100 tadan</option>
+        <option value="500">500 tadan</option>
+        <option value="0">Hammasi</option>
+      </select>
       <select id="cl-org" class="usr-filter hidden"></select>
       <select id="cl-added" class="usr-filter">
         <option value="">Qo‘shilgan: hammasi</option>
@@ -160,6 +167,7 @@
       <button class="btn tiny bulk-del" type="button" id="cl-bulk-del" disabled>Tanlanganlarni o‘chirish</button>
     </div>
     <div id="cl-table" class="adm-cards"></div>
+    <div class="adm-pager hidden" id="cl-pager"></div>
   </section>
 
   <section class="glass panel admin-sec" data-admin-sec="trash" data-perm="trash.view">

@@ -1487,7 +1487,40 @@ tr.usr-off td.col-actions { opacity: 1; }
 .cl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .cl-addr { display: block; max-width: 340px; }
 .cl-sub { display: block; font-size: 11px; color: var(--muted); }
-.cl-more { margin: 10px 0 0; font-size: 12px; }
+.cl-size { flex: 0 0 130px; }
+.adm-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--stroke-soft);
+  font-size: 12.5px;
+}
+.adm-pager .pg-info { color: var(--muted); font-variant-numeric: tabular-nums; }
+.adm-pager .pg-info b { color: var(--ink); font-weight: 650; }
+.adm-pager .pg-nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.adm-pager .pg-btn {
+  min-width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0 8px;
+  border-radius: 10px;
+  border: 1px solid var(--stroke-soft);
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.adm-pager .pg-btn:hover:not(:disabled):not(.on) { border-color: var(--accent); }
+.adm-pager .pg-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.adm-pager .pg-btn:disabled { opacity: 0.4; cursor: default; }
+.adm-pager .pg-step { font-size: 16px; line-height: 1; }
+.adm-pager .pg-gap { color: var(--muted); padding: 0 2px; }
 .badge.src-import { color: var(--accent-2); }
 .tr-list { display: grid; gap: 10px; }
 .tr-item { border: 1px solid var(--stroke-soft); border-radius: var(--radius-sm); padding: 12px 14px; background: var(--input-bg); }

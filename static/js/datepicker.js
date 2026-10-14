@@ -133,9 +133,37 @@
   const ICON_PREV = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>`;
   const ICON_NEXT = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`;
 
+  // input.dpBadges = { day(iso) => [{ n, tone }], legend: [{ tone, label }] } — kun ustida rangli sonlar (tone: blue | green | red)
+  function badgesOf(input) {
+    const b = input.dpBadges;
+    return b && typeof b.day === "function" ? b : null;
+  }
+
+  function dayBadges(bd, v) {
+    let items = [];
+    try {
+      items = (bd.day(v) || []).filter((x) => Number(x.n) > 0);
+    } catch {
+      /* belgisiz ko‘rsatiladi */
+    }
+    const label = (tone) => bd.legend?.find((l) => l.tone === tone)?.label || "";
+    return {
+      html: items.map((x) => `<i class="dp-b dp-b-${escapeHtml(x.tone)}">${Number(x.n)}</i>`).join(""),
+      title: items.map((x) => `${label(x.tone)}: ${Number(x.n)}`).join(", "),
+    };
+  }
+
+  function legendHtml(bd) {
+    if (!bd.legend?.length) return "";
+    return `<div class="dp-legend">${bd.legend
+      .map((l) => `<span><i class="dp-b dp-b-${escapeHtml(l.tone)}"></i>${escapeHtml(l.label)}</span>`)
+      .join("")}</div>`;
+  }
+
   function daysHtml(input) {
     const { y, m } = cur;
     const b = bounds(input);
+    const bd = badgesOf(input);
     const value = parse(input.value) ? input.value.slice(0, 10) : "";
     const today = todayIso();
     const range = rangeOf(input);
@@ -157,16 +185,20 @@
       if (v === value) cls.push("dp-sel");
       const off = outside(v, b);
       if (off) cls.push("dp-off");
+      const marks = bd ? dayBadges(bd, v) : null;
+      const inner = marks ? `<span class="dp-bs">${marks.html}</span><span class="dp-n">${dt.getDate()}</span>` : dt.getDate();
       cells.push(
         `<button type="button" class="${cls.join(" ")}" data-v="${v}" tabindex="${v === cur.focus ? 0 : -1}"${off ? " disabled" : ""}${
           v === value ? ' aria-selected="true"' : ""
-        }>${dt.getDate()}</button>`
+        }${marks?.title ? ` title="${escapeHtml(marks.title)}"` : ""}>${inner}</button>`
       );
     }
     const head = dayNames()
       .map((d, i) => `<span class="dp-wd${i >= 5 ? " dp-wk" : ""}">${d}</span>`)
       .join("");
-    return `<div class="dp-week">${head}</div><div class="dp-grid" role="grid">${cells.join("")}</div>`;
+    return `<div class="dp-week">${head}</div><div class="dp-grid${bd ? " dp-badged" : ""}" role="grid">${cells.join("")}</div>${
+      bd ? legendHtml(bd) : ""
+    }`;
   }
 
   function monthsHtml(input) {
@@ -268,7 +300,7 @@
     const p = parse(start);
     const sheet = isSheet();
     const el = document.createElement("div");
-    el.className = `dp${sheet ? " dp-sheet" : ""}`;
+    el.className = `dp${sheet ? " dp-sheet" : ""}${badgesOf(input) ? " dp-wide" : ""}`;
     el.setAttribute("role", "dialog");
     let backdrop = null;
     if (sheet) {

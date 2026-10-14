@@ -719,6 +719,32 @@ function setDateFilter(iso, resetReys = true) {
   syncStartUi();
 }
 
+// Kalendarda har kun ustida: ko‘k — shu kungi zayavkalar, yashil — yetkazilgan, qizil — qaytarilgan
+const dayBadges = {
+  legend: [
+    { tone: "blue", label: "Zayavkalar" },
+    { tone: "green", label: "Yetkazildi" },
+    { tone: "red", label: "Qaytarildi" },
+  ],
+  day(iso) {
+    let total = 0;
+    let delivered = 0;
+    let returned = 0;
+    const today = todayIso();
+    allOrders().forEach((o) => {
+      if (o.status === "cancelled" || (orderDay(o) || today) !== iso) return;
+      total += 1;
+      if (o.status === "delivered") delivered += 1;
+      else if (o.status === "returned") returned += 1;
+    });
+    return [
+      { n: total, tone: "blue" },
+      { n: delivered, tone: "green" },
+      { n: returned, tone: "red" },
+    ];
+  },
+};
+
 function openDatePicker() {
   ensureDateFilter();
   const pick = $("date-pick");
@@ -2487,6 +2513,7 @@ function bind() {
     e.stopPropagation();
     openDatePicker();
   });
+  if ($("date-pick")) $("date-pick").dpBadges = dayBadges;
   $("date-prev")?.addEventListener("click", () => setDateFilter(shiftDay(dateFilter, -1)));
   $("date-next")?.addEventListener("click", () => setDateFilter(shiftDay(dateFilter, 1)));
   $("reys-chips")?.addEventListener("click", (e) => {

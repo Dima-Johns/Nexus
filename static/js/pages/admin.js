@@ -1,7 +1,7 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
-import { openDriverAccess } from "../driver-access.js?v=87";
-import { mountOfficePicker } from "../office-picker.js?v=87";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=87";
+import { openDriverAccess } from "../driver-access.js?v=88";
+import { mountOfficePicker } from "../office-picker.js?v=88";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=88";
 
 const TAB_KEY = "nx_admin_tab";
 const TPL_STATUS = { approved: "Tasdiqlangan", pending: "Kutilmoqda", rejected: "Rad etilgan" };
@@ -13,7 +13,7 @@ let orgsCache = [];
 const openOrgs = new Set();
 let usersCache = [];
 let clientsCache = [];
-// Filtrdagi klientlar (CL_LIMIT dan tashqaridagilari ham) — «Hammasini belgilash» shularni oladi
+// Filtrdagi klientlar (boshqa varaqlardagilari ham) — «Hammasini belgilash» shularni oladi
 let clVisible = [];
 const clPicked = new Set();
 let createPicker = null;
@@ -569,7 +569,60 @@ function bindUsers(root) {
   };
 }
 
-const CL_LIMIT = 300;
+// Sahifada nechta klient: 0 — hammasi. Tanlov brauzerda eslab qolinadi
+const CL_SIZES = [10, 50, 100, 500, 0];
+const CL_SIZE_KEY = "nx_cl_page_size";
+let clSize = (() => {
+  const saved = localStorage.getItem(CL_SIZE_KEY);
+  return saved != null && CL_SIZES.includes(Number(saved)) ? Number(saved) : 50;
+})();
+let clPage = 1;
+
+// 1 … 4 5 6 … 20 — joriy varaq atrofi va chetlari
+function pageList(cur, total) {
+  const keep = new Set([1, total, cur - 1, cur, cur + 1].filter((n) => n >= 1 && n <= total));
+  if (cur <= 3) [2, 3, 4].forEach((n) => n <= total && keep.add(n));
+  if (cur >= total - 2) [total - 1, total - 2, total - 3].forEach((n) => n >= 1 && keep.add(n));
+  const out = [];
+  let prev = 0;
+  [...keep].sort((a, b) => a - b).forEach((n) => {
+    if (n - prev > 1) out.push(null);
+    out.push(n);
+    prev = n;
+  });
+  return out;
+}
+
+function renderClPager(root, total) {
+  const box = $("#cl-pager", root);
+  if (!box) return;
+  const pages = clSize ? Math.max(1, Math.ceil(total / clSize)) : 1;
+  box.classList.toggle("hidden", !total);
+  if (!total) {
+    box.innerHTML = "";
+    return;
+  }
+  const from = clSize ? (clPage - 1) * clSize + 1 : 1;
+  const to = clSize ? Math.min(total, clPage * clSize) : total;
+  const nums =
+    pages > 1
+      ? pageList(clPage, pages)
+          .map((n) =>
+            n == null
+              ? `<span class="pg-gap">…</span>`
+              : `<button type="button" class="pg-btn${n === clPage ? " on" : ""}" data-cl-page="${n}"${n === clPage ? ' aria-current="page"' : ""}>${n}</button>`
+          )
+          .join("")
+      : "";
+  box.innerHTML = `
+    <span class="pg-info"><b>${from}–${to}</b> / ${total}</span>
+    <div class="pg-nav">
+      ${pages > 1 ? `<button type="button" class="pg-btn pg-step" data-cl-page="${clPage - 1}" aria-label="Oldingi sahifa"${clPage <= 1 ? " disabled" : ""}>‹</button>` : ""}
+      ${nums}
+      ${pages > 1 ? `<button type="button" class="pg-btn pg-step" data-cl-page="${clPage + 1}" aria-label="Keyingi sahifa"${clPage >= pages ? " disabled" : ""}>›</button>` : ""}
+    </div>
+    <span class="pg-info">${pages} varaq</span>`;
+}
 
 function clErr(root, text, ok = false) {
   usrErr(root, text, ok, "#cl-err");
@@ -623,6 +676,9 @@ function renderClients(root) {
   $("#cl-summary", root).innerHTML = `<span class="adm-pill">Jami <b>${scoped.length}</b></span>
     <span class="adm-pill on">Bugun qo‘shilgan <b>${today}</b></span>
     <span class="adm-pill${noGps ? " warn" : ""}">Koordinatasiz <b>${noGps}</b></span>`;
+  const pages = clSize ? Math.max(1, Math.ceil(rows.length / clSize)) : 1;
+  clPage = Math.min(Math.max(1, clPage), pages);
+  renderClPager(root, rows.length);
   if (!scoped.length) {
     box.innerHTML = `<p class="muted adm-empty">Hozircha klient yo‘q. Zayavkalar import qilinganda mijozlar shu yerga avtomatik tushadi.</p>`;
     return;
@@ -631,16 +687,16 @@ function renderClients(root) {
     box.innerHTML = `<p class="muted adm-empty">Mos klient topilmadi.</p>`;
     return;
   }
+  const start = clSize ? (clPage - 1) * clSize : 0;
   const multiOrg = crossOrg() || new Set(rows.map((c) => c.org_id)).size > 1;
   const manage = can("clients.manage");
   const headers = [...(manage ? [""] : []), "#", "Klient", ...(multiOrg ? ["Tashkilot"] : []), "Manzil", "Agent", "Zayavkalar", "Qo‘shilgan", ...(manage ? [""] : [])];
-  const body = rows
-    .slice(0, CL_LIMIT)
+  const body = (clSize ? rows.slice(start, start + clSize) : rows)
     .map((c, i) => {
       const gps = c.lat && c.lng ? `${Number(c.lat).toFixed(5)}, ${Number(c.lng).toFixed(5)}` : "koordinata yo‘q";
       return `<tr>
         ${manage ? `<td class="col-check"><input type="checkbox" data-cl-pick="${c.id}" ${clPicked.has(c.id) ? "checked" : ""} aria-label="Belgilash" /></td>` : ""}
-        <td class="adm-num">${i + 1}</td>
+        <td class="adm-num">${start + i + 1}</td>
         <td class="cell-main"><b>${escapeHtml(c.name)}</b><span class="cl-sub">${c.code ? `kod: ${escapeHtml(c.code)}` : "kodsiz"}${c.phone ? ` · ${escapeHtml(c.phone)}` : ""}</span></td>
         ${multiOrg ? `<td class="cell-inline"><span class="usr-org">${escapeHtml(c.org_name || "—")}</span></td>` : ""}
         <td class="cell-wide"><span class="cl-addr">${escapeHtml(c.address || "—")}</span><span class="cl-sub">${gps}</span></td>
@@ -658,11 +714,7 @@ function renderClients(root) {
       </tr>`;
     })
     .join("");
-  const more =
-    rows.length > CL_LIMIT
-      ? `<p class="muted cl-more">Birinchi ${CL_LIMIT} tasi ko‘rsatildi (topilgan: ${rows.length}). Qidiruvdan foydalaning yoki to‘liq ro‘yxatni Excel'da yuklab oling.</p>`
-      : "";
-  box.innerHTML = table(headers, body) + more;
+  box.innerHTML = table(headers, body);
 }
 
 function syncClBulk(root) {
@@ -708,12 +760,35 @@ function bindClients(root) {
   const box = $("#cl-table", root);
   if (!box) return;
   let typing = null;
+  const firstPage = () => {
+    clPage = 1;
+    renderClients(root);
+  };
   $("#cl-search", root).addEventListener("input", () => {
     clearTimeout(typing);
-    typing = setTimeout(() => renderClients(root), 150);
+    typing = setTimeout(firstPage, 150);
   });
-  $("#cl-added", root).addEventListener("change", () => renderClients(root));
-  $("#cl-org", root).addEventListener("change", () => renderClients(root));
+  $("#cl-added", root).addEventListener("change", firstPage);
+  $("#cl-org", root).addEventListener("change", firstPage);
+  const size = $("#cl-size", root);
+  if (size) {
+    size.value = String(clSize);
+    size.addEventListener("change", () => {
+      clSize = CL_SIZES.includes(Number(size.value)) ? Number(size.value) : 50;
+      localStorage.setItem(CL_SIZE_KEY, String(clSize));
+      firstPage();
+    });
+  }
+  $("#cl-pager", root)?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-cl-page]");
+    if (!btn || btn.disabled) return;
+    clPage = Number(btn.dataset.clPage) || 1;
+    renderClients(root);
+    let sp = box.parentElement;
+    while (sp && sp !== document.body && !/(auto|scroll)/.test(getComputedStyle(sp).overflowY)) sp = sp.parentElement;
+    const edge = sp && sp !== document.body ? sp.getBoundingClientRect().top : 0;
+    if (box.getBoundingClientRect().top < edge) box.scrollIntoView({ block: "start", behavior: "smooth" });
+  });
 
   $("#cl-export", root).onclick = async (e) => {
     const btn = e.currentTarget;
