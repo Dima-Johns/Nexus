@@ -1,6 +1,6 @@
 import { api, token } from "../api.js";
-import { $, askConfirm, escapeHtml } from "../ui.js?v=85";
-import { t } from "../i18n.js?v=85";
+import { $, askConfirm, escapeHtml } from "../ui.js?v=86";
+import { t } from "../i18n.js?v=86";
 
 const LIMITS = { rows: 8, cols: 2, filters: 20, values: 12 };
 const ZONE_NAMES = { rows: "Qatorlar", cols: "Ustunlar", filters: "Filtrlar", values: "Qiymatlar" };

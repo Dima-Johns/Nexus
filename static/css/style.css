@@ -1215,6 +1215,10 @@ button.proof-thumb, .proof-thumb.locked {
 .proof-thumb[data-proof-state="loading"] svg { animation: proof-pulse 1s ease-in-out infinite; }
 @keyframes proof-pulse { 50% { opacity: 0.35; } }
 .proof-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.proof-thumb + .proof-thumb { margin-left: 0; }
+.proof-thumbs { margin-left: auto; display: inline-flex; gap: 6px; }
+.proof-thumbs:empty { display: none; }
+.proof-thumbs .proof-thumb { margin-left: 0; }
 .proof-lightbox {
   position: fixed;
   inset: 0;
@@ -2170,6 +2174,7 @@ th.col-actions, td.col-actions { text-align: right; width: 88px; white-space: no
 .rep-table tbody tr:hover { background: var(--input-bg); }
 .rep-table tfoot td { font-weight: 700; border-top: 2px solid var(--stroke); }
 .rep-table .proof-thumb { margin-left: 0; }
+.rep-table .proof-thumb + .proof-thumb { margin-left: 4px; }
 .rep-table .table-wrap { max-height: 62vh; }
 .rep-sub { display: block; font-size: 11px; color: var(--muted); }
 .rep-st { padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--stroke); white-space: nowrap; }

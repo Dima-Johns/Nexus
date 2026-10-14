@@ -129,7 +129,7 @@ async function storeTx(store, mode, fn) {
 let outboxMeta = [];
 
 function metaOf(item) {
-  const { blob, ...meta } = item;
+  const { blob, extras, ...meta } = item;
   return meta;
 }
 
@@ -1233,9 +1233,43 @@ const PROOF_REASONS = {
   foreign_goods: "Begona mahsulot bor",
   fridge_no: "Muzlatgich yo‘q",
 };
-let proof = { id: null, result: "", reason: "", blob: null, url: "" };
+// extras — qo‘shimcha rasmlar (do‘konda bir nechta muzlatgich); adding — kamera keyingi rasmni qo‘shimchaga yozadi
+const emptyProof = (id = null, result = "") => ({ id, result, reason: "", blob: null, url: "", extras: [], adding: false });
+let proof = emptyProof();
 
 const MIN_COMMENT = 3;
+// Asosiy rasm + qo‘shimchalar; serverdagi MAX_PROOF_EXTRA bilan mos
+const MAX_PROOF_PHOTOS = 5;
+const MULTI_PHOTO_REASONS = new Set(["fridge_yes", "fridge_no"]);
+
+function dropProofUrls() {
+  if (proof.url) URL.revokeObjectURL(proof.url);
+  proof.extras.forEach((x) => URL.revokeObjectURL(x.url));
+}
+
+function canAddPhotos() {
+  return proof.result === "delivered" && MULTI_PHOTO_REASONS.has(proof.reason);
+}
+
+function renderProofExtras() {
+  const box = $("proof-more");
+  if (!box) return;
+  const on = canAddPhotos() && Boolean(proof.blob);
+  box.classList.toggle("hidden", !on);
+  if (!on) return;
+  $("proof-thumbs").innerHTML = proof.extras
+    .map(
+      (x, i) => `<div class="proof-thumb-item">
+        <img src="${x.url}" alt="" />
+        <b class="proof-thumb-no">${i + 2}</b>
+        <button type="button" class="proof-thumb-del" data-del="${i}" aria-label="Rasmni olib tashlash">×</button>
+      </div>`
+    )
+    .join("");
+  $("proof-add")?.classList.toggle("hidden", 1 + proof.extras.length >= MAX_PROOF_PHOTOS);
+  const tag = PROOF_REASONS[proof.reason] || "";
+  $("proof-tag").textContent = proof.extras.length ? `${tag} · ${1 + proof.extras.length} ta rasm` : tag;
+}
 
 function proofStep(step) {
   $("proof-reasons")?.classList.toggle("hidden", step !== "reason");
@@ -1274,8 +1308,9 @@ function openProof(id, result) {
     toast("Bu zayavka allaqachon yopilgan", true);
     return;
   }
-  if (proof.url) URL.revokeObjectURL(proof.url);
-  proof = { id: Number(id), result, reason: "", blob: null, url: "" };
+  dropProofUrls();
+  proof = emptyProof(Number(id), result);
+  renderProofExtras();
   if ($("proof-comment")) $("proof-comment").value = "";
   $("proof-title").textContent = result === "delivered" ? "Yetkazildi" : "Qaytarildi";
   $("proof-sheet").classList.toggle("returned", result === "returned");
@@ -1291,8 +1326,8 @@ function openProof(id, result) {
 function closeProof() {
   closeCamera();
   $("proof-sheet")?.classList.add("hidden");
-  if (proof.url) URL.revokeObjectURL(proof.url);
-  proof = { id: null, result: "", reason: "", blob: null, url: "" };
+  dropProofUrls();
+  proof = emptyProof();
 }
 
 function takeProofPhoto() {
@@ -1357,7 +1392,8 @@ async function openCamera() {
   const v = $("cam-video");
   $("cam-err").textContent = "";
   $("cam-title").textContent =
-    proof.result === "returned" ? "Qaytarilgan mahsulotni rasmga oling" : PROOF_REASONS[proof.reason] || "Rasmga oling";
+    (proof.result === "returned" ? "Qaytarilgan mahsulotni rasmga oling" : PROOF_REASONS[proof.reason] || "Rasmga oling") +
+    (proof.adding ? ` · ${proof.extras.length + 2}-rasm` : "");
   box.classList.remove("hidden");
   box.classList.add("loading");
   shot.disabled = true;
@@ -1427,12 +1463,21 @@ async function shootCamera() {
 }
 
 function setProofPhoto(blob, takenAt = Date.now()) {
+  if (proof.adding && proof.blob) {
+    proof.adding = false;
+    if (1 + proof.extras.length < MAX_PROOF_PHOTOS) proof.extras.push({ blob, url: URL.createObjectURL(blob) });
+    renderProofExtras();
+    proofStep("preview");
+    return;
+  }
+  proof.adding = false;
   if (proof.url) URL.revokeObjectURL(proof.url);
   proof.blob = blob;
   proof.photoAt = new Date(takenAt).toISOString();
   proof.url = URL.createObjectURL(blob);
   $("proof-img").src = proof.url;
   $("proof-tag").textContent = proof.result === "delivered" ? PROOF_REASONS[proof.reason] || "" : "Qaytarildi";
+  renderProofExtras();
   proofStep("preview");
   if (proof.result === "returned" && !proofComment()) setTimeout(() => $("proof-comment")?.focus(), 150);
 }
@@ -1493,6 +1538,7 @@ async function sendProof() {
     done_at: new Date().toISOString(),
     photo_at: proof.photoAt || "",
     blob: proof.blob,
+    extras: canAddPhotos() ? proof.extras.map((x) => x.blob) : [],
   };
   try {
     await outboxPut(item);
@@ -1556,6 +1602,7 @@ function sendQueued(item) {
     form.append("done_at", item.done_at || "");
     form.append("photo_at", item.photo_at || "");
     form.append("photo", item.blob, `proof_${item.orderId}.jpg`);
+    (item.extras || []).forEach((b, i) => form.append("extra_photos", b, `proof_${item.orderId}_${i + 2}.jpg`));
     return api(`/driver/orders/${item.orderId}/proof`, { method: "POST", body: form, timeout: 90000 });
   }
   if (item.type === "reorder") return api("/driver/reorder", { method: "POST", body: item.body, timeout: 30000 });
@@ -2524,8 +2571,26 @@ function bind() {
     proofStep("shoot");
     openCamera();
   });
-  $("proof-camera")?.addEventListener("click", openCamera);
-  $("proof-retake")?.addEventListener("click", openCamera);
+  $("proof-camera")?.addEventListener("click", () => {
+    proof.adding = false;
+    openCamera();
+  });
+  $("proof-retake")?.addEventListener("click", () => {
+    proof.adding = false;
+    openCamera();
+  });
+  $("proof-add")?.addEventListener("click", () => {
+    if (!proof.blob || 1 + proof.extras.length >= MAX_PROOF_PHOTOS) return;
+    proof.adding = true;
+    openCamera();
+  });
+  $("proof-thumbs")?.addEventListener("click", (e) => {
+    const del = e.target.closest("[data-del]");
+    if (!del) return;
+    const [x] = proof.extras.splice(Number(del.dataset.del), 1);
+    if (x) URL.revokeObjectURL(x.url);
+    renderProofExtras();
+  });
   $("cam-shot")?.addEventListener("click", shootCamera);
   $("cam-torch")?.addEventListener("click", toggleTorch);
   $("cam-close")?.addEventListener("click", closeCamera);

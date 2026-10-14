@@ -458,7 +458,7 @@ def wipe_data(scopes: set[str]) -> dict[str, int]:
         orders = "orders" in scopes
         drivers = "drivers" in scopes
         if orders:
-            for t in ("order_events", "proof_photos", "orders", "day_plans"):
+            for t in ("order_events", "proof_photos", "proof_photo_extras", "orders", "day_plans"):
                 clear(t)
         if "clients" in scopes:
             if not orders:

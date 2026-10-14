@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/static/brand/nexus-logo.webp" />
   <link rel="preload" href="/static/brand/nexus-logo.webp" as="image" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=24" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=25" />
 </head>
 <body>
   <div id="intro" class="intro" aria-hidden="true">
@@ -185,6 +185,14 @@
           <img id="proof-img" alt="Rasm" />
           <span class="proof-tag" id="proof-tag"></span>
         </div>
+        <div id="proof-more" class="proof-more hidden">
+          <p class="proof-more-hint">Muzlatgich bir nechta bo‘lsa — har birini «+» bilan rasmga oling</p>
+          <div class="proof-thumbs" id="proof-thumbs"></div>
+          <button type="button" class="proof-add" id="proof-add" aria-label="Yana rasm qo‘shish">
+            <b>+</b>
+            <span>Yana rasm</span>
+          </button>
+        </div>
         <div id="proof-comment-box" class="proof-comment hidden">
           <label class="proof-ask" for="proof-comment" id="proof-comment-label">Izoh: nima uchun qaytarildi? *</label>
           <div class="proof-chips" id="proof-chips">
@@ -262,6 +270,6 @@
   <input type="file" id="proof-file" accept="image/*" capture="environment" hidden />
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/js/driver-app.js?v=27"></script>
+  <script src="/static/js/driver-app.js?v=28"></script>
 </body>
 </html>

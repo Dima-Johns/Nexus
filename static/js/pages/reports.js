@@ -1,7 +1,7 @@
 import { api, apiDownload } from "../api.js";
-import { $, escapeHtml } from "../ui.js?v=85";
-import * as pivot from "./pivot.js?v=85";
-import { proofThumb } from "../proof-photo.js?v=85";
+import { $, escapeHtml } from "../ui.js?v=86";
+import * as pivot from "./pivot.js?v=86";
+import { proofThumb } from "../proof-photo.js?v=86";
 
 const PAGE = 300;
 const fmtMoney = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
@@ -57,7 +57,7 @@ const clientCell = (r) => {
   return `<b>${escapeHtml(name)}</b>${addr}`;
 };
 
-const photoCell = (r) => proofThumb(r.photo);
+const photoCell = (r) => proofThumb(r.photo) + (r.photos || []).map(proofThumb).join("");
 
 const TABS = {
   clients: {

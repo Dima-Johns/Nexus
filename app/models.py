@@ -69,6 +69,20 @@ class ProofPhoto(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ProofPhotoExtra(Base):
+    """Asosiy tasdiq rasmidan keyingi qo‘shimcha rasmlar (do‘konda bir nechta muzlatgich bo‘lsa)."""
+    __tablename__ = "proof_photo_extras"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    order_id: Mapped[int] = mapped_column(Integer, index=True)
+    # Rasm tartib raqami: asosiy rasm 1, qo‘shimchalar 2, 3, ...
+    no: Mapped[int] = mapped_column(Integer, default=2)
+    mime: Mapped[str] = mapped_column(String(32), default="image/jpeg")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    storage_key: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class SessionToken(Base):
     __tablename__ = "session_tokens"
 
@@ -203,6 +217,7 @@ class Order(Base):
     eta_minutes: Mapped[int] = mapped_column(Integer, default=30)
     proof_reason: Mapped[str] = mapped_column(String(40), default="")
     proof_photo: Mapped[str] = mapped_column(String(300), default="")
+    proof_extra: Mapped[int] = mapped_column(Integer, default=0)
     proof_comment: Mapped[str] = mapped_column(String(500), default="")
     proof_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

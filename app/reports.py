@@ -126,6 +126,15 @@ class OrderRow:
     proof_at: str
     lat: float
     lng: float
+    proof_extra: int = 0
+
+
+def proof_extra_urls(order_id: int, main: str, n: int) -> list[str]:
+    """Qo‘shimcha tasdiq rasmlari havolasi; v= asosiy rasmniki bilan bir xil — qayta yuborilsa kesh yangilanadi."""
+    if (n or 0) <= 0 or not (main or "").startswith("/api/"):
+        return []
+    v = main.partition("?v=")[2]
+    return [f"/api/orders/{order_id}/proof-photo/{no}?v={v}" for no in range(2, n + 2)]
 
 
 def _local(dt: datetime | None) -> datetime | None:
@@ -193,6 +202,7 @@ def fetch_rows(db: Session, f: ReportFilter) -> list[OrderRow]:
             Order.proof_reason,
             Order.proof_comment,
             Order.proof_photo,
+            Order.proof_extra,
             Order.proof_at,
             Client.code.label("client_code"),
             Client.name.label("client_name"),
@@ -290,6 +300,7 @@ def fetch_rows(db: Session, f: ReportFilter) -> list[OrderRow]:
                 proof_at=proof_at.strftime("%Y-%m-%d %H:%M") if proof_at else "",
                 lat=float(r.dropoff_lat or 0),
                 lng=float(r.dropoff_lng or 0),
+                proof_extra=r.proof_extra or 0,
             )
         )
     return rows
@@ -526,6 +537,7 @@ def order_dict(r: OrderRow) -> dict:
         "proof": PROOF_LABELS.get(r.proof_reason, ""),
         "comment": r.proof_comment,
         "photo": r.proof_photo,
+        "photos": proof_extra_urls(r.id, r.proof_photo, r.proof_extra),
         "proof_at": r.proof_at,
         "org_name": r.org_name,
     }

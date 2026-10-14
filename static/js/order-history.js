@@ -1,6 +1,6 @@
 import { api } from "./api.js";
-import { escapeHtml } from "./ui.js?v=85";
-import { proofThumb } from "./proof-photo.js?v=85";
+import { escapeHtml } from "./ui.js?v=86";
+import { proofThumb } from "./proof-photo.js?v=86";
 
 const STATUS = {
   new: "Yangi",
@@ -89,7 +89,7 @@ function render(order, events) {
   const proof =
     o.proof_photo || reason || o.proof_comment
       ? `<div class="oh-proof">
-          ${proofThumb(o.proof_photo)}
+          ${proofThumb(o.proof_photo)}${(o.proof_photos || []).map(proofThumb).join("")}
           <div>
             ${reason ? `<b>${escapeHtml(reason)}</b>` : ""}
             ${o.proof_comment ? `<div class="muted">«${escapeHtml(o.proof_comment)}»</div>` : ""}
