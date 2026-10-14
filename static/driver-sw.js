@@ -1,8 +1,10 @@
-const CACHE = "nexus-driver-v29";
+const CACHE = "nexus-driver-v30";
 const SHELL = [
   "/driver/",
-  "/static/css/driver.css?v=25",
-  "/static/js/driver-app.js?v=28",
+  "/static/css/driver.css?v=26",
+  "/static/css/datepicker.css?v=1",
+  "/static/js/datepicker.js?v=1",
+  "/static/js/driver-app.js?v=29",
   "/static/driver-manifest.json",
   "/static/brand/nexus-logo.webp",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
@@ -13,7 +15,7 @@ const NET_WAIT_MS = 6000;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(SHELL).catch(() => cache.addAll(SHELL.slice(0, 5))))
+    caches.open(CACHE).then((cache) => cache.addAll(SHELL).catch(() => cache.addAll(SHELL.slice(0, 7))))
   );
   self.skipWaiting();
 });

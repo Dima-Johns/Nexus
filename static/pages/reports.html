@@ -30,8 +30,8 @@
   </div>
 
   <div class="rep-filters" id="rep-filters">
-    <label>Dan<input type="date" id="rep-from" /></label>
-    <label>Gacha<input type="date" id="rep-to" /></label>
+    <label>Dan<input type="date" id="rep-from" data-clearable data-range-end="rep-to" /></label>
+    <label>Gacha<input type="date" id="rep-to" data-clearable data-range-start="rep-from" /></label>
     <label class="hidden" id="rep-org-box">Tashkilot<select id="rep-org"></select></label>
     <label>Agent<select id="rep-agent"></select></label>
     <label>Haydovchi<select id="rep-driver"></select></label>

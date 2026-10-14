@@ -1,0 +1,223 @@
+/* Interfeysga mos kalendar (static/js/datepicker.js). Ranglar sahifa o‘zgaruvchilaridan olinadi: tizim va haydovchi ilovasida bir xil ishlaydi. */
+.dp {
+  --dp-bg: var(--menu-bg, rgba(14, 18, 30, 0.94));
+  --dp-cell: var(--hover, rgba(255, 255, 255, 0.07));
+  --dp-on-accent: #0b1220;
+  --dp-range: rgba(126, 176, 255, 0.16);
+  --dp-wk: #f2a7b6;
+  position: fixed;
+  z-index: 9000;
+  width: 300px;
+  padding: 12px;
+  border-radius: var(--radius, 16px);
+  border: 1px solid var(--stroke, rgba(255, 255, 255, 0.14));
+  background: var(--glass-shine, none), var(--dp-bg);
+  box-shadow: var(--shadow, 0 18px 50px rgba(0, 0, 0, 0.38));
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  color: var(--ink, #eef2ff);
+  font-family: inherit;
+  font-size: 13px;
+  user-select: none;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top left;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+html[data-theme="light"] .dp {
+  --dp-on-accent: #ffffff;
+  --dp-range: rgba(59, 111, 224, 0.12);
+  --dp-wk: #c2415b;
+}
+.dp.dp-in-view { opacity: 1; transform: none; }
+.dp button {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.dp button:disabled { cursor: default; }
+.dp button:focus-visible { outline: 2px solid var(--accent, #7eb0ff); outline-offset: 1px; }
+
+.dp-head {
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.dp-nav {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--stroke, rgba(255, 255, 255, 0.14)) !important;
+  background: var(--input-bg, var(--input, rgba(255, 255, 255, 0.05))) !important;
+  color: var(--accent, #7eb0ff) !important;
+}
+.dp-nav:hover { border-color: var(--accent, #7eb0ff) !important; }
+.dp-title {
+  height: 34px;
+  border-radius: 10px;
+  font-weight: 650 !important;
+  font-size: 14px !important;
+  letter-spacing: 0.01em;
+}
+.dp-title:hover { background: var(--dp-cell) !important; }
+
+.dp-week,
+.dp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.dp-wd {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted, #9aa3b8);
+  padding: 4px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dp-wd.dp-wk { color: var(--dp-wk); opacity: 0.85; }
+.dp-day {
+  position: relative;
+  height: 36px;
+  border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 550;
+  transition: background 0.1s ease;
+}
+.dp-day:hover:not(:disabled):not(.dp-sel):not(.dp-from):not(.dp-to) { background: var(--dp-cell) !important; }
+.dp-day.dp-wk { color: var(--dp-wk) !important; }
+.dp-day.dp-out { color: var(--muted, #9aa3b8) !important; opacity: 0.45; }
+.dp-day.dp-today { box-shadow: inset 0 0 0 1.5px var(--accent, #7eb0ff); color: var(--accent, #7eb0ff) !important; font-weight: 700; }
+.dp-day.dp-in { background: var(--dp-range) !important; border-radius: 0; }
+.dp-day.dp-from { border-radius: 10px 0 0 10px; }
+.dp-day.dp-to { border-radius: 0 10px 10px 0; }
+.dp-day.dp-from.dp-to { border-radius: 10px; }
+.dp-day.dp-sel,
+.dp-day.dp-from,
+.dp-day.dp-to {
+  background: var(--accent, #7eb0ff) !important;
+  color: var(--dp-on-accent) !important;
+  font-weight: 700;
+  opacity: 1;
+  box-shadow: 0 4px 14px rgba(126, 176, 255, 0.35);
+}
+.dp-day.dp-off { opacity: 0.22; text-decoration: line-through; text-decoration-thickness: 1px; }
+
+.dp-months {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 2px 0 4px;
+}
+.dp-month {
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--stroke-soft, rgba(255, 255, 255, 0.08)) !important;
+  background: var(--input-bg, var(--input, rgba(255, 255, 255, 0.05))) !important;
+  font-weight: 600 !important;
+}
+.dp-month:hover:not(:disabled):not(.dp-sel) { border-color: var(--accent, #7eb0ff) !important; }
+.dp-month.dp-today { color: var(--accent, #7eb0ff) !important; border-color: var(--accent, #7eb0ff) !important; }
+.dp-month.dp-sel { background: var(--accent, #7eb0ff) !important; color: var(--dp-on-accent) !important; border-color: transparent !important; }
+.dp-month:disabled { opacity: 0.3; }
+
+.dp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--stroke-soft, rgba(255, 255, 255, 0.08));
+}
+.dp-link {
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  color: var(--muted, #9aa3b8) !important;
+}
+.dp-link:hover:not(:disabled) { background: var(--dp-cell) !important; color: var(--ink, #eef2ff) !important; }
+.dp-link.dp-strong {
+  color: var(--accent, #7eb0ff) !important;
+  border: 1px solid var(--stroke, rgba(255, 255, 255, 0.14)) !important;
+  background: var(--input-bg, var(--input, rgba(255, 255, 255, 0.05))) !important;
+}
+.dp-link:disabled { opacity: 0.35; }
+
+/* Telefon: pastdan chiquvchi oyna */
+.dp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 8999;
+  background: var(--overlay, rgba(4, 6, 12, 0.55));
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.dp-backdrop.dp-in-view { opacity: 1; }
+.dp.dp-sheet {
+  left: 50% !important;
+  right: auto;
+  bottom: 0;
+  top: auto !important;
+  width: min(440px, 100%);
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 20px 20px 0 0;
+  border-bottom: 0;
+  transform: translate(-50%, 100%);
+  transform-origin: bottom center;
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.18s ease;
+}
+.dp.dp-sheet.dp-in-view { transform: translate(-50%, 0); }
+.dp-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.dp-sheet-head b { font-size: 16px; }
+.dp-x {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--stroke, rgba(255, 255, 255, 0.14)) !important;
+  background: var(--input-bg, var(--input, rgba(255, 255, 255, 0.05))) !important;
+  font-size: 22px !important;
+  line-height: 1;
+}
+.dp-sheet .dp-day { height: 44px; font-size: 15px; }
+.dp-sheet .dp-nav { width: 40px; height: 40px; }
+.dp-sheet .dp-head { grid-template-columns: 40px 1fr 40px; }
+.dp-sheet .dp-title { height: 40px; font-size: 16px !important; }
+.dp-sheet .dp-month { height: 52px; font-size: 15px; }
+.dp-sheet .dp-link { padding: 10px 16px; font-size: 14px !important; }
+
+/* Ko‘rinadigan sana inputlari (datepicker.js ularni data-dp="text" qiladi): kun.oy.yil + interfeys rangidagi kalendar belgisi */
+input[data-dp="text"] {
+  cursor: pointer;
+  caret-color: transparent;
+  font-variant-numeric: tabular-nums;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237eb0ff' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='5' width='18' height='16' rx='3'/><path d='M8 3v4M16 3v4M3 10h18'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+  text-overflow: ellipsis;
+}
+html[data-theme="light"] input[data-dp="text"] {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b6fe0' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='5' width='18' height='16' rx='3'/><path d='M8 3v4M16 3v4M3 10h18'/></svg>");
+}
+input[data-dp="text"]:disabled { cursor: not-allowed; opacity: 0.6; }
+input[data-dp].dp-active { border-color: var(--accent, #7eb0ff); box-shadow: 0 0 0 3px rgba(126, 176, 255, 0.18); }
+label.dp-active .filter-range,
+label.dp-active.date-chip { border-color: var(--accent, #7eb0ff); }
