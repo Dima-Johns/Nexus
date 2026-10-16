@@ -37,6 +37,7 @@ from .dispatch import (
     ensure_drivers_from_orders,
     live_origin,
     local_now,
+    import_delivery_day,
     local_today,
     local_tomorrow,
     missing_agent_error,
@@ -2336,7 +2337,8 @@ def _import_orders(
     existing_rows = {o.code: o for o in db.query(Order).filter(Order.org_id == org_id).all()}
     agents = db.query(Agent).filter(Agent.org_id == org_id).all()
     warehouses = org_warehouses(db, org_id)
-    incoming_day = local_tomorrow()
+    # Soat 12 gacha import — bugungi sana; 12 dan keyin — ertangi (odatiy)
+    incoming_day = import_delivery_day()
     for rec in records:
         code = mapped_value(rec, mapping, "code") or f"IMP-{int(datetime.now(timezone.utc).timestamp())}-{created}"
         code = code[:80]
@@ -2373,7 +2375,7 @@ def _import_orders(
                 row.sales_rep = sales_rep
             if agent_code:
                 row.agent_code = agent_code
-            # Kiruvchidagi (haydovchisiz) zayavkalarni ertangi kungа yangilaymiz
+            # Kiruvchidagi (haydovchisiz) zayavkalarni import sanasiga yangilaymiz
             if row.status in DONE_STATUSES:
                 existing["done"] += 1
             elif row.driver_id:

@@ -330,6 +330,9 @@ export default {
   "{n} ta zayavka «{q}» ga o‘tkazilsinmi? Ular haydovchi ilovasida ko‘rinadi.": "Assign {n} {order|orders|orders} to «{q}»? They will appear in the driver app.",
   "{n} ta zayavkani o‘chirasizmi?": "Delete {n} {order|orders|orders}?",
   "{n} ta Kiruvchidagi zayavka ertangi kunga ko‘chirildi.": "{n} incoming {order|orders|orders} moved to tomorrow.",
+  "{n} ta Kiruvchidagi zayavka bugungi kunga ko‘chirildi.": "{n} incoming {order|orders|orders} moved to today.",
+  "{n} ta Kiruvchidagi zayavka {n}-{n}-{n} ga ko‘chirildi.": "{n} incoming {order|orders|orders} moved to {n}-{n}-{n}.",
+
   "{n} ta kiruvchi zayavka: fayldagi «Код торгового» tizimdagi agent kodiga mos tushishi kerak.": "{n} incoming orders: «Код торгового» in the file must match the agent code in the system.",
   "{n} ta tanlangan zayavka: fayldagi «Код торгового» tizimdagi agent kodiga mos tushishi kerak.": "{n} selected orders: «Код торгового» in the file must match the agent code in the system.",
   "{n} ta kiruvchi zayavka sanasini o‘zgartirasiz. Orqa sana tanlab bo‘lmaydi.": "You are changing the date of {n} incoming orders. Past dates cannot be selected.",
@@ -344,6 +347,8 @@ export default {
   "{n} qator o‘tkazib yuborildi": "{n} {row|rows|rows} skipped",
   "Orqa sana tanlab bo‘lmaydi (eng erta: {n}-{n}-{n})": "Past dates cannot be selected (earliest: {n}-{n}-{n})",
   "Yetkazish: {n}-{n}-{n} (ertaga). Filtrdan «Ertaga» ni tanlab ko‘ring.": "Delivery: {n}-{n}-{n} (tomorrow). Select «Tomorrow» in the filter.",
+  "Yetkazish: {n}-{n}-{n} (bugun). Filtrdan «Bugun» ni tanlab ko‘ring.": "Delivery: {n}-{n}-{n} (today). Select «Today» in the filter.",
+  "Yetkazish: {n}-{n}-{n} ({n}-{n}-{n}). Filtrdan «{n}-{n}-{n}» ni tanlab ko‘ring.": "Delivery: {n}-{n}-{n}. Select that date in the filter.",
   "Yo‘nalish nomi": "Route name",
   "Yo‘nalish nomi saqlandi:": "Route name saved:",
   "Fayldagi zayavkalardan": "Of the orders in the file",

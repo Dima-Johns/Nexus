@@ -28,6 +28,14 @@ def local_tomorrow() -> str:
     return (local_now() + timedelta(days=1)).strftime("%Y-%m-%d")
 
 
+def import_delivery_day() -> str:
+    """Import sanasi: soat 12:00 (Toshkent) gacha — bugun, undan keyin — ertaga."""
+    now = local_now()
+    if now.hour < 12:
+        return now.strftime("%Y-%m-%d")
+    return (now + timedelta(days=1)).strftime("%Y-%m-%d")
+
+
 def order_day(order: Order) -> str:
     return str(getattr(order, "delivery_date", "") or "")[:10]
 

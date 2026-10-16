@@ -1,7 +1,7 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=88";
-import { proofThumb } from "./proof-photo.js?v=88";
-import { openOrderHistory } from "./order-history.js?v=88";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=90";
+import { proofThumb } from "./proof-photo.js?v=90";
+import { openOrderHistory } from "./order-history.js?v=90";
 
 let orders = [];
 let filter = "incoming";
@@ -1327,8 +1327,12 @@ export function bindWorkspace() {
       const landed = created + moved;
       const parts = [];
       if (created) parts.push(`${created} ta yangi zayavka Kiruvchiga tushdi.`);
-      if (moved) parts.push(`${moved} ta Kiruvchidagi zayavka ertangi kunga ko‘chirildi.`);
-      if (landed) parts.push(`Yetkazish: ${data.delivery_date} (ertaga). Filtrdan «Ertaga» ni tanlab ko‘ring.`);
+      const day = String(data.delivery_date || "").slice(0, 10);
+      const dayWord = day === todayIso() ? "bugun" : day === tomorrowIso() ? "ertaga" : day;
+      const dayMoved = day === todayIso() ? "bugungi kunga" : day === tomorrowIso() ? "ertangi kunga" : `${day} ga`;
+      const dayFilter = day === todayIso() ? "Bugun" : day === tomorrowIso() ? "Ertaga" : day;
+      if (moved) parts.push(`${moved} ta Kiruvchidagi zayavka ${dayMoved} ko‘chirildi.`);
+      if (landed) parts.push(`Yetkazish: ${day} (${dayWord}). Filtrdan «${dayFilter}» ni tanlab ko‘ring.`);
       else parts.push("Yangi zayavka qo‘shilmadi — bu fayl avval import qilingan.");
       const already = [
         data.existing_faol ? `${data.existing_faol} tasi Faolda` : "",
