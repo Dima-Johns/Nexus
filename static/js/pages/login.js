@@ -1,8 +1,8 @@
 import { api, setMe, setToken } from "../api.js";
-import { $ } from "../ui.js?v=90";
-import { bindThemeToggle, clearRemembered, loadRemembered, loadSavedPassword, saveRemembered } from "../theme.js?v=90";
-import { getLang } from "../i18n.js?v=90";
-import { mountLangPicker } from "../lang-picker.js?v=90";
+import { $ } from "../ui.js?v=91";
+import { bindThemeToggle, clearRemembered, loadRemembered, loadSavedPassword, saveRemembered } from "../theme.js?v=91";
+import { getLang } from "../i18n.js?v=91";
+import { mountLangPicker } from "../lang-picker.js?v=91";
 
 const ORG_KEY = "nx_org_code";
 
@@ -67,6 +67,30 @@ export async function init(root) {
   ["#login-org", "#login-user", "#login-pass"].forEach((id) =>
     $(id, root).addEventListener("keydown", (e) => e.key === "Enter" && login())
   );
+
+  // Orqadagi «Nexus» yozuvi — sichqoncha bilan engil hover (parallax)
+  const mark = $("#login-mark", root);
+  let raf = 0;
+  const onMove = (e) => {
+    if (!mark) return;
+    const r = root.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width - 0.5) * 28;
+    const y = ((e.clientY - r.top) / r.height - 0.5) * 18;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      mark.style.setProperty("--nx", `${x.toFixed(1)}px`);
+      mark.style.setProperty("--ny", `${y.toFixed(1)}px`);
+      mark.classList.add("on");
+    });
+  };
+  const onLeave = () => {
+    if (!mark) return;
+    mark.classList.remove("on");
+    mark.style.setProperty("--nx", "0px");
+    mark.style.setProperty("--ny", "0px");
+  };
+  root.addEventListener("pointermove", onMove);
+  root.addEventListener("pointerleave", onLeave);
 }
 
 export function destroy() {}

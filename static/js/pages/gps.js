@@ -1,5 +1,5 @@
 import { api, apiDownload } from "../api.js";
-import { $, escapeHtml, table } from "../ui.js?v=90";
+import { $, escapeHtml, table } from "../ui.js?v=91";
 
 const LIVE_MS = 60000;
 const GAP_SEC = 20 * 60;

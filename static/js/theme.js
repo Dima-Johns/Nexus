@@ -2,7 +2,10 @@ const THEME_KEY = "nx_theme";
 const REMEMBER_KEY = "nx_remember";
 
 export function currentTheme() {
-  return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === "light" || saved === "dark") return saved;
+  // Figma dizayni — birinchi ochilishda kun rejimi
+  return "light";
 }
 
 export function applyTheme(theme) {

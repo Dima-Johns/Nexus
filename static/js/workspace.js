@@ -1,7 +1,7 @@
 import { api, apiUpload, token } from "./api.js";
-import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=90";
-import { proofThumb } from "./proof-photo.js?v=90";
-import { openOrderHistory } from "./order-history.js?v=90";
+import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=91";
+import { proofThumb } from "./proof-photo.js?v=91";
+import { openOrderHistory } from "./order-history.js?v=91";
 
 let orders = [];
 let filter = "incoming";
@@ -202,12 +202,55 @@ function updateDateChip() {
   if (chip) chip.textContent = chipText(applied.datePreset, applied.customDate);
 }
 
+function formatFilterCount(n) {
+  const v = Number(n) || 0;
+  return v >= 100 ? "99+" : String(v);
+}
+
+const DATE_PRESET_LABELS = {
+  today: "Bugun",
+  yesterday: "Kecha",
+  tomorrow: "Ertaga",
+  last7: "Oxirgi 7 kun",
+  last30: "Oxirgi 30 kun",
+  this_month: "Shu oy",
+  last_month: "O‘tgan oy",
+  all: "Barchasi",
+};
+
+function closeFilterDateMenu() {
+  const dd = $("#filter-date-dd");
+  const menu = $("#filter-date-menu");
+  const trigger = $("#filter-date-trigger");
+  dd?.classList.remove("open");
+  menu?.classList.add("hidden");
+  if (trigger) trigger.setAttribute("aria-expanded", "false");
+}
+
 function setPresetButtons(preset) {
-  $$("[data-dpreset]").forEach((btn) => btn.classList.toggle("active", btn.dataset.dpreset === preset && preset !== "custom"));
-  const label = $("#filter-range-label");
-  if (label) label.textContent = rangeText(preset, draft.customDate);
-  const wrap = $(".filter-range-wrap");
-  if (wrap) wrap.classList.toggle("custom", preset === "custom");
+  const sel = $("#filter-date-preset");
+  const label = $("#filter-date-label");
+  const customOpt = $("#filter-date-custom-opt");
+  let value = preset;
+  let text = DATE_PRESET_LABELS[preset] || DATE_PRESET_LABELS.today;
+  if (preset === "custom" && activeCustomDate(draft)) {
+    value = "custom";
+    text = formatDayLabel(draft.customDate);
+    customOpt?.classList.remove("hidden");
+    if (customOpt) customOpt.textContent = text;
+  } else {
+    if (!DATE_PRESET_LABELS[preset]) value = "today";
+    text = DATE_PRESET_LABELS[value];
+    customOpt?.classList.add("hidden");
+    if (customOpt) customOpt.textContent = "Maxsus";
+  }
+  if (sel) sel.value = value;
+  if (label) label.textContent = text;
+  $$("#filter-date-menu [data-dpreset]").forEach((btn) => {
+    const on = btn.dataset.dpreset === value;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
   const pick = $("#filter-date-pick");
   if (pick) {
     if (preset === "custom" && draft.customDate) pick.value = draft.customDate;
@@ -244,11 +287,12 @@ function syncDraftToDom() {
 }
 
 function readDraftFromDom() {
-  const active = $("[data-dpreset].active");
-  if (draft.datePreset === "custom" && activeCustomDate(draft)) {
-    /* keep custom */
+  const sel = $("#filter-date-preset");
+  const picked = sel?.value || draft.datePreset || "all";
+  if (picked === "custom" && activeCustomDate(draft)) {
+    draft.datePreset = "custom";
   } else {
-    draft.datePreset = active?.dataset.dpreset || draft.datePreset || "all";
+    draft.datePreset = picked === "custom" ? "today" : picked;
     if (draft.datePreset !== "custom") draft.customDate = "";
   }
   const drvBoxes = $$("#drv-list [data-drv-idx]");
@@ -287,15 +331,29 @@ async function fillFilterLists() {
     const fromOrders = Object.keys(counts).filter(Boolean);
     const unique = [...new Set([...fromDb, ...fromOrders])].sort((a, b) => a.localeCompare(b, "uz"));
     const names = ["", ...unique];
+    let total = 0;
     drvList.innerHTML = names
       .map((name, i) => {
         const n = counts[name] || 0;
-        const label = name ? `${name} · ${n}` : `Haydovchi yo‘q · ${n}`;
-        return `<label class="chk"><input type="checkbox" data-drv-idx="${i}" /> ${escapeHtml(label)}</label>`;
+        total += n;
+        const label = name || "Haydovchi yo‘q";
+        return `<label class="filter-row chk"><input type="checkbox" data-drv-idx="${i}" /><span class="filter-row-label">${escapeHtml(label)}</span><span class="filter-count">${formatFilterCount(n)}</span></label>`;
       })
       .join("");
     drvList.dataset.names = JSON.stringify(names);
+    const drvAllCount = $("#drv-all-count");
+    if (drvAllCount) drvAllCount.textContent = formatFilterCount(total || orders.length);
   }
+  const stCounts = {};
+  ALL_STATUSES.forEach((s) => {
+    stCounts[s] = 0;
+  });
+  orders.forEach((o) => {
+    if (stCounts[o.status] !== undefined) stCounts[o.status] += 1;
+  });
+  $$("[data-st-count]").forEach((el) => {
+    el.textContent = formatFilterCount(stCounts[el.dataset.stCount] || 0);
+  });
   const routeList = $("#route-list");
   if (routeList) {
     const counts = {};
@@ -307,14 +365,18 @@ async function fillFilterLists() {
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     const names = counts[""] || codes.length ? ["", ...codes] : [""];
+    let total = 0;
     routeList.innerHTML = names
       .map((code, i) => {
         const n = counts[code] || 0;
-        const label = code ? `${code} · ${n}` : `Yuklama yo‘q · ${n}`;
-        return `<label class="chk"><input type="checkbox" data-route-idx="${i}" /> ${escapeHtml(label)}</label>`;
+        total += n;
+        const label = code || "Yuklama yo‘q";
+        return `<label class="filter-row chk"><input type="checkbox" data-route-idx="${i}" /><span class="filter-row-label">${escapeHtml(label)}</span><span class="filter-count">${formatFilterCount(n)}</span></label>`;
       })
       .join("");
     routeList.dataset.names = JSON.stringify(names);
+    const routeAllCount = $("#route-all-count");
+    if (routeAllCount) routeAllCount.textContent = formatFilterCount(total || orders.length);
   }
   syncDraftToDom();
 }
@@ -324,12 +386,16 @@ async function openFilterPanel() {
   if (!panel) return;
   draft = cloneFilters(applied);
   panel.classList.remove("hidden");
+  $(".app-body")?.classList.add("filter-open");
   $("#btn-filter")?.classList.add("active");
+  closeFilterDateMenu();
   await fillFilterLists();
 }
 
 function closeFilterPanel() {
+  closeFilterDateMenu();
   $("#filter-panel")?.classList.add("hidden");
+  $(".app-body")?.classList.remove("filter-open");
   $("#btn-filter")?.classList.remove("active");
 }
 
@@ -1003,14 +1069,44 @@ export function bindWorkspace() {
     else closeFilterPanel();
   };
   $("#filter-close").onclick = closeFilterPanel;
-  $$("[data-dpreset]").forEach((btn) => {
-    btn.onclick = () => {
-      draft.datePreset = btn.dataset.dpreset;
-      draft.customDate = "";
-      setPresetButtons(draft.datePreset);
-    };
+  $("#filter-date-trigger")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dd = $("#filter-date-dd");
+    const menu = $("#filter-date-menu");
+    const trigger = $("#filter-date-trigger");
+    const open = !dd?.classList.contains("open");
+    if (open) {
+      dd?.classList.add("open");
+      menu?.classList.remove("hidden");
+      trigger?.setAttribute("aria-expanded", "true");
+    } else {
+      closeFilterDateMenu();
+    }
+  });
+  $("#filter-date-menu")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-dpreset]");
+    if (!btn || btn.classList.contains("hidden")) return;
+    const val = btn.dataset.dpreset;
+    if (val === "custom") return;
+    draft.datePreset = val;
+    draft.customDate = "";
+    setPresetButtons(draft.datePreset);
+    closeFilterDateMenu();
+  });
+  document.addEventListener("click", (e) => {
+    if (!$("#filter-date-dd")?.classList.contains("open")) return;
+    if (e.target.closest("#filter-date-dd")) return;
+    closeFilterDateMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && $("#filter-date-dd")?.classList.contains("open")) {
+      closeFilterDateMenu();
+      e.stopPropagation();
+    }
   });
   const openFilterCalendar = () => {
+    closeFilterDateMenu();
     const pick = $("#filter-date-pick");
     if (!pick) return;
     const cur =
@@ -1020,11 +1116,13 @@ export function bindWorkspace() {
     pick.value = cur || todayIso();
     try {
       if (typeof pick.showPicker === "function") pick.showPicker();
+      else pick.focus();
     } catch {
-      /* overlay indicator opens calendar */
+      pick.focus();
     }
   };
-  $("#filter-date-pick")?.addEventListener("click", (e) => {
+  $("#filter-cal-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
     e.stopPropagation();
     openFilterCalendar();
   });
@@ -1037,7 +1135,11 @@ export function bindWorkspace() {
   });
   $$(".fcat").forEach((btn) => {
     btn.onclick = () => {
-      $$(".fcat").forEach((b) => b.classList.toggle("active", b === btn));
+      $$(".fcat").forEach((b) => {
+        const on = b === btn;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-selected", on ? "true" : "false");
+      });
       $("#fcat-drivers").classList.toggle("hidden", btn.dataset.fcat !== "drivers");
       $("#fcat-statuses").classList.toggle("hidden", btn.dataset.fcat !== "statuses");
       $("#fcat-orders").classList.toggle("hidden", btn.dataset.fcat !== "orders");

@@ -1,4 +1,4 @@
-import RU from "./i18n-ru.js?v=90";
+import RU from "./i18n-ru.js?v=91";
 
 export const LANGS = [
   { code: "uz", label: "O‘zbekcha", short: "UZ" },
@@ -7,7 +7,7 @@ export const LANGS = [
   { code: "en", label: "English", short: "EN" },
 ];
 const STORE_KEY = "nx_lang";
-const EN = getLang() === "en" ? (await import("./i18n-en.js?v=90")).default : null;
+const EN = getLang() === "en" ? (await import("./i18n-en.js?v=91")).default : null;
 
 export function getLang() {
   const v = localStorage.getItem(STORE_KEY);

@@ -1,7 +1,7 @@
 import { api, apiDownload } from "../api.js";
-import { $, escapeHtml } from "../ui.js?v=90";
-import * as pivot from "./pivot.js?v=90";
-import { proofThumb } from "../proof-photo.js?v=90";
+import { $, escapeHtml } from "../ui.js?v=91";
+import * as pivot from "./pivot.js?v=91";
+import { proofThumb } from "../proof-photo.js?v=91";
 
 const PAGE = 300;
 const fmtMoney = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });

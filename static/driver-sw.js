@@ -1,7 +1,7 @@
-const CACHE = "nexus-driver-v31";
+const CACHE = "nexus-driver-v32";
 const SHELL = [
   "/driver/",
-  "/static/css/driver.css?v=26",
+  "/static/css/driver.css?v=27",
   "/static/css/datepicker.css?v=2",
   "/static/js/datepicker.js?v=2",
   "/static/js/driver-app.js?v=30",

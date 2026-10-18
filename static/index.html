@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/style.css?v=72" />
+  <link rel="stylesheet" href="/static/css/style.css?v=77" />
   <link rel="stylesheet" href="/static/css/datepicker.css?v=2" />
 </head>
 <body>
@@ -141,62 +141,72 @@
         </div>
         <div id="order-list" class="rail-list"></div>
       </aside>
-      <div class="rail-resizer" id="rail-resizer" data-perm="orders.view" title="Kenglikni o‘zgartirish"></div>
-      <section id="page-root" class="page"></section>
-    </div>
-
-    <div id="filter-panel" class="filter-panel hidden">
+      <div id="filter-panel" class="filter-panel hidden" role="dialog" aria-labelledby="filter-title" data-perm="orders.view">
       <div class="filter-head">
-        <h3>Filtrlar</h3>
-        <button class="icon-btn" id="filter-close" type="button">×</button>
+        <div class="filter-title-row">
+          <svg class="filter-title-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+          <h3 id="filter-title">Filtrlar</h3>
+        </div>
+        <button class="icon-btn filter-close-btn" id="filter-close" type="button" title="Yopish" aria-label="Yopish">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
       </div>
       <div class="filter-date">
-        <div class="filter-label">YETKAZISH SANASI</div>
-        <label class="filter-range-wrap" title="Kalendardan sana tanlash">
-          <div id="filter-range-label" class="filter-range">—</div>
-          <input type="date" id="filter-date-pick" class="filter-date-input" />
-        </label>
-        <div class="filter-presets">
-          <button type="button" data-dpreset="today">Bugun</button>
-          <button type="button" data-dpreset="yesterday">Kecha</button>
-          <button type="button" data-dpreset="tomorrow">Ertaga</button>
-          <button type="button" data-dpreset="last7">Oxirgi 7 kun</button>
-          <button type="button" data-dpreset="last30">Oxirgi 30 kun</button>
-          <button type="button" data-dpreset="this_month">Shu oy</button>
-          <button type="button" data-dpreset="last_month">O‘tgan oy</button>
-          <button type="button" data-dpreset="all">Barchasi</button>
+        <div class="filter-label">Sana</div>
+        <div class="filter-date-row">
+          <div class="filter-date-dd" id="filter-date-dd">
+            <input type="hidden" id="filter-date-preset" value="today" />
+            <button type="button" class="filter-date-select" id="filter-date-trigger" aria-label="Sana filtri" aria-haspopup="listbox" aria-expanded="false" aria-controls="filter-date-menu">
+              <span id="filter-date-label">Bugun</span>
+              <svg class="filter-date-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="filter-date-menu hidden" id="filter-date-menu" role="listbox" aria-label="Sana filtri">
+              <button type="button" class="filter-date-item" role="option" data-dpreset="today">Bugun</button>
+              <button type="button" class="filter-date-item" role="option" data-dpreset="yesterday">Kecha</button>
+              <button type="button" class="filter-date-item" role="option" data-dpreset="tomorrow">Ertaga</button>
+              <button type="button" class="filter-date-item" role="option" data-dpreset="last7">Oxirgi 7 kun</button>
+              <button type="button" class="filter-date-item" role="option" data-dpreset="last30">Oxirgi 30 kun</button>
+              <button type="button" class="filter-date-item" role="option" data-dpreset="this_month">Shu oy</button>
+              <button type="button" class="filter-date-item" role="option" data-dpreset="last_month">O‘tgan oy</button>
+              <button type="button" class="filter-date-item" role="option" data-dpreset="all">Barchasi</button>
+              <button type="button" class="filter-date-item hidden" role="option" data-dpreset="custom" id="filter-date-custom-opt">Maxsus</button>
+            </div>
+          </div>
+          <button type="button" class="filter-cal-btn" id="filter-cal-btn" title="Kalendardan sana tanlash" aria-label="Kalendar">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>
+          </button>
+          <input type="date" id="filter-date-pick" class="filter-date-input" tabindex="-1" aria-hidden="true" />
         </div>
       </div>
-      <div class="filter-split">
-        <div class="filter-cats">
-          <button type="button" class="fcat active" data-fcat="drivers">Haydovchilar</button>
-          <button type="button" class="fcat" data-fcat="statuses">Holatlar</button>
-          <button type="button" class="fcat" data-fcat="orders">Zayavkalar</button>
+      <div class="filter-tabs" role="tablist">
+        <button type="button" class="fcat active" data-fcat="drivers" role="tab" aria-selected="true">Haydovchilar</button>
+        <button type="button" class="fcat" data-fcat="statuses" role="tab" aria-selected="false">Holatlar</button>
+        <button type="button" class="fcat" data-fcat="orders" role="tab" aria-selected="false">Tag</button>
+      </div>
+      <div class="filter-cat-body">
+        <div id="fcat-drivers" role="tabpanel">
+          <label class="filter-row chk"><input type="checkbox" id="drv-all" checked /><span class="filter-row-label">Hammasini belgilash</span><span class="filter-count" id="drv-all-count">0</span></label>
+          <div id="drv-list" class="filter-check-list"></div>
         </div>
-        <div class="filter-cat-body">
-          <div id="fcat-drivers">
-            <div class="filter-label">HAYDOVCHILAR</div>
-            <label class="chk"><input type="checkbox" id="drv-all" checked /> Hammasini belgilash</label>
-            <div id="drv-list" class="filter-check-list"></div>
-          </div>
-          <div id="fcat-statuses" class="hidden">
-            <label class="chk"><input type="checkbox" data-st="new" checked /> Yangi</label>
-            <label class="chk"><input type="checkbox" data-st="assigned" checked /> Tayinlangan</label>
-            <label class="chk"><input type="checkbox" data-st="in_transit" checked /> Yo‘lda</label>
-            <label class="chk"><input type="checkbox" data-st="delivered" checked /> Yetkazilgan</label>
-            <label class="chk"><input type="checkbox" data-st="returned" checked /> Qaytarilgan</label>
-          </div>
-          <div id="fcat-orders" class="hidden">
-            <div class="filter-label">YUKLAMA / ЗАГРУЗКА №</div>
-            <label class="chk"><input type="checkbox" id="route-all" checked /> Hammasini belgilash</label>
-            <div id="route-list" class="filter-check-list"></div>
-          </div>
+        <div id="fcat-statuses" class="hidden" role="tabpanel">
+          <label class="filter-row chk"><input type="checkbox" data-st="new" checked /><span class="filter-row-label">Yangi</span><span class="filter-count" data-st-count="new">0</span></label>
+          <label class="filter-row chk"><input type="checkbox" data-st="assigned" checked /><span class="filter-row-label">Tayinlangan</span><span class="filter-count" data-st-count="assigned">0</span></label>
+          <label class="filter-row chk"><input type="checkbox" data-st="in_transit" checked /><span class="filter-row-label">Yo‘lda</span><span class="filter-count" data-st-count="in_transit">0</span></label>
+          <label class="filter-row chk"><input type="checkbox" data-st="delivered" checked /><span class="filter-row-label">Yetkazilgan</span><span class="filter-count" data-st-count="delivered">0</span></label>
+          <label class="filter-row chk"><input type="checkbox" data-st="returned" checked /><span class="filter-row-label">Qaytarilgan</span><span class="filter-count" data-st-count="returned">0</span></label>
+        </div>
+        <div id="fcat-orders" class="hidden" role="tabpanel">
+          <label class="filter-row chk"><input type="checkbox" id="route-all" checked /><span class="filter-row-label">Hammasini belgilash</span><span class="filter-count" id="route-all-count">0</span></label>
+          <div id="route-list" class="filter-check-list"></div>
         </div>
       </div>
       <div class="filter-foot">
-        <button type="button" id="filter-reset">Filtrni tozalash</button>
         <button type="button" class="btn primary" id="filter-apply">Qo‘llash</button>
+        <button type="button" class="filter-reset-btn" id="filter-reset">Filtrni tozalash</button>
       </div>
+      </div>
+      <div class="rail-resizer" id="rail-resizer" data-perm="orders.view" title="Kenglikni o‘zgartirish"></div>
+      <section id="page-root" class="page"></section>
     </div>
   </div>
 
@@ -348,6 +358,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="/static/js/datepicker.js?v=2"></script>
-  <script type="module" src="/static/js/app.js?v=90"></script>
+  <script type="module" src="/static/js/app.js?v=94"></script>
 </body>
 </html>

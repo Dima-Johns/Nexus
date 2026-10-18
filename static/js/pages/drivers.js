@@ -1,8 +1,12 @@
 import { api, apiDownload, apiUpload, can } from "../api.js";
-import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=90";
-import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=90";
+import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=91";
+import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=91";
 
 const REFRESH_MS = 60000;
+
+const ICON_GPS = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>`;
+const ICON_LOGIN = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
+const ICON_TRASH = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
 
 let bound = false;
 let paneRoot = null;
@@ -109,11 +113,19 @@ async function load(root) {
               ? `<select class="agent-pick" data-agent-drv="${d.id}">${agentOptions(agents, d.agent_id)}</select>`
               : escapeHtml(d.agent_code ? `${d.agent_code} · ${d.agent_name}` : d.agent_name || "—")
           }</td>
-          <td class="col-actions">${
-            gps ? `<a class="btn tiny" href="/gps?driver=${d.id}" data-link title="Bugungi GPS hisobot: qayerda qancha turgani">GPS</a> ` : ""
+          <td class="col-actions"><div class="row-icons">${
+            gps
+              ? `<a class="icon-btn row-icon" href="/gps?driver=${d.id}" data-link title="Bugungi GPS hisobot: qayerda qancha turgani" aria-label="GPS">${ICON_GPS}</a>`
+              : ""
           }${
-            access ? `<button class="btn tiny" type="button" data-access="${d.id}" title="Ilovaga kirish: login, parol, QR">Kirish</button>` : ""
-          }${manage ? ` <button class="btn tiny" type="button" data-del="${d.id}">O‘chirish</button>` : ""}</td>
+            access
+              ? `<button class="icon-btn row-icon" type="button" data-access="${d.id}" title="Ilovaga kirish: login, parol, QR" aria-label="Kirish">${ICON_LOGIN}</button>`
+              : ""
+          }${
+            manage
+              ? `<button class="icon-btn row-icon danger" type="button" data-del="${d.id}" title="O‘chirish" aria-label="O‘chirish">${ICON_TRASH}</button>`
+              : ""
+          }</div></td>
         </tr>`
         )
         .join("")
