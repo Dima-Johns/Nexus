@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/style.css?v=78" />
+  <link rel="stylesheet" href="/static/css/style.css?v=80" />
   <link rel="stylesheet" href="/static/css/datepicker.css?v=2" />
 </head>
 <body>
@@ -106,10 +106,16 @@
             <label class="chk bulk-chk" title="Hammasi"><input type="checkbox" id="select-all" aria-label="Hammasi" /></label>
             <button class="rail-btn pill-ok" id="btn-to-active" data-perm="orders.assign">Faol qilish</button>
             <button class="rail-btn pill-ok hidden" id="btn-to-incoming" data-perm="orders.assign">Kiruvchiga</button>
-            <button class="rail-btn pill-accent" id="btn-assign" type="button" title="Haydovchini tanlab biriktirish" data-perm="orders.assign"><span id="assign-label">Biriktirish</span></button>
             <button class="rail-btn pill-soft" id="btn-edit-date" type="button" title="Yetkazish sanasini o‘zgartirish" data-perm="orders.assign">Sana</button>
-            <button class="rail-btn pill-danger" id="btn-delete-orders" type="button" data-perm="orders.delete">O‘chirish</button>
-            <button class="rail-btn pill-soft hidden" id="btn-routes" type="button" data-perm="orders.routes">Yo‘nalish</button>
+            <button class="rail-btn pill-accent bulk-ico" id="btn-assign" type="button" title="Biriktirish" aria-label="Biriktirish" data-perm="orders.assign">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13.5V16a1 1 0 0 0 1 1h1"/><path d="M19 17h1a1 1 0 0 0 1-1v-2.5a2 2 0 0 0-1.4-1.9L17 11l-1.8-3.2A2 2 0 0 0 13.5 7H8.6a2 2 0 0 0-1.7 1L5 11l-1.6.5A2 2 0 0 0 3 13.5"/><path d="M5 11h12"/><circle cx="7.5" cy="17" r="1.8"/><circle cx="16.5" cy="17" r="1.8"/><path d="M9.3 17h5.4"/></svg>
+            </button>
+            <button class="rail-btn pill-danger bulk-ico" id="btn-delete-orders" type="button" title="O‘chirish" aria-label="O‘chirish" data-perm="orders.delete">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+            <button class="rail-btn pill-soft bulk-ico hidden" id="btn-routes" type="button" title="Yo‘nalish" aria-label="Yo‘nalish" data-perm="orders.routes">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.2 17.5 15 7"/><path d="M8 5h4.5a3.5 3.5 0 0 1 0 7H10"/></svg>
+            </button>
             <span id="sel-count" class="muted"></span>
           </div>
           <div class="assign-bar" id="assign-bar" data-perm="orders.assign">
@@ -363,6 +369,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="/static/js/datepicker.js?v=2"></script>
-  <script type="module" src="/static/js/app.js?v=95"></script>
+  <script type="module" src="/static/js/app.js?v=96"></script>
 </body>
 </html>

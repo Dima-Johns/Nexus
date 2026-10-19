@@ -571,8 +571,9 @@ function updateBulkUi() {
   if (assignBtn) {
     assignBtn.classList.toggle("hidden", filter === "done");
     assignBtn.disabled = count === 0;
-    const lbl = $("#assign-label");
-    if (lbl) lbl.textContent = filter === "active" ? "O‘tkazish" : "Biriktirish";
+    const assignTitle = filter === "active" ? "O‘tkazish" : "Biriktirish";
+    assignBtn.title = assignTitle;
+    assignBtn.setAttribute("aria-label", assignTitle);
   }
   const dateBtn = $("#btn-edit-date");
   if (dateBtn) {

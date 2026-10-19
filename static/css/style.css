@@ -811,16 +811,23 @@ body.resizing { cursor: col-resize; user-select: none; }
   font-weight: 650;
   box-shadow: none;
 }
-.bulk-chk {
+.bulk-bar .rail-btn.bulk-ico {
   width: 30px;
+  min-width: 30px;
+  padding: 0;
+  flex: 0 0 30px;
+}
+.bulk-bar .rail-btn.bulk-ico svg { display: block; }
+.bulk-chk {
+  width: auto;
   height: 30px;
   display: grid;
   place-items: center;
   margin: 0;
   padding: 0;
-  border-radius: 8px;
-  border: 1px solid var(--stroke-soft);
-  background: var(--input-bg);
+  border: none;
+  background: transparent;
+  border-radius: 0;
 }
 .bulk-chk input { margin: 0; }
 .rail-btn.pill-ok {
@@ -982,8 +989,7 @@ html[data-theme="light"] .rail-list {
 }
 html[data-theme="light"] .rail-search input,
 html[data-theme="light"] .date-chip,
-html[data-theme="light"] .rail-meta-row .icon-btn,
-html[data-theme="light"] .bulk-chk {
+html[data-theme="light"] .rail-meta-row .icon-btn {
   background: #fff;
   border-color: rgba(26, 40, 64, 0.1);
 }
