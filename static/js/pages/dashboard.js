@@ -1,6 +1,6 @@
 import { api, can } from "../api.js";
-import { escapeHtml } from "../ui.js?v=88";
-import * as wsModule from "../workspace.js?v=88";
+import { escapeHtml } from "../ui.js?v=91";
+import * as wsModule from "../workspace.js?v=97";
 
 // Har doim bindWorkspace() chaqirilgan (zayavkalar yuklangan) nusxadan o'qiymiz.
 function ws() {
@@ -597,7 +597,21 @@ export async function init(root) {
   // init tugaguncha boshqa sahifaga o‘tilgan bo‘lsa, yashirin xarita so‘rov yubormasin
   if (paneVisible) startTimer();
   onSelect = (e) => focusStore(e.detail);
-  onChanged = (e) => redrawMap(true, Boolean(e.detail?.quiet));
+  let quietRedraw = null;
+  onChanged = (e) => {
+    const quiet = Boolean(e.detail?.quiet);
+    if (!quiet) {
+      if (quietRedraw) clearTimeout(quietRedraw);
+      quietRedraw = null;
+      redrawMap(true, false);
+      return;
+    }
+    if (quietRedraw) clearTimeout(quietRedraw);
+    quietRedraw = setTimeout(() => {
+      quietRedraw = null;
+      redrawMap(true, true);
+    }, 450);
+  };
   onResize = () => map && map.invalidateSize();
   onDriver = (e) => {
     focusedDriverId = e.detail?.id || null;
@@ -626,7 +640,10 @@ let paneVisible = true;
 
 function startTimer() {
   if (timer) return;
-  timer = setInterval(() => refreshVehicles().catch(() => {}), 15000);
+  timer = setInterval(() => {
+    if (document.hidden || !paneVisible) return;
+    refreshVehicles().catch(() => {});
+  }, 30000);
 }
 
 function resizeMap() {

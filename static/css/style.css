@@ -428,6 +428,26 @@ html[data-theme="light"] .btn.primary {
   height: 100vh;
   overflow: hidden;
 }
+.nx-update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 9500;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(20, 36, 70, 0.22);
+}
+html:not([data-theme="light"]) .nx-update-banner { color: #0b1220; }
+.nx-update-banner:hover { filter: brightness(1.05); }
 .app-header {
   height: 58px;
   min-height: 58px;

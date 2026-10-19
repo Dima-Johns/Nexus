@@ -1,7 +1,7 @@
 import "./i18n.js?v=91";
-import { bindNavigation, render } from "./router.js?v=96";
+import { bindNavigation, render } from "./router.js?v=97";
 import { bindProfile } from "./profile.js?v=95";
-import { bindWorkspace } from "./workspace.js?v=96";
+import { bindWorkspace } from "./workspace.js?v=97";
 import { bindDriverAccessModal } from "./driver-access.js?v=91";
 import { me, setMe, setToken, token } from "./api.js";
 import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=91";
@@ -29,25 +29,55 @@ function bindIdleWatch() {
   }, 10000);
 }
 
-// index.html dagi app.js?v= bilan bir xil bo‘lishi shart — server /api/version shundan oladi
-const BUILD = "v=91";
+// index.html dagi app.js?v= bilan bir xil — import.meta.url orqali olinadi (qo‘lda yangilab unutilmasin)
+const BUILD = (() => {
+  try {
+    const v = new URL(import.meta.url).searchParams.get("v");
+    return v ? `v=${v}` : "";
+  } catch {
+    return "";
+  }
+})();
+
 let reloading = false;
+let updateBanner = null;
+
+function showUpdateBanner() {
+  if (updateBanner || reloading) return;
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = "nx-update-banner";
+  el.textContent = "Yangi versiya chiqdi — yangilash";
+  el.onclick = () => {
+    reloading = true;
+    location.reload();
+  };
+  document.body.appendChild(el);
+  updateBanner = el;
+}
+
 async function checkBuild() {
-  if (reloading || document.hidden) return;
+  if (reloading || !BUILD) return;
   try {
     const res = await fetch("/api/version", { cache: "no-store" });
     const { version } = await res.json();
-    if (version && version !== BUILD) {
+    if (!version || version === BUILD) return;
+    // Foydalanuvchi ishlayotganda majburiy reload qilinmasin
+    const idleMs = Date.now() - lastActivity;
+    if (document.hidden || idleMs > 120000) {
       reloading = true;
       location.reload();
+      return;
     }
+    showUpdateBanner();
   } catch {
     // tarmoq uzilgan bo‘lsa keyingi tekshiruvda qayta urinadi
   }
 }
-document.addEventListener("visibilitychange", checkBuild);
-window.addEventListener("popstate", checkBuild);
-setInterval(checkBuild, 5 * 60 * 1000);
+
+// Faqat sekin interval — tab almashtirish / navigatsiyada reload yo‘q
+setInterval(checkBuild, 10 * 60 * 1000);
+setTimeout(checkBuild, 15000);
 
 watchInputLimits();
 bindNavigation();
