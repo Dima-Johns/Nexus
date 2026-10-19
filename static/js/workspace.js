@@ -515,8 +515,8 @@ function driverGroupHtml(key, list) {
   const ids = stops.map((o) => o.id);
   const picked = ids.filter((id) => selected.has(id)).length;
   const allOn = picked === ids.length && ids.length > 0;
-  return `<div class="drv-group${open ? " open" : ""}" data-drv-group="${escapeHtml(key)}">
-    <div class="drv-row" data-drv-toggle="${escapeHtml(key)}" style="--drv:${color}">
+  return `<div class="drv-group${open ? " open" : ""}" data-drv-group="${escapeHtml(key)}" style="--drv:${color}">
+    <div class="drv-row" data-drv-toggle="${escapeHtml(key)}">
       <label class="chk card-chk" data-drv-check="${escapeHtml(key)}"><input type="checkbox" ${allOn ? "checked" : ""} /></label>
       <span class="drv-stripe"></span>
       <div class="drv-main">

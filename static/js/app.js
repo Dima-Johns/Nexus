@@ -1,7 +1,7 @@
 import "./i18n.js?v=91";
-import { bindNavigation, render } from "./router.js?v=97";
+import { bindNavigation, render } from "./router.js?v=98";
 import { bindProfile } from "./profile.js?v=95";
-import { bindWorkspace } from "./workspace.js?v=97";
+import { bindWorkspace } from "./workspace.js?v=98";
 import { bindDriverAccessModal } from "./driver-access.js?v=91";
 import { me, setMe, setToken, token } from "./api.js";
 import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=91";
