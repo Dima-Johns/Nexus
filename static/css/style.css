@@ -838,6 +838,7 @@ body.resizing { cursor: col-resize; user-select: none; }
   flex: 0 0 30px;
 }
 .bulk-bar .rail-btn.bulk-ico svg { display: block; }
+.bulk-bar #btn-assign { margin-left: auto; }
 .bulk-chk {
   width: auto;
   height: 30px;
