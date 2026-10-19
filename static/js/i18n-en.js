@@ -32,6 +32,8 @@ export default {
   "Hammasi": "All",
   "Barchasi": "All",
   "Faolga o‘tkazish": "Move to active",
+  "Faol qilish": "Activate",
+  "Kiruvchiga": "To incoming",
   "Kiruvchiga qaytarish": "Return to incoming",
   "Yo‘nalish": "Route",
   "O‘chirish": "Delete",

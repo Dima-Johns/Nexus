@@ -198,8 +198,13 @@ function matches(o) {
 }
 
 function updateDateChip() {
-  const chip = $("#date-summary");
-  if (chip) chip.textContent = chipText(applied.datePreset, applied.customDate);
+  const text = chipText(applied.datePreset, applied.customDate);
+  const label = $("#date-summary-text");
+  if (label) label.textContent = text;
+  else {
+    const chip = $("#date-summary");
+    if (chip) chip.textContent = text;
+  }
 }
 
 function formatFilterCount(n) {
@@ -446,28 +451,22 @@ function sortStops(list) {
 
 function orderCardHtml(o) {
   const checked = selected.has(o.id);
+  const agentLine = o.agent_code
+    ? `Agent ${escapeHtml(o.agent_code)}${o.sales_rep ? " - " + escapeHtml(o.sales_rep) : ""}`
+    : escapeHtml(o.sales_rep || "Agent ko‘rsatilmagan");
+  const badge = escapeHtml(o.route_code || o.status || "—");
   return `<div class="order-card${checked ? " selected" : ""}" data-id="${o.id}" data-lat="${o.dropoff_lat}" data-lng="${o.dropoff_lng}" data-name="${escapeHtml(o.client_name || "")}" data-addr="${escapeHtml(o.dropoff_address || "")}">
-        <label class="chk card-chk"><input type="checkbox" data-check="${o.id}" ${checked ? "checked" : ""} /></label>
+        <label class="chk card-chk"><input type="checkbox" data-check="${o.id}" ${checked ? "checked" : ""} aria-label="Tanlash" /></label>
         <div class="order-body">
           <div class="order-card-top">
-          <button type="button" class="oc-name" data-history="${o.id}" title="Zayavka tarixini ko‘rish">${escapeHtml(o.code)}</button>
-          <span class="card-top-right">
-            ${Number(o.stop_no) > 0 ? `<span class="stop-chip">${o.stop_no}</span>` : ""}
-            <span class="badge ${o.status}">${escapeHtml(o.route_code || o.status)}</span>
-          </span>
-        </div>
-          <div><button type="button" class="oc-name oc-client" data-history="${o.id}" title="Zayavka tarixini ko‘rish">${escapeHtml(o.client_name || "—")}</button></div>
-          <div class="muted">${
-            o.agent_code
-              ? `Agent ${escapeHtml(o.agent_code)}${o.sales_rep ? " · " + escapeHtml(o.sales_rep) : ""}`
-              : escapeHtml(o.sales_rep || "Agent ko‘rsatilmagan")
-          }</div>
-          ${
-            o.window_start && o.window_end
-              ? `<div class="muted">${escapeHtml(o.delivery_date || "")} · ${escapeHtml(o.window_start)}–${escapeHtml(o.window_end)}</div>`
-              : ""
-          }
-          <div class="muted">${escapeHtml(o.dropoff_address || "")}</div>
+            <button type="button" class="oc-name oc-code" data-history="${o.id}" title="Zayavka tarixini ko‘rish">${escapeHtml(o.code)}</button>
+            <span class="card-top-right">
+              ${Number(o.stop_no) > 0 ? `<span class="stop-chip">${o.stop_no}</span>` : ""}
+              <span class="badge route-badge ${o.status}">${badge}</span>
+            </span>
+          </div>
+          <button type="button" class="oc-name oc-client" data-history="${o.id}" title="Zayavka tarixini ko‘rish">${escapeHtml(o.client_name || "—")}</button>
+          <div class="order-agent">${agentLine}</div>
           ${proofHtml(o)}
         </div>
       </div>`;
@@ -570,6 +569,7 @@ function updateBulkUi() {
   if (assignBar) assignBar.classList.toggle("hidden", filter === "done");
   const assignBtn = $("#btn-assign");
   if (assignBtn) {
+    assignBtn.classList.toggle("hidden", filter === "done");
     assignBtn.disabled = count === 0;
     const lbl = $("#assign-label");
     if (lbl) lbl.textContent = filter === "active" ? "O‘tkazish" : "Biriktirish";

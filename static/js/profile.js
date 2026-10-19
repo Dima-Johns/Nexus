@@ -46,6 +46,11 @@ export function renderProfile() {
   paintAvatar($id("pm-avatar"), me);
   paintAvatar($id("pf-avatar"), me);
   $id("profile-btn")?.setAttribute("title", me.full_name || me.username);
+  const headerName = $id("profile-name");
+  if (headerName) {
+    const shortRole = { superadmin: "Superadmin", admin: "Admin", dispatcher: "Dispetcher" };
+    headerName.textContent = shortRole[me.role] || me.full_name || me.username || "—";
+  }
   const name = $id("pm-name");
   if (name) name.textContent = me.full_name || me.username;
   const login = $id("pm-login");

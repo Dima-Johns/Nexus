@@ -32,6 +32,8 @@ export default {
   "Hammasi": "Все",
   "Barchasi": "Все",
   "Faolga o‘tkazish": "Перевести в активные",
+  "Faol qilish": "Активировать",
+  "Kiruvchiga": "Во входящие",
   "Kiruvchiga qaytarish": "Вернуть во входящие",
   "Yo‘nalish": "Маршрут",
   "O‘chirish": "Удалить",
