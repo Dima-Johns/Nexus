@@ -1,6 +1,6 @@
 import { api, can } from "../api.js";
 import { escapeHtml } from "../ui.js?v=91";
-import * as wsModule from "../workspace.js?v=98";
+import * as wsModule from "../workspace.js?v=99";
 
 // Har doim bindWorkspace() chaqirilgan (zayavkalar yuklangan) nusxadan o'qiymiz.
 function ws() {
@@ -116,7 +116,8 @@ function twoOptFrom(origin, list) {
   let idx = list.map((_, i) => i);
   let improved = true;
   let guard = 0;
-  while (improved && guard++ < 80) {
+  const maxIter = list.length > 40 ? 18 : list.length > 20 ? 36 : 60;
+  while (improved && guard++ < maxIter) {
     improved = false;
     const best = plen(idx);
     for (let i = 0; i < idx.length - 1; i++) {
@@ -292,15 +293,15 @@ function updateLegend(groups) {
     .join("");
 }
 
-function drawStores() {
+function drawStores(groups = null) {
   if (!map) return;
   if (pinLayer) pinLayer.remove();
   pinLayer = L.layerGroup().addTo(map);
   orderMarkers = {};
   const showLabel = map.getZoom() >= 14;
-  const groups = routeGroups();
+  const routed = groups || routeGroups();
   const stopOf = new Map();
-  groups.forEach((g) => {
+  routed.forEach((g) => {
     g.stops.filter(hasGps).forEach((o, i) => stopOf.set(o.id, i + 1));
   });
   visibleOrders().forEach((o) => {
@@ -423,10 +424,11 @@ function redrawMap(fit = false, keepView = false) {
   const visible = visibleOrders();
   if (selectedId && !visible.some((o) => String(o.id) === String(selectedId))) selectedId = null;
   const groups = routeGroups();
-  drawStores();
+  drawStores(groups);
   drawSketch(groups);
   updateLegend(groups);
-  drawRoads(groups).catch(() => {});
+  // keepView (fon sync) — faqat pin/sketch; OSRM yo‘lini qayta so‘ramaymiz
+  if (!keepView) drawRoads(groups).catch(() => {});
   if (!keepView && (fit || !selectedId)) fitStores();
 }
 
@@ -649,7 +651,6 @@ function startTimer() {
 function resizeMap() {
   if (!map) return;
   map.invalidateSize();
-  redrawMap(true);
 }
 
 export function hide() {

@@ -1,6 +1,6 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
 import { $, $$ } from "./ui.js?v=91";
-import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=98";
+import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=99";
 import { renderProfile } from "./profile.js?v=95";
 
 const ROUTES = {
@@ -59,8 +59,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=97`),
-    import(`/static/js/pages/${name}.js?v=97`),
+    fetch(`/static/pages/${name}.html?v=99`),
+    import(`/static/js/pages/${name}.js?v=99`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;

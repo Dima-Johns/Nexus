@@ -1,7 +1,7 @@
 import "./i18n.js?v=91";
-import { bindNavigation, render } from "./router.js?v=98";
+import { bindNavigation, render } from "./router.js?v=99";
 import { bindProfile } from "./profile.js?v=95";
-import { bindWorkspace } from "./workspace.js?v=98";
+import { bindWorkspace } from "./workspace.js?v=99";
 import { bindDriverAccessModal } from "./driver-access.js?v=91";
 import { me, setMe, setToken, token } from "./api.js";
 import { applyTheme, bindThemeToggle, currentTheme } from "./theme.js?v=91";
@@ -14,7 +14,7 @@ function bindIdleWatch() {
   const bump = () => {
     lastActivity = Date.now();
   };
-  ["click", "keydown", "mousemove", "scroll", "touchstart"].forEach((ev) => {
+  ["click", "keydown", "pointerdown", "touchstart"].forEach((ev) => {
     document.addEventListener(ev, bump, { passive: true });
   });
   setInterval(() => {

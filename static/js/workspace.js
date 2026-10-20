@@ -582,6 +582,24 @@ function updateBulkUi() {
   }
 }
 
+function updateTabCounts() {
+  let incoming = 0;
+  let active = 0;
+  let done = 0;
+  for (const o of orders) {
+    if (!matchesBase(o)) continue;
+    if (BUCKETS.incoming(o)) incoming += 1;
+    else if (BUCKETS.active(o)) active += 1;
+    else if (BUCKETS.done(o)) done += 1;
+  }
+  const elIn = $("#cnt-incoming");
+  const elAct = $("#cnt-active");
+  const elDone = $("#cnt-done");
+  if (elIn) elIn.textContent = incoming;
+  if (elAct) elAct.textContent = active;
+  if (elDone) elDone.textContent = done;
+}
+
 function renderList() {
   const list = $("#order-list");
   if (!list) return;
@@ -595,9 +613,7 @@ function renderList() {
     }
     return (sortAsc ? 1 : -1) * String(a.code).localeCompare(String(b.code), undefined, { numeric: true });
   });
-  $("#cnt-incoming").textContent = orders.filter((o) => matchesBase(o) && BUCKETS.incoming(o)).length;
-  $("#cnt-active").textContent = orders.filter((o) => matchesBase(o) && BUCKETS.active(o)).length;
-  $("#cnt-done").textContent = orders.filter((o) => matchesBase(o) && BUCKETS.done(o)).length;
+  updateTabCounts();
   updateDateChip();
   $$(".htab[data-filter]").forEach((tab) => tab.classList.toggle("active", tab.dataset.filter === filter));
   if (!rows.length) {
@@ -625,7 +641,11 @@ function renderList() {
   notifyMap();
 }
 
-async function fillSelects() {
+let selectsAt = 0;
+const SELECTS_TTL_MS = 60000;
+
+async function fillSelects({ force = false } = {}) {
+  if (!force && Date.now() - selectsAt < SELECTS_TTL_MS && Object.keys(driversById).length) return;
   const [clients, drivers, tpls, whs] = await Promise.all([
     api("/clients").catch(() => []),
     api("/drivers").catch(() => []),
@@ -642,6 +662,7 @@ async function fillSelects() {
   renderDriverPicker(drivers || [], $("#driver-picker-search")?.value || "");
   const approved = tpls.filter((t) => t.status === "approved" && (t.entity || "orders") === "orders");
   setOptions($("#approved-templates"), approved.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join(""));
+  selectsAt = Date.now();
 }
 
 function setOptions(sel, html) {
@@ -1060,7 +1081,14 @@ export function bindWorkspace() {
       }
     };
   });
-  $("#order-search").oninput = renderList;
+  let searchTimer = null;
+  $("#order-search").oninput = () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      searchTimer = null;
+      renderList();
+    }, 220);
+  };
   $("#btn-filter").onclick = () => {
     if ($("#filter-panel")?.classList.contains("hidden")) openFilterPanel();
     else closeFilterPanel();
@@ -1463,7 +1491,7 @@ export function bindWorkspace() {
       await refreshWorkspace();
       filter = "incoming";
       renderList();
-      fillSelects().catch(() => {});
+      fillSelects({ force: true }).catch(() => {});
     } catch (err) {
       msg.textContent = err.message;
     } finally {
