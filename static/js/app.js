@@ -1,6 +1,6 @@
 import "./i18n.js?v=91";
-import { bindNavigation, render } from "./router.js?v=99";
-import { bindProfile } from "./profile.js?v=95";
+import { bindNavigation, render } from "./router.js?v=100";
+import { bindProfile } from "./profile.js?v=100";
 import { bindWorkspace } from "./workspace.js?v=99";
 import { bindDriverAccessModal } from "./driver-access.js?v=91";
 import { me, setMe, setToken, token } from "./api.js";

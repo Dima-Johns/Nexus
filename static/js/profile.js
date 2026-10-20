@@ -1,6 +1,6 @@
 import { api, me, setMe } from "./api.js";
 import { LANGS, getLang } from "./i18n.js?v=91";
-import { chooseLang, mountLangPicker, syncServerLang } from "./lang-picker.js?v=91";
+import { chooseLang, mountLangPicker, syncServerLang } from "./lang-picker.js?v=100";
 import { loadRemembered, saveRemembered } from "./theme.js?v=91";
 
 const $id = (id) => document.getElementById(id);

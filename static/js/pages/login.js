@@ -2,7 +2,7 @@ import { api, setMe, setToken } from "../api.js";
 import { $ } from "../ui.js?v=91";
 import { bindThemeToggle, clearRemembered, loadRemembered, loadSavedPassword, saveRemembered } from "../theme.js?v=91";
 import { getLang } from "../i18n.js?v=91";
-import { mountLangPicker } from "../lang-picker.js?v=91";
+import { mountLangPicker } from "../lang-picker.js?v=100";
 
 const ORG_KEY = "nx_org_code";
 

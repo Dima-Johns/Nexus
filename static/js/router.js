@@ -1,7 +1,7 @@
 import { api, can, me, setMe, setToken, token } from "./api.js";
 import { $, $$ } from "./ui.js?v=91";
 import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=99";
-import { renderProfile } from "./profile.js?v=95";
+import { renderProfile } from "./profile.js?v=100";
 
 const ROUTES = {
   "/": "dashboard",

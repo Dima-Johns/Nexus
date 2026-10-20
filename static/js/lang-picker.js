@@ -39,6 +39,21 @@ const GLOBE =
 
 let openMenu = null;
 
+function placeMenu(btn, menu, up = false) {
+  const r = btn.getBoundingClientRect();
+  const width = Math.max(menu.offsetWidth || 170, 170);
+  const left = Math.max(8, Math.min(window.innerWidth - width - 8, r.right - width));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.right = "auto";
+  if (up) {
+    menu.style.top = "auto";
+    menu.style.bottom = `${Math.round(window.innerHeight - r.top + 6)}px`;
+  } else {
+    menu.style.bottom = "auto";
+    menu.style.top = `${Math.round(r.bottom + 6)}px`;
+  }
+}
+
 function closeOpen() {
   if (!openMenu) return;
   openMenu.menu.classList.add("hidden");
@@ -47,11 +62,25 @@ function closeOpen() {
 }
 
 document.addEventListener("click", (e) => {
-  if (openMenu && !openMenu.wrap.contains(e.target)) closeOpen();
+  if (openMenu && !openMenu.wrap.contains(e.target) && !openMenu.menu.contains(e.target)) closeOpen();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeOpen();
 });
+window.addEventListener(
+  "resize",
+  () => {
+    if (openMenu) placeMenu(openMenu.btn, openMenu.menu, openMenu.up);
+  },
+  { passive: true }
+);
+window.addEventListener(
+  "scroll",
+  () => {
+    if (openMenu) placeMenu(openMenu.btn, openMenu.menu, openMenu.up);
+  },
+  { passive: true, capture: true }
+);
 
 /** Globus tugmasi + tillar ro‘yxati. Tarjimaga tushmasligi uchun data-no-i18n. */
 export function mountLangPicker(host, { up = false } = {}) {
@@ -71,14 +100,17 @@ export function mountLangPicker(host, { up = false } = {}) {
     </div>`;
   const btn = host.querySelector(".lang-btn");
   const menu = host.querySelector(".lang-menu");
+  // Xarita Leaflet pane ustida qolishi uchun bodyga chiqaramiz
+  if (menu.parentElement !== document.body) document.body.appendChild(menu);
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     const wasOpen = openMenu?.menu === menu;
     closeOpen();
     if (wasOpen) return;
     menu.classList.remove("hidden");
+    placeMenu(btn, menu, up);
     btn.setAttribute("aria-expanded", "true");
-    openMenu = { wrap: host, menu, btn };
+    openMenu = { wrap: host, menu, btn, up };
   });
   menu.addEventListener("click", (e) => {
     const item = e.target.closest("[data-lang]");

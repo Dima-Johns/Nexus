@@ -256,7 +256,7 @@ html[data-theme="dark"] .login-card {
   border: 0;
 }
 
-.lang-pick { position: relative; }
+.lang-pick { position: relative; z-index: 1; }
 .lang-btn {
   height: 34px;
   display: inline-flex;
@@ -276,8 +276,8 @@ html[data-theme="dark"] .login-card {
 .lang-btn b { font-size: 11px; letter-spacing: 0.05em; }
 .lang-btn:hover, .lang-btn[aria-expanded="true"] { border-color: rgba(122,162,255,0.45); color: var(--accent); }
 .lang-menu {
-  position: absolute;
-  top: calc(100% + 6px);
+  position: fixed;
+  top: 0;
   right: 0;
   min-width: 170px;
   padding: 6px;
@@ -285,10 +285,10 @@ html[data-theme="dark"] .login-card {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  z-index: 1300;
+  z-index: 5000;
   box-shadow: 0 16px 40px rgba(0,0,0,0.35);
 }
-.lang-menu.up { top: auto; bottom: calc(100% + 6px); }
+.lang-menu.up { /* joylashuv JS orqali */ }
 .lang-menu button {
   display: flex;
   align-items: center;
@@ -449,6 +449,7 @@ html[data-theme="light"] .btn.primary {
 html:not([data-theme="light"]) .nx-update-banner { color: #0b1220; }
 .nx-update-banner:hover { filter: brightness(1.05); }
 .app-header {
+  position: relative;
   height: 58px;
   min-height: 58px;
   display: flex;
@@ -460,7 +461,7 @@ html:not([data-theme="light"]) .nx-update-banner { color: #0b1220; }
   border-right: none;
   border-top: none;
   padding: 0 14px 0 10px;
-  z-index: 4;
+  z-index: 2000; /* Leaflet pane/control (~400–1000) ustida */
 }
 .header-left {
   display: flex;
