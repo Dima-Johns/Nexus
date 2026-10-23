@@ -1,13 +1,28 @@
-<div class="glass panel rep-page">
+<div class="panel rep-page rep-solid mode-home">
+  <div class="rep-home" id="rep-home">
+    <div class="panel-head">
+      <h3>Hisobotlar</h3>
+    </div>
+    <p class="muted rep-home-lead">Qaysi hisobotni ochishni tanlang</p>
+    <div class="rep-pick" id="rep-pick">
+      <button type="button" data-rep-open="ready">
+        <b>Tayyor hisobotlar</b>
+        <span>Tayyor jadvallar, grafik va Excel</span>
+      </button>
+      <button type="button" data-rep-open="pivot">
+        <b>Konstruktor (pivot)</b>
+        <span>Maydonlarni o‘zingiz joylashtirasiz</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="rep-open hidden" id="rep-open">
   <div class="panel-head">
     <div class="rep-title">
-      <h3>Hisobotlar</h3>
-      <div class="rep-mode" id="rep-mode">
-        <button type="button" data-rep-mode="ready" class="on">Tayyor hisobotlar</button>
-        <button type="button" data-rep-mode="pivot">Konstruktor (pivot)</button>
-      </div>
+      <button class="btn" type="button" id="rep-back">Orqaga</button>
+      <h3 id="rep-open-title">Tayyor hisobotlar</h3>
     </div>
-    <div class="row-actions rep-export rep-ready-only hidden" id="rep-export-box">
+    <div class="row-actions rep-export hidden" id="rep-export-box">
       <button class="btn" type="button" id="rep-export-tab" title="Ochiq bo‘limni Excel’ga yuklab olish">Excel: joriy bo‘lim</button>
       <button class="btn" type="button" id="rep-export-all" title="Barcha bo‘limlar bitta faylda">Excel: to‘liq hisobot</button>
       <select id="rep-gps" title="Barcha ma’lumotga GPS nuqtalarini qo‘shish">
@@ -83,8 +98,9 @@
     <div class="pv-info muted" id="pv-info"></div>
     <div class="pv-result" id="pv-result"></div>
   </div>
+  </div>
 
-  <aside class="pv-drawer glass hidden" id="pv-drawer" aria-label="Hisobot sozlamasi">
+  <aside class="pv-drawer rep-solid hidden" id="pv-drawer" aria-label="Hisobot sozlamasi">
     <div class="pv-drawer-head">
       <b>Hisobot sozlamasi</b>
       <button type="button" class="pv-ic pv-close" id="pv-config-close" title="Yopish (Esc)">×</button>
@@ -123,7 +139,7 @@
   </aside>
 
   <div id="pv-values-modal" class="modal-overlay hidden">
-    <div class="glass panel modal-card pv-values-card">
+    <div class="panel modal-card pv-values-card rep-solid">
       <h3 id="pv-values-title">Qiymatlarni tanlash</h3>
       <input id="pv-values-q" maxlength="80" placeholder="Qidirish" />
       <div class="pv-values-tools">

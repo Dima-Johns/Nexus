@@ -206,7 +206,7 @@ class PivotConfig:
                 raise ValueError(f"Noma’lum filtr maydoni: {k}")
             if len(vals) > MAX_FILTER_VALUES:
                 raise ValueError(f"«{DIMENSIONS[k].label}» filtrida juda ko‘p qiymat tanlangan")
-        if self.sort_by and self.sort_by not in MEASURES:
+        if self.sort_by and self.sort_by not in MEASURES and self.sort_by != "label":
             self.sort_by = ""
         if self.sort_dir not in ("asc", "desc"):
             self.sort_dir = "desc"
@@ -241,8 +241,30 @@ def distinct_values(rows: list[OrderRow], key: str, limit: int = 2000) -> list[d
 STATUS_RANK = {label: i for i, label in enumerate(STATUS_LABELS.values())}
 
 
-def _key_sort(keys: tuple) -> tuple:
-    return tuple((k == EMPTY, k == OTHERS, STATUS_RANK.get(k, 99), k.lower()) for k in keys)
+class _Rev:
+    """Matnni teskari tartibda solishtirish (bo‘sh va «Boshqalar» baribir oxirida qoladi)."""
+
+    __slots__ = ("v",)
+
+    def __init__(self, v: str) -> None:
+        self.v = v
+
+    def __lt__(self, other: "_Rev") -> bool:
+        return self.v > other.v
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Rev) and self.v == other.v
+
+
+def _part_key(part: str, desc: bool) -> tuple:
+    status = STATUS_RANK.get(part)
+    status_rank = 99 if status is None else (-status if desc else status)
+    label = _Rev(part.lower()) if desc else part.lower()
+    return (part == EMPTY, part == OTHERS, status_rank, label)
+
+
+def _key_sort(keys: tuple, desc: bool = False) -> tuple:
+    return tuple(_part_key(k, desc) for k in keys)
 
 
 def run_pivot(data: list[OrderRow], cfg: PivotConfig, row_limit: int = 5000, col_limit: int = 60) -> dict:
@@ -282,10 +304,11 @@ def run_pivot(data: list[OrderRow], cfg: PivotConfig, row_limit: int = 5000, col
                 cells[(prefix, ck)].add(r)
 
     col_keys = sorted(col_tot, key=_key_sort)
-    sort_m = cfg.sort_by
+    sort_m = cfg.sort_by if cfg.sort_by in MEASURES else ""
     sign = -1 if cfg.sort_dir == "desc" else 1
     keys = list(row_tot)
     if sort_m:
+        # Guruh ichida: avval ota-daraja jamisi, keyin o‘zi — Excel pivot kabi guruhlar tarqalmaydi
         def sort_key(k):
             parts = [(sign * sub_tot[k[: lvl + 1]].value(sort_m), _key_sort((k[lvl],))) for lvl in range(levels)]
             parts.append((sign * row_tot[k].value(sort_m), _key_sort(k)))
@@ -293,7 +316,8 @@ def run_pivot(data: list[OrderRow], cfg: PivotConfig, row_limit: int = 5000, col
 
         keys.sort(key=sort_key)
     else:
-        keys.sort(key=_key_sort)
+        label_desc = cfg.sort_by == "label" and cfg.sort_dir == "desc"
+        keys.sort(key=lambda k: _key_sort(k, label_desc))
 
     empty = [None] * len(measures)
 

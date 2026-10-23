@@ -4,6 +4,20 @@ const TOKEN_KEY = "nx_drv_token";
 
 let token = localStorage.getItem(TOKEN_KEY) || "";
 let driver = null;
+
+function canDrv(key) {
+  const list = driver?.permissions;
+  if (!Array.isArray(list)) return true;
+  return list.includes(key);
+}
+
+function applyDriverCaps() {
+  const mapOk = canDrv("map.view");
+  document.querySelector('[data-tab="map"]')?.classList.toggle("hidden", !mapOk);
+  $("btn-notices")?.classList.toggle("hidden", !canDrv("notices.view"));
+  if (!mapOk && tab === "map") setTab("list");
+  if (!canDrv("gps.send")) nativeTracking(false);
+}
 let route = { orders: [], geometry: [], downloaded_at: null };
 let map = null;
 let line = null;
@@ -790,6 +804,7 @@ function syncStartUi() {
     saveRun();
   }
   if (btn) {
+    btn.classList.toggle("hidden", !canDrv("route.start") && !run.active);
     btn.disabled = !pending.length || !!editing;
     const label = run.active && cur ? (run.going ? "Navigator" : "Borish") : "Boshlash";
     const sub = !pending.length ? (total ? "Hamma zayavkalar yetkazildi" : "Zayavka yo‘q") : run.active && cur ? `${stopIndex(cur)}. ${cur.client_name || cur.code || "Do‘kon"}` : `${pending.length} ta zayavka`;
@@ -825,8 +840,7 @@ function syncStartUi() {
     overlay.innerHTML = `${head}
       <p class="cur-hint">${run.arrived ? "Do‘konga yetib keldingiz. «Yetkazildi» ni bosing — keyingi zayavka ko‘rsatiladi." : "Do‘konga yetib borgach «Yetkazildi» ni bosing, shundan keyin keyingi zayavka ko‘rsatiladi."}</p>
       <div class="result-row">
-        <button class="btn ok ${run.arrived ? "pulse" : ""}" id="btn-delivered" type="button" data-done="${cur.id}">Yetkazildi</button>
-        <button class="btn warn" type="button" data-return="${cur.id}">Qaytarildi</button>
+        ${canDrv("orders.status") ? `<button class="btn ok ${run.arrived ? "pulse" : ""}" id="btn-delivered" type="button" data-done="${cur.id}">Yetkazildi</button><button class="btn warn" type="button" data-return="${cur.id}">Qaytarildi</button>` : `<span class="muted">Statusni o‘zgartirish ruxsati yo‘q</span>`}
       </div>
       <div class="cur-next">
         <span class="muted">${next ? `Keyingisi: <b>${stopIndex(next)}. ${esc(next.client_name || next.code || "Do‘kon")}</b>` : "Bu oxirgi zayavka"}</span>
@@ -934,6 +948,7 @@ function currentFullOrder() {
 }
 
 async function replan(firstId) {
+  if (!canDrv("route.replan")) return;
   if (run.manual) {
     // Qo‘lda tuzilgan tartib saqlanadi — tanlangan zayavka faqat boshiga o‘tadi
     if (firstId == null) {
@@ -971,6 +986,7 @@ async function replan(firstId) {
 }
 
 async function markStarted() {
+  if (!canDrv("route.start")) return;
   if (driver?.status === "on_route" || route.started) return;
   const body = startFilterBody();
   if (navigator.onLine) {
@@ -1241,7 +1257,7 @@ function announceReys(fresh) {
 }
 
 async function pollNotices() {
-  if (noticeBusy || !token || !navigator.onLine || !driver?.id) return;
+  if (!canDrv("notices.view") || noticeBusy || !token || !navigator.onLine || !driver?.id) return;
   noticeBusy = true;
   try {
     const data = await api("/driver/notices", { timeout: 15000 });
@@ -1298,12 +1314,16 @@ function renderProofExtras() {
 }
 
 function proofStep(step) {
+  const confirm = step === "confirm";
+  const showForm = step === "preview" || confirm;
   $("proof-reasons")?.classList.toggle("hidden", step !== "reason");
   $("proof-shoot")?.classList.toggle("hidden", step !== "shoot");
-  $("proof-preview")?.classList.toggle("hidden", step !== "preview");
+  $("proof-preview")?.classList.toggle("hidden", !showForm);
   const returned = proof.result === "returned";
-  $("proof-comment-box")?.classList.toggle("hidden", step !== "preview");
-  $("proof-chips")?.classList.toggle("hidden", !returned);
+  const commentOn = showForm && canDrv("orders.comment");
+  $("proof-comment-box")?.classList.toggle("hidden", !commentOn);
+  $("proof-chips")?.classList.toggle("hidden", !returned || !commentOn);
+  $("proof-img")?.classList.toggle("hidden", confirm || !proof.url);
   const label = $("proof-comment-label");
   if (label) label.textContent = returned ? "Izoh: nima uchun qaytarildi? *" : "Izoh (ixtiyoriy)";
   const area = $("proof-comment");
@@ -1318,7 +1338,7 @@ function proofComment() {
 function syncProofSend() {
   const btn = $("proof-send");
   if (!btn) return;
-  btn.disabled = proof.result === "returned" && proofComment().length < MIN_COMMENT;
+  btn.disabled = proof.result === "returned" && canDrv("orders.comment") && proofComment().length < MIN_COMMENT;
   const typed = proofComment();
   document.querySelectorAll("#proof-chips .proof-chip").forEach((c) => c.classList.toggle("on", c.textContent.trim() === typed));
 }
@@ -1329,6 +1349,10 @@ function proofErr(text) {
 }
 
 function openProof(id, result) {
+  if (!canDrv("orders.status")) {
+    toast("Statusni o‘zgartirish ruxsati yo‘q", true);
+    return;
+  }
   const o = allOrders().find((x) => Number(x.id) === Number(id));
   if (o && isDone(o)) {
     toast("Bu zayavka allaqachon yopilgan", true);
@@ -1343,8 +1367,14 @@ function openProof(id, result) {
   $("proof-sub").textContent = o ? `${o.client_name || o.code || "Do‘kon"}${o.dropoff_address ? " · " + o.dropoff_address : ""}` : "";
   $("proof-tag").textContent = result === "returned" ? "Qaytarildi" : "";
   proofErr("");
-  proofStep(result === "delivered" ? "reason" : "shoot");
+  proof.skipPhoto = !canDrv("orders.photo");
   $("proof-sheet").classList.remove("hidden");
+  if (proof.skipPhoto) {
+    proofStep("confirm");
+    if (result === "returned" && canDrv("orders.comment")) setTimeout(() => $("proof-comment")?.focus(), 150);
+    return;
+  }
+  proofStep(result === "delivered" ? "reason" : "shoot");
   // Qaytarishda sabab so‘ralmaydi — kamera darhol ochiladi
   if (result === "returned") openCamera();
 }
@@ -1544,10 +1574,43 @@ async function onProofFile() {
   }
 }
 
+async function sendStatusOnly() {
+  if (!proof.id) return;
+  const comment = canDrv("orders.comment") ? proofComment() : "";
+  if (proof.result === "returned" && canDrv("orders.comment") && comment.length < MIN_COMMENT) {
+    proofErr("Qaytarish sababini izohda yozing");
+    $("proof-comment")?.focus();
+    return;
+  }
+  const btn = $("proof-send");
+  if (btn) btn.disabled = true;
+  const item = { type: "status", orderId: proof.id, result: proof.result, comment, done_at: new Date().toISOString() };
+  try {
+    await outboxPut(item);
+  } catch {
+    try {
+      await sendQueued(item);
+    } catch (err) {
+      proofErr(err.message || "Yuborilmadi");
+      if (btn) btn.disabled = false;
+      return;
+    }
+  }
+  const { orderId: id, result } = item;
+  const label = result === "delivered" ? "Yetkazildi" : "Qaytarildi";
+  closeProof();
+  markDone(id, item);
+  toast(navigator.onLine ? `${label} ✓` : `${label} ✓ — internet chiqqach serverga yuboriladi`, !navigator.onLine);
+  afterStopDone(id, result).catch(() => {});
+  flushOutbox().catch(() => {});
+}
+
 async function sendProof() {
-  if (!proof.id || !proof.blob) return;
-  const comment = proofComment();
-  if (proof.result === "returned" && comment.length < MIN_COMMENT) {
+  if (!proof.id) return;
+  if (proof.skipPhoto) return sendStatusOnly();
+  if (!proof.blob) return;
+  const comment = canDrv("orders.comment") ? proofComment() : "";
+  if (proof.result === "returned" && canDrv("orders.comment") && comment.length < MIN_COMMENT) {
     proofErr("Qaytarish sababini izohda yozing");
     $("proof-comment")?.focus();
     return;
@@ -1604,7 +1667,7 @@ function markDone(id, item) {
 function overlayLocal(orders) {
   const byId = new Map((orders || []).map((o) => [Number(o.id), o]));
   outboxMeta.forEach((it) => {
-    if (it.type !== "proof") return;
+    if (it.type !== "proof" && it.type !== "status") return;
     const o = byId.get(Number(it.orderId));
     if (!o) return;
     o.status = it.result;
@@ -1620,6 +1683,13 @@ function overlayLocal(orders) {
 }
 
 function sendQueued(item) {
+  if (item.type === "status") {
+    return api(`/driver/orders/${item.orderId}/status`, {
+      method: "POST",
+      body: { status: item.result, comment: item.comment || "" },
+      timeout: 30000,
+    });
+  }
   if (item.type === "proof") {
     const form = new FormData();
     form.append("result", item.result);
@@ -1680,7 +1750,7 @@ function flushOutbox() {
 }
 
 function queuedCount() {
-  return outboxMeta.filter((x) => x.type === "proof").length;
+  return outboxMeta.filter((x) => x.type === "proof" || x.type === "status").length;
 }
 
 function syncQueueUi() {
@@ -1714,10 +1784,10 @@ function renderListHead() {
   const mode = run.manual ? "Siz tuzgan tartib" : "Avtomatik tartib";
   head.innerHTML = `
     <div class="lh-txt"><b>Borish ketma-ketligi</b><span class="muted">${pending.length ? `${mode} · ${pending.length} ta kutilmoqda` : "Kutilayotgan zayavka yo‘q"}</span></div>
-    <button class="btn ghost lh-edit" type="button" data-edit-start ${pending.length > 1 ? "" : "disabled"}>
+    ${canDrv("orders.reorder") ? `<button class="btn ghost lh-edit" type="button" data-edit-start ${pending.length > 1 ? "" : "disabled"}>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 4 3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l-3.5-3.5M17 20l3.5-3.5"/></svg>
       O‘zgartirish
-    </button>`;
+    </button>` : ""}`;
 }
 
 function editRows() {
@@ -1754,11 +1824,11 @@ function renderEditList(box) {
       </div>`
       )
       .join("") +
-    `<button type="button" class="btn ghost re-auto" data-edit-auto>Avtomatik tartibga qaytarish (GPS bo‘yicha)</button>`;
+    (canDrv("route.replan") ? `<button type="button" class="btn ghost re-auto" data-edit-auto>Avtomatik tartibga qaytarish (GPS bo‘yicha)</button>` : "");
 }
 
 function startReorder() {
-  if (pendingStops().length < 2) return;
+  if (!canDrv("orders.reorder") || pendingStops().length < 2) return;
   editing = pendingStops().map((o) => o.id);
   renderList();
   syncStartUi();
@@ -1845,7 +1915,7 @@ function onListPointerDown(e) {
     return;
   }
   const el = editing ? e.target.closest(".re-row") : e.target.closest(".card.pending");
-  if (!el || (!editing && pendingStops().length < 2)) return;
+  if (!el || (!editing && (!canDrv("orders.reorder") || pendingStops().length < 2))) return;
   cancelHold();
   hold = { el, id: Number(el.dataset.id), pointerId: e.pointerId, x: e.clientX, y: e.clientY };
   el.classList.add("holding");
@@ -1959,8 +2029,12 @@ function endDrag(e) {
 
 function renderList() {
   const box = $("list");
-  const rows = orderedStops();
+  const rows = orderedStops().filter((o) => canDrv("history.view") || !isDone(o));
   renderListHead();
+  if (!canDrv("orders.view")) {
+    box.innerHTML = `<div class="empty">Zayavkalarni ko‘rish ruxsati yo‘q. Ofisdan ruxsat so‘rang.</div>`;
+    return;
+  }
   if (!rows.length) {
     box.innerHTML = `<div class="empty">${navigator.onLine ? "Bu sana/reysda zayavka yo‘q. Sanani yoki reysni almashtiring." : "Keshda marshrut yo‘q. Internet chiqishi bilan yangilang."}</div>`;
     return;
@@ -1970,7 +2044,7 @@ function renderList() {
     return;
   }
   const cur = run.active ? currentStop() : null;
-  const queued = new Set(outboxMeta.filter((x) => x.type === "proof").map((x) => Number(x.orderId)));
+  const queued = new Set(outboxMeta.filter((x) => x.type === "proof" || x.type === "status").map((x) => Number(x.orderId)));
   const pendingN = rows.filter((o) => !isDone(o)).length;
   const cards = rows.map((o, i) => {
         const meta = `<div class="muted">${esc(o.dropoff_address || "")}</div>
@@ -2011,15 +2085,14 @@ function renderList() {
           ${gps ? "" : `<div class="muted">Lokatsiya yo‘q</div>`}
           <div class="actions">
             <button class="btn primary" data-nav="${o.id}" type="button" ${gps ? "" : "disabled"}>Borish</button>
-            <button class="btn ok" data-done="${o.id}" type="button">Yetkazildi</button>
-            <button class="btn warn" data-return="${o.id}" type="button">Qaytarildi</button>
+            ${canDrv("orders.status") ? `<button class="btn ok" data-done="${o.id}" type="button">Yetkazildi</button><button class="btn warn" data-return="${o.id}" type="button">Qaytarildi</button>` : ""}
           </div>
         </article>`;
       });
   const doneN = rows.length - pendingN;
   box.innerHTML =
     cards.slice(0, pendingN).join("") +
-    (pendingN > 1 ? `<p class="list-hint muted">Tartibni o‘zgartirish uchun zayavka ustida barmoqni ushlab turing va suring</p>` : "") +
+    (pendingN > 1 && canDrv("orders.reorder") ? `<p class="list-hint muted">Tartibni o‘zgartirish uchun zayavka ustida barmoqni ushlab turing va suring</p>` : "") +
     (doneN ? `<div class="list-sep muted">Yopilgan zayavkalar · ${doneN}</div>` : "") +
     cards.slice(pendingN).join("");
   freshDoneId = null;
@@ -2029,6 +2102,7 @@ function applyRoute(data) {
   const keepReys = reysFilter;
   const keepDate = dateFilter;
   driver = data.driver || driver;
+  applyDriverCaps();
   route = {
     orders: data.orders || [],
     geometry: data.geometry || [],
@@ -2079,6 +2153,7 @@ async function startRun() {
 }
 
 function flushGps() {
+  if (!canDrv("gps.send")) return Promise.resolve(0);
   return withGpsLock(async () => {
     const batch = await gpsDump();
     const n = batch.points.length;
@@ -2155,9 +2230,10 @@ async function pullRoute() {
   }
   await flushOutbox().catch(() => {});
   const data = await withGpsLock(async () => {
-    const batch = await gpsDump();
+    const batch = canDrv("gps.send") ? await gpsDump() : { points: [] };
     const res = await api("/driver/sync", { method: "POST", body: { points: batch.points } });
-    if (batch.points.length) await gpsClear(batch).catch(() => {});
+    if (batch.points?.length) await gpsClear(batch).catch(() => {});
+    if (!canDrv("gps.send")) await gpsClear().catch(() => {});
     return res;
   });
   applyRoute(data);
@@ -2196,7 +2272,7 @@ function onPos(pos) {
     syncStartUi();
   }
   // Serverga daqiqada bir marta; birinchi nuqta darhol
-  if (firstFix || now - lastQueuedAt >= BEAT_MS) {
+  if (canDrv("gps.send") && (firstFix || now - lastQueuedAt >= BEAT_MS)) {
     queuePoint(point).then(() => {
       if (navigator.onLine) return flushGps();
       return gpsDump().then((q) => setSync(`GPS kesh: ${q.points.length}`, true));
@@ -2257,6 +2333,7 @@ async function enterApp(payload) {
   }
   token = payload.token;
   driver = payload.driver;
+  applyDriverCaps();
   localStorage.setItem(TOKEN_KEY, token);
   saveSession();
   show("view-app");
@@ -2443,6 +2520,7 @@ function logout() {
 }
 
 function setTab(next) {
+  if (next !== "list" && !canDrv("map.view")) next = "list";
   tab = next === "list" ? "list" : "map";
   document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   $("map").classList.toggle("hidden", tab !== "map");

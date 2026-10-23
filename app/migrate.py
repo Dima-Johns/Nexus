@@ -20,6 +20,7 @@ def migrate_schema() -> None:
         "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS username VARCHAR(80) DEFAULT ''",
         "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS password_hash VARCHAR(128) DEFAULT ''",
         "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS qr_token VARCHAR(64) DEFAULT ''",
+        "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS permissions_json TEXT DEFAULT ''",
         "ALTER TABLE session_tokens ALTER COLUMN user_id DROP NOT NULL",
         "ALTER TABLE session_tokens ADD COLUMN IF NOT EXISTS driver_id INTEGER",
         "ALTER TABLE agents ADD COLUMN IF NOT EXISTS code VARCHAR(2) DEFAULT ''",

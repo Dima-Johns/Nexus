@@ -1,6 +1,6 @@
 import { api, apiDownload } from "../api.js";
 import { $, escapeHtml } from "../ui.js?v=91";
-import * as pivot from "./pivot.js?v=91";
+import * as pivot from "./pivot.js?v=105";
 import { proofThumb } from "../proof-photo.js?v=91";
 
 const PAGE = 300;
@@ -20,9 +20,20 @@ let loadSeq = 0;
 let qTimer = null;
 let preset = "30";
 let lastLoaded = 0;
-let mode = localStorage.getItem("nx_rep_mode") === "pivot" ? "pivot" : "ready";
+let mode = "";
 const PRESETS = ["today", "yesterday", "7", "30", "month", "prev-month", "all"];
-const sortBy = {};
+const sortBy = {
+  clients: { key: "amount", dir: "desc" },
+  returned_clients: { key: "returned", dir: "desc" },
+  returns: { key: "day", dir: "desc" },
+  drivers: { key: "amount", dir: "desc" },
+  agents: { key: "amount", dir: "desc" },
+  warehouses: { key: "amount", dir: "desc" },
+  days: { key: "key", dir: "asc" },
+  payments: { key: "amount", dir: "desc" },
+  orgs: { key: "amount", dir: "desc" },
+  orders: { key: "day", dir: "desc" },
+};
 const paymentsSeen = new Set();
 
 const money = (v) => fmtMoney.format(Math.round(Number(v) || 0));
@@ -89,7 +100,7 @@ const TABS = {
   },
   returns: {
     cols: [
-      { key: "day", title: "Sana", kind: "date", render: (r) => escapeHtml(r.proof_at || r.day) },
+      { key: "day", title: "Sana", kind: "date", sortValue: (r) => r.proof_at || r.day, render: (r) => escapeHtml(r.proof_at || r.day) },
       { key: "client_name", title: "Mijoz", render: (r) => `${r.client_code ? `<span class="rep-sub">${escapeHtml(r.client_code)}</span>` : ""}${clientCell(r)}` },
       { key: "driver", title: "Haydovchi" },
       { key: "agent", title: "Agent" },
@@ -254,18 +265,32 @@ async function applyFilters(g) {
   await load();
 }
 
+function paintView() {
+  const page = $(".rep-page", root);
+  const opened = mode === "ready" || mode === "pivot";
+  page?.classList.toggle("mode-home", !opened);
+  page?.classList.toggle("mode-pivot", mode === "pivot");
+  page?.classList.toggle("mode-ready", mode === "ready");
+  $("#rep-home", root)?.classList.toggle("hidden", opened);
+  $("#rep-open", root)?.classList.toggle("hidden", !opened);
+  $("#rep-ready", root)?.classList.toggle("hidden", mode !== "ready");
+  $("#rep-builder", root)?.classList.toggle("hidden", mode !== "pivot");
+  $("#rep-export-box", root)?.classList.toggle("hidden", mode !== "ready" || !options?.can_export);
+  const title = $("#rep-open-title", root);
+  if (title) title.textContent = mode === "pivot" ? "Konstruktor (pivot)" : "Tayyor hisobotlar";
+  const scroller = root?.querySelector(mode === "pivot" ? ".pv-table" : ".rep-table .table-wrap");
+  if (scroller) scroller.scrollTop = 0;
+}
+
 async function setMode(next) {
-  mode = next === "pivot" ? "pivot" : "ready";
-  localStorage.setItem("nx_rep_mode", mode);
-  $(".rep-page", root)?.classList.toggle("mode-pivot", mode === "pivot");
-  root.querySelectorAll("[data-rep-mode]").forEach((b) => b.classList.toggle("on", b.dataset.repMode === mode));
+  mode = next === "pivot" ? "pivot" : next === "ready" ? "ready" : "";
+  paintView();
   if (mode !== "pivot") pivot.hide();
   if (mode === "pivot") {
     try {
       await pivot.activate();
     } catch (ex) {
       errMsg(ex.message || "Konstruktor yuklanmadi");
-      return;
     }
   }
 }
@@ -289,7 +314,7 @@ function fillOptions() {
   fillSelect("#rep-driver", options.drivers.map((d) => [String(d.id), d.name]), "Barcha haydovchilar");
   fillSelect("#rep-wh", options.warehouses.map((w) => [String(w.id), w.name]), "Barcha skladlar");
   fillSelect("#rep-status", options.statuses.map((s) => [s.key, s.label]), "Barcha holatlar");
-  $("#rep-export-box", root)?.classList.toggle("hidden", !options.can_export);
+  $("#rep-export-box", root)?.classList.toggle("hidden", mode !== "ready" || !options.can_export);
 }
 
 function fillPayments(list) {
@@ -394,19 +419,21 @@ function renderChart() {
     return;
   }
   const max = Math.max(...items.map((d) => d.amount || 0), 1);
+  const step = items.length > 18 ? Math.ceil(items.length / 12) : 1;
   box.innerHTML = `<div class="rep-bars">${items
-    .map((d) => {
+    .map((d, i) => {
       const pending = Math.max(0, (d.amount || 0) - (d.amount_delivered || 0) - (d.amount_returned || 0));
       const pct = (v) => ((v || 0) * 100) / max;
       const tip = `${d.label}: ${money(d.amount)} so‘m · ${d.orders} zayavka · yetkazildi ${d.delivered} · qaytdi ${d.returned}`;
       const pick = monthly ? "" : `data-day="${escapeHtml(d.key)}"`;
+      const showLabel = i % step === 0 || i === items.length - 1;
       return `<div class="rep-bar" title="${escapeHtml(tip)}" ${pick}>
         <div class="rep-bar-stack">
           <i class="seg-pend" style="height:${pct(pending)}%"></i>
           <i class="seg-ret" style="height:${pct(d.amount_returned)}%"></i>
           <i class="seg-ok" style="height:${pct(d.amount_delivered)}%"></i>
         </div>
-        <span>${escapeHtml(monthly ? shortDay(d.key) : shortDay(d.key))}</span>
+        <span class="${showLabel ? "" : "rep-bar-skip"}">${escapeHtml(shortDay(d.key))}</span>
       </div>`;
     })
     .join("")}</div>`;
@@ -424,10 +451,12 @@ function cellValue(col, r) {
 
 function compare(col, dir) {
   const numeric = ["int", "money", "pct"].includes(col.kind);
+  const raw = (row) => (col.sortValue ? col.sortValue(row) : row[col.key]);
   return (a, b) => {
-    const x = a[col.key];
-    const y = b[col.key];
-    const res = numeric ? (Number(x) || 0) - (Number(y) || 0) : String(x ?? "").localeCompare(String(y ?? ""), "uz");
+    const x = raw(a);
+    const y = raw(b);
+    let res = numeric ? (Number(x) || 0) - (Number(y) || 0) : String(x ?? "").localeCompare(String(y ?? ""), "uz");
+    if (!res) res = (Number(a.id) || 0) - (Number(b.id) || 0);
     return dir === "asc" ? res : -res;
   };
 }
@@ -446,11 +475,13 @@ function renderTable() {
   }
   visibleRows = tab === "orders" ? rows : rows.slice(0, shown);
   const total = tab === "orders" ? orders.total : rows.length;
-  let info = `${fmtNum.format(total)} ta`;
-  if (tab === "returns" && data && data.returns_total > (data.returns || []).length) info += ` (ekranda oxirgi ${data.returns.length}, Excel’da hammasi)`;
+  let info = q ? `${fmtNum.format(rows.length)} ta topildi` : `${fmtNum.format(total)} ta`;
+  if (q && tab === "orders" && orders.rows.length < orders.total) info += " · qidiruv yuklangan qatorlarda";
+  if (!q && tab === "returns" && data && data.returns_total > (data.returns || []).length) info += ` (ekranda oxirgi ${data.returns.length}, Excel’da hammasi)`;
   $("#rep-tab-info", root).textContent = `${info} · ${def.hint}`;
   if (!rows.length) {
-    box.innerHTML = `<div class="rep-empty">${data ? "Ma’lumot yo‘q" : "Yuklanmoqda…"}</div>`;
+    const wait = (tab === "orders" && ordersLoading) || !data;
+    box.innerHTML = `<div class="rep-empty">${wait ? "Yuklanmoqda…" : "Ma’lumot yo‘q"}</div>`;
     return;
   }
   const head = def.cols
@@ -489,6 +520,7 @@ function renderTable() {
 }
 
 let loadingMore = false;
+let ordersLoading = false;
 
 // Filtr o‘zgargach eski filtrdagi «Yana yuklash» javobi yangi ro‘yxatga qo‘shilmasin
 let ordersSeq = 0;
@@ -510,10 +542,19 @@ function switchTab(name, render = true) {
   if (q) q.value = "";
   if (!render) return;
   if (name === "orders") {
+    orders = { rows: [], total: 0 };
+    ordersLoading = true;
     renderTable();
     loadOrders(true)
-      .then(renderTable)
-      .catch((ex) => errMsg(ex.message));
+      .then(() => {
+        ordersLoading = false;
+        renderTable();
+      })
+      .catch((ex) => {
+        ordersLoading = false;
+        errMsg(ex.message);
+        renderTable();
+      });
   } else {
     renderTable();
   }
@@ -575,11 +616,16 @@ function periodTag() {
 
 function bind() {
   root.addEventListener("click", async (e) => {
-    const modeBtn = e.target.closest("[data-rep-mode]");
-    if (modeBtn) {
-      if (modeBtn.dataset.repMode === mode) return;
-      await setMode(modeBtn.dataset.repMode);
-      load();
+    const openBtn = e.target.closest("[data-rep-open]");
+    if (openBtn) {
+      const next = openBtn.dataset.repOpen;
+      if (next === mode) return;
+      await setMode(next);
+      if (mode) load();
+      return;
+    }
+    if (e.target.closest("#rep-back")) {
+      await setMode("");
       return;
     }
     const presetBtn = e.target.closest("[data-preset]");
@@ -718,11 +764,11 @@ export async function init(pane) {
   $("#rep-to", root).value = to;
   markPreset();
   renderClientChip();
-  await setMode(mode);
-  await load();
+  await setMode("");
 }
 
 export async function show() {
+  if (mode !== "ready") return;
   if (root && data && Date.now() - lastLoaded > 5000) await load({ quiet: true });
 }
 

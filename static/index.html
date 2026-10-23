@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/style.css?v=84" />
+  <link rel="stylesheet" href="/static/css/style.css?v=92" />
   <link rel="stylesheet" href="/static/css/datepicker.css?v=2" />
 </head>
 <body>
@@ -246,6 +246,26 @@
     </div>
   </div>
 
+  <div id="drv-perms-modal" class="modal-overlay hidden">
+    <div class="glass panel modal-card drv-perms-card">
+      <div class="panel-head">
+        <h3>Ilova ruxsatlari</h3>
+        <button class="icon-btn" id="drv-perms-close" type="button" title="Yopish">×</button>
+      </div>
+      <p id="drv-perms-name" class="muted"></p>
+      <div class="drv-perms-tools">
+        <button type="button" class="btn tiny" id="drv-perms-all">Hammasini belgilash</button>
+        <button type="button" class="btn tiny" id="drv-perms-none">Belgini olib tashlash</button>
+      </div>
+      <div id="drv-perms-list" class="drv-perms-list"></div>
+      <p class="error hidden" id="drv-perms-err"></p>
+      <div class="confirm-actions">
+        <button type="button" id="drv-perms-cancel">Bekor qilish</button>
+        <button type="button" class="btn primary" id="drv-perms-save">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
   <div id="plan-modal" class="modal-overlay hidden">
     <div class="glass panel modal-card plan-card">
       <div class="panel-head">
@@ -369,6 +389,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="/static/js/datepicker.js?v=2"></script>
-  <script type="module" src="/static/js/app.js?v=100"></script>
+  <script type="module" src="/static/js/app.js?v=106"></script>
 </body>
 </html>

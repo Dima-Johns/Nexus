@@ -1063,7 +1063,7 @@ export function bindWorkspace() {
   if (bound) return;
   bound = true;
   // Bitta haqiqiy nusxa: xarita va boshqa sahifalar shu obyekt orqali ma'lumot oladi.
-  window.__nxWorkspace = { filteredOrders, getWarehouses, hasGps, refreshWorkspace };
+  window.__nxWorkspace = { filteredOrders, dateOrderStats, getWarehouses, hasGps, refreshWorkspace };
   bindResizer();
   $$(".htab[data-filter]").forEach((tab) => {
     tab.onclick = () => {
@@ -1592,6 +1592,21 @@ export function bindWorkspace() {
 
 export function filteredOrders() {
   return orders.filter(matches);
+}
+
+/** Tanlangan sana filtri bo‘yicha barcha zayavkalar (holat/haydovchi filtrisiz). */
+export function dateOrderStats() {
+  const rows = orders.filter(inDatePreset);
+  const n = (st) => rows.reduce((acc, o) => acc + (o.status === st ? 1 : 0), 0);
+  return {
+    label: chipText(applied.datePreset, applied.customDate),
+    total: rows.length,
+    delivered: n("delivered"),
+    returned: n("returned"),
+    in_transit: n("in_transit"),
+    assigned: n("assigned"),
+    fresh: n("new"),
+  };
 }
 
 export function getWarehouses() {

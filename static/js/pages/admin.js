@@ -1,5 +1,6 @@
 import { api, apiDownload, apiUpload, can, isSuper, me, setMe } from "../api.js";
 import { openDriverAccess } from "../driver-access.js?v=91";
+import { openDriverPerms } from "../driver-perms.js?v=103";
 import { mountOfficePicker } from "../office-picker.js?v=91";
 import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=91";
 
@@ -202,6 +203,7 @@ function renderDrivers(root) {
           }</td>
           <td class="col-actions">
             ${can("drivers.access") ? `<button class="btn tiny" data-drv-access="${d.id}">Kirish</button>` : ""}
+            ${can("drivers.access") || can("drivers.manage") ? `<button class="btn tiny" data-drv-perms="${d.id}">Ruxsatlar</button>` : ""}
             ${can("drivers.manage") ? `<button class="btn tiny danger-text" data-drv-del="${d.id}">O‘chirish</button>` : ""}
           </td>
         </tr>`
@@ -1884,6 +1886,19 @@ export async function init(root) {
         const btn = root.querySelector(`[data-perm-save="${permSave}"]`);
         if (btn) btn.textContent = "Saqlandi ✓";
       } catch (ex) {
+        if (err) {
+          err.classList.remove("hidden");
+          err.textContent = ex.message;
+        }
+      }
+      return;
+    }
+    const drvPerms = e.target.closest("[data-drv-perms]")?.dataset?.drvPerms;
+    if (drvPerms) {
+      try {
+        await openDriverPerms(drvPerms);
+      } catch (ex) {
+        const err = $("#admin-drv-err", root);
         if (err) {
           err.classList.remove("hidden");
           err.textContent = ex.message;

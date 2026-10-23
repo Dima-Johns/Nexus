@@ -17,6 +17,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from . import storage
+from .driver_perms import (
+    DRIVER_PERMISSIONS,
+    driver_can,
+    driver_permission_keys,
+    dump_driver_permissions,
+    require_driver_perm,
+)
 from .auth import (
     create_driver_token,
     create_token,
@@ -124,6 +131,7 @@ from .schemas import (
     DriverAgentIn,
     DriverIn,
     DriverOut,
+    DriverPermsIn,
     DriverQrIn,
     GpsBatchIn,
     DriverOrderStatusIn,
@@ -326,6 +334,7 @@ def _driver_out(d: Driver) -> DriverOut:
         is_active=d.is_active,
         username=d.username or "",
         has_password=bool(d.password_hash),
+        permissions=driver_permission_keys(d),
     )
 
 
@@ -454,14 +463,25 @@ def _driver_route_payload(db: Session, driver: Driver, rows: list[Order] | None 
             date_seen.add(d)
             dates.append(d)
     dates.sort()
+    can_view = driver_can(driver, "orders.view")
+    if not can_view:
+        reys = []
+        dates = []
+        use = []
+    orders_out: list[Order] = []
+    if can_view:
+        orders_out = list(all_rows)
+        if driver_can(driver, "history.view"):
+            orders_out += driver_done_orders(db, driver)
+    geometry = route_geometry_for(use, driver, warehouse) if can_view and driver_can(driver, "map.view") else []
     return {
         "driver": _driver_out(driver),
-        "orders": [_order_out(o) for o in all_rows + driver_done_orders(db, driver)],
-        "all_count": len(all_rows),
+        "orders": [_order_out(o) for o in orders_out],
+        "all_count": len(all_rows) if can_view else 0,
         "reys": reys,
         "dates": dates,
         "warehouse": _warehouse_out(warehouse) if warehouse else None,
-        "geometry": route_geometry_for(use, driver, warehouse),
+        "geometry": geometry,
         "origin": "gps" if driver.status == "on_route" and getattr(driver, "gps_at", None) else "warehouse",
         "started": driver.status == "on_route",
         "downloaded_at": datetime.now(timezone.utc).isoformat(),
@@ -689,6 +709,8 @@ def driver_logout(
 
 @router.get("/driver/orders", response_model=list[OrderOut])
 def driver_orders(db: Session = Depends(get_db), driver: Driver = Depends(get_current_driver)):
+    if not driver_can(driver, "orders.view"):
+        return []
     rows = driver_active_orders(db, driver)
     return [_order_out(o) for o in rows]
 
@@ -723,6 +745,8 @@ def _driver_reys(db: Session, driver: Driver) -> list[dict]:
 
 @router.get("/driver/notices")
 def driver_notices(db: Session = Depends(get_db), driver: Driver = Depends(get_current_driver)):
+    if not driver_can(driver, "notices.view"):
+        return {"items": []}
     return {"items": _driver_reys(db, driver)}
 
 
@@ -733,6 +757,11 @@ def driver_location(
     db: Session = Depends(get_db),
     driver: Driver = Depends(get_current_driver),
 ):
+    if not driver_can(driver, "gps.send"):
+        out = {"ok": True, "accepted": 0, "skipped": True}
+        if reys and driver_can(driver, "notices.view"):
+            out["reys"] = _driver_reys(db, driver)
+        return out
     result = ingest_gps(db, driver, payload.points or [])
     db.commit()
     out = {"ok": True, **result}
@@ -747,7 +776,7 @@ def driver_sync(
     db: Session = Depends(get_db),
     driver: Driver = Depends(get_current_driver),
 ):
-    gps = ingest_gps(db, driver, payload.points or [])
+    gps = ingest_gps(db, driver, payload.points or []) if driver_can(driver, "gps.send") else {"accepted": 0}
     payload_out = _driver_route_payload(db, driver)
     db.commit()
     return {"ok": True, "gps": gps, **payload_out}
@@ -759,6 +788,7 @@ def driver_start(
     db: Session = Depends(get_db),
     driver: Driver = Depends(get_current_driver),
 ):
+    require_driver_perm(driver, "route.start")
     all_rows = driver_active_orders(db, driver)
     rows = _filter_reys(all_rows, payload.route_code, payload.delivery_date)
     if not rows:
@@ -782,6 +812,7 @@ def driver_replan(
     driver: Driver = Depends(get_current_driver),
 ):
     """Yo‘lda: tanlangan zayavka birinchi, qolganlari telefon GPS'idan yaqinidan uzog‘iga."""
+    require_driver_perm(driver, "route.replan")
     all_rows = driver_active_orders(db, driver)
     rows = _filter_reys(all_rows, payload.route_code, payload.delivery_date)
     if not rows:
@@ -806,6 +837,7 @@ def driver_reorder(
     driver: Driver = Depends(get_current_driver),
 ):
     """Haydovchi ketma-ketlikni qo‘lda o‘zgartirdi — stop_no shu tartibda yoziladi."""
+    require_driver_perm(driver, "orders.reorder")
     all_rows = driver_active_orders(db, driver)
     rows = _filter_reys(all_rows, payload.route_code, payload.delivery_date)
     by_id = {o.id: o for o in rows}
@@ -826,6 +858,7 @@ def driver_order_status(
     db: Session = Depends(get_db),
     driver: Driver = Depends(get_current_driver),
 ):
+    require_driver_perm(driver, "orders.status")
     row = (
         db.query(Order)
         .filter(Order.id == item_id, Order.driver_id == driver.id)
@@ -834,14 +867,24 @@ def driver_order_status(
     if not row:
         raise HTTPException(404, "Zayavka topilmadi")
     status = (payload.status or "").strip()
-    if status not in {"assigned", "on_route", "delivered"}:
+    if status not in {"assigned", "on_route", "delivered", "returned"}:
         raise HTTPException(400, "Noto‘g‘ri status")
+    comment = " ".join((payload.comment or "").replace("\x00", "").split())
+    if not driver_can(driver, "orders.comment"):
+        comment = ""
+    elif status == "returned" and len(comment) < 3:
+        raise HTTPException(400, "Qaytarish sababini izohda yozing")
     if row.status != status:
-        if status == "delivered":
-            log_event(db, row, "delivered", driver=driver)
+        if status in {"delivered", "returned"}:
+            log_event(db, row, status, driver=driver, note=comment)
         else:
             log_event(db, row, "status", driver=driver, note=f"{STATUS_LABELS.get(row.status, row.status)} → {STATUS_LABELS.get(status, status)}")
     row.status = status
+    if status in {"delivered", "returned"}:
+        row.proof_at = row.proof_at or datetime.now(timezone.utc)
+        if status == "returned":
+            row.proof_reason = row.proof_reason or "returned"
+            row.proof_comment = comment
     if status == "on_route":
         driver.status = "on_route"
     left = (
@@ -849,7 +892,7 @@ def driver_order_status(
         .filter(Order.driver_id == driver.id, Order.status.notin_(DONE_STATUSES))
         .count()
     )
-    if status == "delivered" and left == 0:
+    if status in {"delivered", "returned"} and left == 0:
         driver.status = "idle"
     db.commit()
     return {"ok": True, "order": _order_out(row), "driver": _driver_out(driver)}
@@ -1109,11 +1152,16 @@ async def driver_order_proof(
     photo_at — rasm olingan vaqt (tarix uchun; eski ilova yubormaydi).
     extra_photos — qo‘shimcha rasmlar (bir nechta muzlatgich); eski ilova yubormaydi.
     """
+    require_driver_perm(driver, "orders.status")
+    require_driver_perm(driver, "orders.photo")
     result = (result or "").strip()
     reason = (reason or "").strip()
     # Eski ilova «comment» maydonini umuman yubormaydi — u ishlashda davom etsin
     asked = comment is not None
     comment = " ".join((comment or "").replace("\x00", "").split())
+    if not driver_can(driver, "orders.comment"):
+        comment = ""
+        asked = False
     if result not in PROOF_REASONS:
         raise HTTPException(400, "Noto‘g‘ri natija")
     if reason not in PROOF_REASONS[result]:
@@ -2103,6 +2151,40 @@ def create_driver(payload: DriverIn, db: Session = Depends(get_db), user: User =
     if not has_perm(user, "drivers.access"):
         info.update(username="", password=None, qr_payload="", qr_svg="")
     return DriverAccessOut(**info)
+
+
+def _driver_staff(user: User) -> None:
+    if not (has_perm(user, "drivers.manage") or has_perm(user, "drivers.access")):
+        raise HTTPException(403, "Bu amal uchun ruxsat yo‘q")
+
+
+def _driver_perms_out(row: Driver) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "permissions": driver_permission_keys(row),
+        "catalog": DRIVER_PERMISSIONS,
+    }
+
+
+@router.get("/drivers/{item_id}/permissions")
+def get_driver_permissions(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _driver_staff(user)
+    return _driver_perms_out(get_org_row(db, Driver, item_id, user, "Haydovchi topilmadi"))
+
+
+@router.put("/drivers/{item_id}/permissions")
+def set_driver_permissions(
+    item_id: int,
+    payload: DriverPermsIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _driver_staff(user)
+    row = get_org_row(db, Driver, item_id, user, "Haydovchi topilmadi")
+    row.permissions_json = dump_driver_permissions(payload.permissions)
+    db.commit()
+    return _driver_perms_out(row)
 
 
 @router.get("/drivers/{item_id}/access", response_model=DriverAccessOut)

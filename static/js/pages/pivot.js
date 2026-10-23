@@ -7,6 +7,7 @@ const ZONE_NAMES = { rows: "Qatorlar", cols: "Ustunlar", filters: "Filtrlar", va
 const DIM_ZONES = ["rows", "cols", "filters"];
 const fmtInt = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 const fmtFloat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
+const fmtMoney = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
 const TEMPLATES = [
   {
@@ -68,10 +69,13 @@ const zoneOf = (k) => DIM_ZONES.find((z) => state[z].includes(k)) || "";
 const usedDims = () => [...state.rows, ...state.cols, ...state.filters];
 
 function fmt(v, kind) {
-  if (v == null || v === "") return "";
-  if (kind === "pct") return `${fmtFloat.format(v)}%`;
-  if (kind === "float") return fmtFloat.format(v);
-  return fmtInt.format(Math.round(Number(v) || 0));
+  if (v == null || v === "") return "—";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  if (kind === "pct") return `${fmtFloat.format(n)}%`;
+  if (kind === "float") return fmtFloat.format(n);
+  if (kind === "money") return fmtMoney.format(n);
+  return fmtInt.format(Math.round(n));
 }
 
 function cleanState(raw) {
@@ -90,7 +94,7 @@ function cleanState(raw) {
     for (const [k, v] of Object.entries(raw.vf)) if (seen.has(k) && Array.isArray(v) && v.length) s.vf[k] = v.map(String).slice(0, 1000);
   }
   s.subtotals = Boolean(raw.subtotals);
-  s.sort_by = measures.has(raw.sort_by) ? raw.sort_by : "";
+  s.sort_by = raw.sort_by === "label" || measures.has(raw.sort_by) ? raw.sort_by : "";
   s.sort_dir = raw.sort_dir === "asc" ? "asc" : "desc";
   return s;
 }
@@ -285,9 +289,13 @@ function renderResult() {
     return;
   }
 
+  const labelSort = state.sort_by === "label" ? ` sorted ${state.sort_dir}` : "";
   const dimHead = (rowspan) =>
     (dims.length ? dims : [{ key: "", label: "Jami" }])
-      .map((d) => `<th class="pv-dim-h" ${rowspan > 1 ? `rowspan="${rowspan}"` : ""} ${d.key ? `data-pv-sort-dim="1"` : ""} title="Nomi bo‘yicha saralash">${escapeHtml(d.label)}</th>`)
+      .map(
+        (d) =>
+          `<th class="pv-dim-h${d.key ? labelSort : ""}" ${rowspan > 1 ? `rowspan="${rowspan}"` : ""} ${d.key ? `data-pv-sort-dim="1"` : ""} title="Nomi bo‘yicha saralash">${escapeHtml(d.label)}</th>`
+      )
       .join("");
   const measureHead = (sortable) =>
     vals
@@ -299,7 +307,7 @@ function renderResult() {
       .join("");
   let head = "";
   if (cols.length) {
-    const groupTitle = (k) => escapeHtml(k.filter(Boolean).join(" · "));
+    const groupTitle = (k) => escapeHtml(k.filter(Boolean).join(" · ") || "—");
     if (nv === 1) {
       head = `<tr>${dimHead(1)}${cols.map((k) => `<th class="num pv-col-h">${groupTitle(k)}</th>`).join("")}<th class="num pv-total-h sortable${sortMark(vals[0].key)}" data-pv-sort="${vals[0].key}">Jami: ${escapeHtml(vals[0].label)}</th></tr>`;
     } else {
@@ -310,35 +318,56 @@ function renderResult() {
     head = `<tr>${dimHead(1)}${measureHead(true)}</tr>`;
   }
 
-  const numCells = (row, cls = "") => {
+  const numCells = (row) => {
     let out = "";
-    for (const chunk of row.cells || []) chunk.forEach((v, i) => (out += `<td class="num ${cls}">${fmt(v, vals[i].kind)}</td>`));
-    row.total.forEach((v, i) => (out += `<td class="num pv-total ${cls}">${fmt(v, vals[i].kind)}</td>`));
+    const chunks = cols.length ? row.cells || [] : [];
+    for (let c = 0; c < (cols.length || 0); c += 1) {
+      const chunk = chunks[c] || [];
+      for (let i = 0; i < nv; i += 1) {
+        const text = fmt(chunk[i], vals[i]?.kind);
+        out += `<td class="num${text === "—" ? " pv-na" : ""}">${text}</td>`;
+      }
+    }
+    const total = row.total || [];
+    for (let i = 0; i < nv; i += 1) {
+      const text = fmt(total[i], vals[i]?.kind);
+      out += `<td class="num pv-total${text === "—" ? " pv-na" : ""}">${text}</td>`;
+    }
     return out;
   };
-  let prev = [];
+  const keyCells = (labels) => {
+    const cells = [];
+    for (let i = 0; i < nd; i += 1) {
+      const text = labels[i] == null || labels[i] === "" ? "—" : String(labels[i]);
+      cells.push(`<td class="pv-key"><div>${escapeHtml(text)}</div></td>`);
+    }
+    return cells.join("");
+  };
+  const subAt = {};
+  for (const row of result.rows) {
+    if (row.type === "subtotal") subAt[row.level || 0] = (subAt[row.level || 0] || 0) + 1;
+  }
   const bodyRows = result.rows
     .map((row) => {
       if (row.type === "subtotal") {
-        const lvl = row.level || 0;
-        prev = prev.slice(0, lvl);
-        const pad = lvl ? `<td colspan="${lvl}"></td>` : "";
-        return `<tr class="pv-sub lvl-${Math.min(lvl, 3)}">${pad}<td colspan="${nd - lvl}">${escapeHtml(row.keys[row.keys.length - 1])} — jami</td>${numCells(row)}</tr>`;
+        const lvl = Math.min(row.level || 0, nd - 1);
+        // Bitta tashkilot bo‘lsa uning jamisi «Umumiy jami» bilan bir xil — pastga ikki qator ustma-ust chiqmasin
+        if (lvl === 0 && subAt[0] === 1) return "";
+        const pad = lvl ? `<td class="pv-key pv-pad" colspan="${lvl}"></td>` : "";
+        const label = `<td class="pv-key pv-sub-label" colspan="${nd - lvl}"><div>${escapeHtml(row.keys?.[row.keys.length - 1] || "—")} — jami</div></td>`;
+        return `<tr class="pv-sub lvl-${Math.min(lvl, 3)}">${pad}${label}${numCells(row)}</tr>`;
       }
-      const keys = row.keys.length ? row.keys : ["Jami"];
-      let differs = false;
-      const cells = keys
-        .map((k, i) => {
-          differs = differs || prev[i] !== k || i === keys.length - 1;
-          return `<td class="pv-key">${differs ? `<div>${escapeHtml(k)}</div>` : ""}</td>`;
-        })
-        .join("");
-      prev = keys;
-      return `<tr>${cells}${numCells(row)}</tr>`;
+      const keys = row.keys?.length ? row.keys : ["Jami"];
+      return `<tr>${keyCells(keys)}${numCells(row)}</tr>`;
     })
     .join("");
-  const total = dims.length ? `<tfoot><tr class="pv-grand"><td colspan="${nd}">Umumiy jami</td>${numCells(result.total)}</tr></tfoot>` : "";
+  const grandKeys = `<td class="pv-key" colspan="${nd}">Umumiy jami</td>`;
+  const total = `<tfoot><tr class="pv-grand">${grandKeys}${numCells(result.total)}</tr></tfoot>`;
   box.innerHTML = `<div class="table-wrap pv-table"><table><thead>${head}</thead><tbody>${bodyRows}</tbody>${total}</table></div>`;
+  const wrap = box.querySelector(".pv-table");
+  if (wrap) wrap.scrollTop = 0;
+  const headRow = box.querySelector("thead tr");
+  if (headRow && wrap) wrap.style.setProperty("--pv-head-1", `${headRow.getBoundingClientRect().height}px`);
 }
 
 // ---------- qiymat filtri oynasi ----------
@@ -648,7 +677,8 @@ function onClick(e) {
     return;
   }
   if (e.target.closest("th[data-pv-sort-dim]")) {
-    state.sort_by = "";
+    if (state.sort_by === "label") state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+    else Object.assign(state, { sort_by: "label", sort_dir: "asc" });
     scheduleRun(0);
   }
 }

@@ -269,6 +269,7 @@ class DriverOut(Schema):
     has_password: bool = False
     online: bool = False
     seen_at: str | None = None
+    permissions: list[str] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -289,6 +290,10 @@ class DriverAccessIn(Schema):
     reset_qr: bool = False
     username: Annotated[str, Field(max_length=40)] | None = None
     password: Annotated[str, Field(max_length=64)] | None = None
+
+
+class DriverPermsIn(Schema):
+    permissions: list[str] = Field(default_factory=list, max_length=40)
 
 
 class DriverQrIn(Schema):
@@ -333,6 +338,7 @@ class GpsBatchIn(Schema):
 
 class DriverOrderStatusIn(Schema):
     status: Short
+    comment: Annotated[str, Field(max_length=500)] = ""
 
 
 class DriverStartIn(Schema):
@@ -408,7 +414,7 @@ class DayPlanOut(Schema):
 
 
 class PlanIn(Schema):
-    ids: Ids = Field(default_factory=list)
+    ids: list[int] = Field(default_factory=list, max_length=20000)
     driver_ids: Annotated[list[int], Field(max_length=1000)]
     delivery_date: DateStr
     window_start: TimeStr = "09:00"

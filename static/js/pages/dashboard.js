@@ -1,12 +1,13 @@
 import { api, can } from "../api.js";
 import { escapeHtml } from "../ui.js?v=91";
-import * as wsModule from "../workspace.js?v=99";
+import * as wsModule from "../workspace.js?v=101";
 
 // Har doim bindWorkspace() chaqirilgan (zayavkalar yuklangan) nusxadan o'qiymiz.
 function ws() {
   return window.__nxWorkspace || wsModule;
 }
 const filteredOrders = () => ws().filteredOrders();
+const dateOrderStats = () => (ws().dateOrderStats ? ws().dateOrderStats() : null);
 const getWarehouses = () => ws().getWarehouses();
 const hasGps = (o) => ws().hasGps(o);
 
@@ -619,6 +620,7 @@ export async function init(root) {
     focusedDriverId = e.detail?.id || null;
     redrawMap(true);
   };
+  bindDayStats(root);
   window.addEventListener("nexus:order-select", onSelect);
   window.addEventListener("nexus:orders-changed", onChanged);
   window.addEventListener("nexus:rail-resize", onResize);
@@ -639,6 +641,56 @@ export async function init(root) {
 }
 
 let paneVisible = true;
+
+const STAT_ROWS = [
+  ["total", "Jami", ""],
+  ["delivered", "Yetkazilgan", "ok"],
+  ["returned", "Qaytarilgan", "bad"],
+  ["in_transit", "Yo‘lda", ""],
+  ["assigned", "Tayinlangan", ""],
+  ["fresh", "Yangi", ""],
+];
+
+function renderDayStats() {
+  const box = document.getElementById("day-stats-rows");
+  const date = document.getElementById("day-stats-date");
+  const stats = dateOrderStats();
+  if (!box || !stats) return;
+  if (date) date.textContent = stats.label || "";
+  box.innerHTML = STAT_ROWS.map(
+    ([key, label, kind]) =>
+      `<div class="day-stats-cell ${kind}${key === "total" ? " span" : ""}"><b>${stats[key] || 0}</b><span>${label}</span></div>`
+  ).join("");
+}
+
+function setDayStatsOpen(open) {
+  const panel = document.getElementById("day-stats");
+  const btn = document.getElementById("day-stats-btn");
+  if (!panel || !btn) return;
+  panel.classList.toggle("hidden", !open);
+  btn.classList.toggle("active", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) renderDayStats();
+}
+
+function bindDayStats(root) {
+  root.querySelector("#day-stats-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const panel = document.getElementById("day-stats");
+    setDayStatsOpen(panel?.classList.contains("hidden"));
+  });
+  root.querySelector("#day-stats-close")?.addEventListener("click", () => setDayStatsOpen(false));
+  document.addEventListener("click", (e) => {
+    const panel = document.getElementById("day-stats");
+    if (!panel || panel.classList.contains("hidden")) return;
+    if (e.target.closest("#day-stats") || e.target.closest("#day-stats-btn")) return;
+    setDayStatsOpen(false);
+  });
+  window.addEventListener("nexus:orders-changed", () => {
+    const panel = document.getElementById("day-stats");
+    if (panel && !panel.classList.contains("hidden")) renderDayStats();
+  });
+}
 
 function startTimer() {
   if (timer) return;

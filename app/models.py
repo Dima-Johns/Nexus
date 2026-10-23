@@ -149,6 +149,8 @@ class Driver(Base):
     username: Mapped[str] = mapped_column(String(80), default="", index=True)
     password_hash: Mapped[str] = mapped_column(String(128), default="")
     qr_token: Mapped[str] = mapped_column(String(64), default="", index=True)
+    # Bo‘sh = barcha ilova ruxsatlari (eski haydovchilar). JSON ro‘yxat = tanlangan ruxsatlar.
+    permissions_json: Mapped[str] = mapped_column(Text, default="")
     gps_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     gps_accuracy: Mapped[float] = mapped_column(Float, default=0.0)
     seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

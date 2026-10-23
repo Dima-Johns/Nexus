@@ -1,11 +1,13 @@
 import { api, apiDownload, apiUpload, can } from "../api.js";
 import { onDriverAccessChange, openDriverAccess } from "../driver-access.js?v=91";
+import { openDriverPerms } from "../driver-perms.js?v=103";
 import { $, escapeHtml, formData, table, askConfirm, bindPhoneInputs, driverStatusHtml } from "../ui.js?v=91";
 
 const REFRESH_MS = 60000;
 
 const ICON_GPS = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>`;
 const ICON_LOGIN = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>`;
+const ICON_PERMS = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 5 6v6c0 4.2 2.8 7.4 7 9 4.2-1.6 7-4.8 7-9V6l-7-3z"/><path d="m9 12 2 2 4-4"/></svg>`;
 const ICON_TRASH = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
 
 let bound = false;
@@ -90,6 +92,7 @@ async function load(root) {
     const manage = can("drivers.manage");
     const access = can("drivers.access");
     const gps = can("tracking.live");
+    const staff = manage || access;
     if (!drivers.length) {
       box.innerHTML = `<div class="empty-list">Haydovchi yo‘q. ${manage ? "Yuqoridan qo‘shing yoki Excel import qiling." : "Qo‘shish uchun dostup kerak."}</div>`;
       return;
@@ -122,6 +125,10 @@ async function load(root) {
               ? `<button class="icon-btn row-icon" type="button" data-access="${d.id}" title="Ilovaga kirish: login, parol, QR" aria-label="Kirish">${ICON_LOGIN}</button>`
               : ""
           }${
+            staff
+              ? `<button class="icon-btn row-icon" type="button" data-perms="${d.id}" title="Ilova ruxsatlari" aria-label="Ruxsatlar">${ICON_PERMS}</button>`
+              : ""
+          }${
             manage
               ? `<button class="icon-btn row-icon danger" type="button" data-del="${d.id}" title="O‘chirish" aria-label="O‘chirish">${ICON_TRASH}</button>`
               : ""
@@ -151,9 +158,9 @@ function applyDriverPerms(root) {
   root.querySelectorAll(".admin-only").forEach((el) => el.classList.toggle("hidden", !manage));
   const hint = $("#driver-hint", root);
   if (!hint) return;
-  if (manage && access) hint.textContent = "Haydovchiga agent biriktiring; «Kirish» orqali ilovaga login, parol yoki QR bering.";
-  else if (access) hint.textContent = "«Kirish» tugmasi orqali haydovchiga ilovaga login, parol yoki QR bering.";
-  else if (manage) hint.textContent = "Har bir haydovchiga istalgan agent kodini ro‘yxatdan tanlab biriktiring.";
+  if (manage && access) hint.textContent = "Haydovchiga agent biriktiring. «Kirish» — login va QR, «Ruxsatlar» — ilovada nima qila olishi.";
+  else if (access) hint.textContent = "«Kirish» — login, parol yoki QR. «Ruxsatlar» — ilovada nima qila olishi.";
+  else if (manage) hint.textContent = "Agentni ro‘yxatdan biriktiring. «Ruxsatlar» — ilovada nima qila olishi.";
   else hint.textContent = "Ro‘yxatni ko‘rish rejimi: qo‘shish va kirish berish uchun dostup kerak.";
 }
 
@@ -257,6 +264,15 @@ export async function init(root) {
       }
     });
     root.addEventListener("click", async (e) => {
+      const permsId = e.target.closest("[data-perms]")?.dataset?.perms;
+      if (permsId) {
+        try {
+          await openDriverPerms(permsId);
+        } catch (ex) {
+          showMsg(root, ex.message);
+        }
+        return;
+      }
       const accessId = e.target.closest("[data-access]")?.dataset?.access;
       if (accessId) {
         try {
