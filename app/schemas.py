@@ -339,6 +339,8 @@ class GpsBatchIn(Schema):
 class DriverOrderStatusIn(Schema):
     status: Short
     comment: Annotated[str, Field(max_length=500)] = ""
+    lat: float | None = None
+    lng: float | None = None
 
 
 class DriverStartIn(Schema):
@@ -456,6 +458,8 @@ class OrderOut(Schema):
     proof_photos: list[str] = []
     proof_comment: str = ""
     proof_at: str | None = None
+    proof_lat: float | None = None
+    proof_lng: float | None = None
 
     class Config:
         from_attributes = True

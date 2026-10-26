@@ -425,6 +425,12 @@ function saveSession() {
   kvSet("route", route).catch(() => {});
 }
 
+function closeFix() {
+  if (!lastGps || Date.now() - lastGpsAt > 3 * 60 * 1000) return {};
+  if (!gpsOk(lastGps.lat, lastGps.lng) || isPlaceholder(lastGps.lat, lastGps.lng)) return {};
+  return { lat: Number(lastGps.lat), lng: Number(lastGps.lng) };
+}
+
 function gpsOk(lat, lng) {
   lat = Number(lat);
   lng = Number(lng);
@@ -1584,7 +1590,7 @@ async function sendStatusOnly() {
   }
   const btn = $("proof-send");
   if (btn) btn.disabled = true;
-  const item = { type: "status", orderId: proof.id, result: proof.result, comment, done_at: new Date().toISOString() };
+  const item = { type: "status", orderId: proof.id, result: proof.result, comment, done_at: new Date().toISOString(), ...closeFix() };
   try {
     await outboxPut(item);
   } catch {
@@ -1628,6 +1634,7 @@ async function sendProof() {
     photo_at: proof.photoAt || "",
     blob: proof.blob,
     extras: canAddPhotos() ? proof.extras.map((x) => x.blob) : [],
+    ...closeFix(),
   };
   try {
     await outboxPut(item);
@@ -1686,7 +1693,7 @@ function sendQueued(item) {
   if (item.type === "status") {
     return api(`/driver/orders/${item.orderId}/status`, {
       method: "POST",
-      body: { status: item.result, comment: item.comment || "" },
+      body: { status: item.result, comment: item.comment || "", lat: item.lat ?? null, lng: item.lng ?? null },
       timeout: 30000,
     });
   }
@@ -1697,6 +1704,10 @@ function sendQueued(item) {
     form.append("comment", item.comment || "");
     form.append("done_at", item.done_at || "");
     form.append("photo_at", item.photo_at || "");
+    if (item.lat != null && item.lng != null) {
+      form.append("lat", String(item.lat));
+      form.append("lng", String(item.lng));
+    }
     form.append("photo", item.blob, `proof_${item.orderId}.jpg`);
     (item.extras || []).forEach((b, i) => form.append("extra_photos", b, `proof_${item.orderId}_${i + 2}.jpg`));
     return api(`/driver/orders/${item.orderId}/proof`, { method: "POST", body: form, timeout: 90000 });

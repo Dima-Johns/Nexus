@@ -222,6 +222,8 @@ class Order(Base):
     proof_extra: Mapped[int] = mapped_column(Integer, default=0)
     proof_comment: Mapped[str] = mapped_column(String(500), default="")
     proof_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    proof_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    proof_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     client: Mapped[Client | None] = relationship(back_populates="orders")
     driver: Mapped[Driver | None] = relationship(back_populates="orders")

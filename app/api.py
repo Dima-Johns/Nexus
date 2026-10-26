@@ -383,7 +383,85 @@ def _order_out(o: Order) -> OrderOut:
         proof_photos=proof_extra_urls(o.id, getattr(o, "proof_photo", ""), getattr(o, "proof_extra", 0)),
         proof_comment=getattr(o, "proof_comment", "") or "",
         proof_at=o.proof_at.isoformat() if getattr(o, "proof_at", None) else None,
+        proof_lat=getattr(o, "proof_lat", None),
+        proof_lng=getattr(o, "proof_lng", None),
     )
+
+
+def _uz_point(lat, lng) -> tuple[float, float] | None:
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except (TypeError, ValueError):
+        return None
+    if 37 < lat < 46 and 55 < lng < 76:
+        return (lat, lng)
+    return None
+
+
+def _aware_dt(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _set_close_point(row: Order, lat, lng, driver: Driver | None, when: datetime) -> None:
+    """Yopilgan paytdagi telefon joyi. Eski nuqta ustidan yozilmaydi; kechikkan oflayn yuborish hozirgi joy bilan almashtirilmaydi."""
+    if getattr(row, "proof_lat", None) is not None:
+        return
+    point = _uz_point(lat, lng)
+    if point is None and driver is not None and getattr(driver, "gps_at", None):
+        gps_at = _aware_dt(driver.gps_at)
+        if abs((_aware_dt(when) - gps_at).total_seconds()) <= 15 * 60:
+            point = _uz_point(driver.geo_lat, driver.geo_lng)
+    if point:
+        row.proof_lat, row.proof_lng = point
+
+
+_close_miss_until: dict[int, float] = {}
+
+
+def _fill_close_points(db: Session, orders: list[Order]) -> None:
+    """Joyi yozilmagan eski yopilgan zayavka uchun shu paytdagi GPS nuqtasini bir marta topib saqlaydi."""
+    now = time.time()
+    if len(_close_miss_until) > 5000:
+        _close_miss_until.clear()
+    missing = []
+    for row in orders:
+        if row.status not in DONE_STATUSES or row.proof_lat is not None or not row.proof_at or not row.driver_id:
+            continue
+        if _close_miss_until.get(row.id, 0) > now:
+            continue
+        missing.append(row)
+    if not missing:
+        return
+    t0 = min(_aware_dt(row.proof_at) for row in missing) - timedelta(minutes=20)
+    t1 = max(_aware_dt(row.proof_at) for row in missing) + timedelta(minutes=20)
+    pings = (
+        db.query(GpsPing.driver_id, GpsPing.lat, GpsPing.lng, GpsPing.recorded_at)
+        .filter(GpsPing.driver_id.in_({row.driver_id for row in missing}), GpsPing.recorded_at >= t0, GpsPing.recorded_at <= t1)
+        .all()
+    )
+    by_driver: dict[int, list] = {}
+    for ping in pings:
+        by_driver.setdefault(ping.driver_id, []).append(ping)
+    changed = False
+    for row in missing:
+        proof_at = _aware_dt(row.proof_at)
+        best = None
+        best_dt = 20 * 60 + 1
+        for ping in by_driver.get(row.driver_id, []):
+            if not _uz_point(ping.lat, ping.lng):
+                continue
+            delta = abs((_aware_dt(ping.recorded_at) - proof_at).total_seconds())
+            if delta < best_dt:
+                best, best_dt = ping, delta
+        if best is not None:
+            row.proof_lat = float(best.lat)
+            row.proof_lng = float(best.lng)
+            changed = True
+        else:
+            _close_miss_until[row.id] = now + 900
+    if changed:
+        db.commit()
 
 
 def _warehouse_out(row: Warehouse) -> WarehouseOut:
@@ -882,6 +960,7 @@ def driver_order_status(
     row.status = status
     if status in {"delivered", "returned"}:
         row.proof_at = row.proof_at or datetime.now(timezone.utc)
+        _set_close_point(row, payload.lat, payload.lng, driver, row.proof_at)
         if status == "returned":
             row.proof_reason = row.proof_reason or "returned"
             row.proof_comment = comment
@@ -1141,6 +1220,8 @@ async def driver_order_proof(
     comment: str | None = Form(None, max_length=500),
     done_at: str = Form("", max_length=40),
     photo_at: str = Form("", max_length=40),
+    lat: str = Form("", max_length=40),
+    lng: str = Form("", max_length=40),
     photo: UploadFile = File(...),
     extra_photos: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
@@ -1188,7 +1269,7 @@ async def driver_order_proof(
         blob, kind = await run_in_threadpool(shrink_proof_photo, blob, kind)
         extras.append((blob, kind, await run_in_threadpool(upload_proof_photo, row, blob, kind)))
     return await run_in_threadpool(
-        _finish_proof, db, driver, row, data, mime, key, result, reason, comment, done_at, photo_at, extras
+        _finish_proof, db, driver, row, data, mime, key, result, reason, comment, done_at, photo_at, extras, lat, lng
     )
 
 
@@ -1225,6 +1306,8 @@ def _finish_proof(
     done_at: str,
     photo_at: str = "",
     extras: list[tuple[bytes, str | None, str]] | None = None,
+    lat: str = "",
+    lng: str = "",
 ):
     now = local_now()
     marked = _device_time(done_at, now) or now
@@ -1236,6 +1319,7 @@ def _finish_proof(
     row.proof_comment = comment
     row.proof_at = marked
     row.status = result
+    _set_close_point(row, lat, lng, driver, marked)
     if not repeat:
         shot = _device_time(photo_at, now) or marked
         log_event(db, row, "photo", driver=driver, at=shot, note=f"{1 + len(extras)} ta rasm" if extras else "")
@@ -2628,6 +2712,7 @@ def list_orders(
     if need:
         sequence_drivers(db, need, org_id_of(user))
         db.commit()
+    _fill_close_points(db, rows)
     return [_order_out(o) for o in rows]
 
 
@@ -2699,6 +2784,7 @@ def order_history(item_id: int, db: Session = Depends(get_db), user: User = Depe
     )
     if not row:
         raise HTTPException(404, "Zayavka topilmadi")
+    _fill_close_points(db, [row])
     return {"order": _order_out(row), "events": order_timeline(db, row)}
 
 

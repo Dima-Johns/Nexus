@@ -1,7 +1,7 @@
-import "./i18n.js?v=103";
-import { bindNavigation, render } from "./router.js?v=106";
+import "./i18n.js?v=106";
+import { bindNavigation, render } from "./router.js?v=109";
 import { bindProfile } from "./profile.js?v=100";
-import { bindWorkspace } from "./workspace.js?v=101";
+import { bindWorkspace } from "./workspace.js?v=102";
 import { bindDriverAccessModal } from "./driver-access.js?v=91";
 import { bindDriverPermsModal } from "./driver-perms.js?v=103";
 import { me, setMe, setToken, token } from "./api.js";

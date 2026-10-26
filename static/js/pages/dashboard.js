@@ -1,6 +1,7 @@
 import { api, can } from "../api.js";
 import { escapeHtml } from "../ui.js?v=91";
-import * as wsModule from "../workspace.js?v=101";
+import * as wsModule from "../workspace.js?v=102";
+import { closeCoords, closeMeters, closePhrase } from "../close-place.js?v=1";
 
 // Har doim bindWorkspace() chaqirilgan (zayavkalar yuklangan) nusxadan o'qiymiz.
 function ws() {
@@ -17,6 +18,7 @@ const OSRM_MAX = 80;
 let map = null;
 let vehicleMarkers = {};
 let orderMarkers = {};
+let closeMarkers = {};
 let pinLayer = null;
 let sketchLayer = null;
 let roadLayer = null;
@@ -229,7 +231,9 @@ function popupHtml(o, n) {
   const driver = String(o.driver_name || "").trim();
   const stop = n ? `To‘xtash ${n}<br>` : "";
   const driverLine = driver ? `<br><b>${escapeHtml(driver)}</b>` : "";
-  return `${stop}<b>${escapeHtml(o.client_name || "Do‘kon")}</b><br>${escapeHtml(o.dropoff_address || "")}${driverLine}<br><small>${escapeHtml(o.code)}</small>`;
+  const meters = closeMeters(o);
+  const here = meters != null && meters <= 80 ? `<br><small>${escapeHtml(closePhrase(o))}</small>` : "";
+  return `${stop}<b>${escapeHtml(o.client_name || "Do‘kon")}</b><br>${escapeHtml(o.dropoff_address || "")}${driverLine}<br><small>${escapeHtml(o.code)}</small>${here}`;
 }
 
 function validPoint(o) {
@@ -299,6 +303,7 @@ function drawStores(groups = null) {
   if (pinLayer) pinLayer.remove();
   pinLayer = L.layerGroup().addTo(map);
   orderMarkers = {};
+  closeMarkers = {};
   const showLabel = map.getZoom() >= 14;
   const routed = groups || routeGroups();
   const stopOf = new Map();
@@ -327,6 +332,29 @@ function drawStores(groups = null) {
       }
     });
     orderMarkers[o.id] = marker;
+    const closed = closeCoords(o);
+    const meters = closeMeters(o);
+    if (!closed || meters == null || meters <= 40) return;
+    const spot = L.marker(closed, {
+      icon: L.divIcon({
+        className: "order-pin",
+        html: `<div class="close-pin${o.status === "returned" ? " returned" : ""}">✓</div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      }),
+      zIndexOffset: 700,
+    })
+      .addTo(pinLayer)
+      .bindPopup(
+        `<b>Yopilgan joy</b><br>${escapeHtml(closePhrase(o))}<br><small>${escapeHtml(o.client_name || o.code || "")}</small>`
+      );
+    L.polyline([[Number(o.dropoff_lat), Number(o.dropoff_lng)], closed], {
+      color: o.status === "returned" ? "#d97706" : "#16a34a",
+      weight: 2,
+      dashArray: "4 6",
+      opacity: 0.9,
+    }).addTo(pinLayer);
+    closeMarkers[o.id] = spot;
   });
   const start = warehousePoint(visibleOrders());
   if (start) {
@@ -439,8 +467,18 @@ function focusStore(detail) {
   drawStores();
   const lat = Number(detail.lat);
   const lng = Number(detail.lng);
-  if (!(lat > 37 && lat < 46 && lng > 55 && lng < 76)) return;
-  map.flyTo([lat, lng], 16, { duration: 0.6 });
+  const closeLat = Number(detail.closeLat);
+  const closeLng = Number(detail.closeLng);
+  const storeOk = lat > 37 && lat < 46 && lng > 55 && lng < 76;
+  const closeOk = closeLat > 37 && closeLat < 46 && closeLng > 55 && closeLng < 76;
+  if (detail.focusClose && closeOk && storeOk && closeMarkers[detail.id]) {
+    map.fitBounds([[lat, lng], [closeLat, closeLng]], { padding: [64, 64], maxZoom: 16 });
+    setTimeout(() => closeMarkers[detail.id].openPopup(), 350);
+    return;
+  }
+  const target = detail.focusClose && closeOk ? [closeLat, closeLng] : [lat, lng];
+  if (!(target[0] > 37 && target[0] < 46 && target[1] > 55 && target[1] < 76)) return;
+  map.flyTo(target, 16, { duration: 0.6 });
   const marker = orderMarkers[detail.id];
   if (marker) setTimeout(() => marker.openPopup(), 350);
 }
@@ -732,6 +770,7 @@ export function destroy() {
   hide();
   vehicleMarkers = {};
   orderMarkers = {};
+  closeMarkers = {};
   selectedId = null;
   focusedDriverId = null;
   pickedVehId = null;

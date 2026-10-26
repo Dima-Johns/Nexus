@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { escapeHtml } from "./ui.js?v=91";
 import { proofThumb } from "./proof-photo.js?v=91";
+import { closeCoords, closePhrase } from "./close-place.js?v=1";
 
 const STATUS = {
   new: "Yangi",
@@ -64,6 +65,14 @@ function ensureBox() {
   return box;
 }
 
+function closeInfo(o) {
+  const phrase = closePhrase(o);
+  const point = closeCoords(o);
+  if (!phrase || !point) return "";
+  const href = `https://www.google.com/maps?q=${point[0]},${point[1]}`;
+  return infoRow("Yopilgan joy", `${escapeHtml(phrase)} · <a href="${href}" target="_blank" rel="noopener">Xaritada</a>`);
+}
+
 function infoRow(label, value) {
   if (value == null || value === "") return "";
   return `<div class="oh-info-row"><span class="muted">${escapeHtml(label)}</span><b>${value}</b></div>`;
@@ -85,6 +94,7 @@ function render(order, events) {
     infoRow("Sklad", escapeHtml(o.warehouse_name || "")),
     infoRow("Summa", o.amount ? escapeHtml(Number(o.amount).toLocaleString("uz-UZ")) : ""),
     infoRow("Yakunlangan", o.proof_at ? escapeHtml(fmt(o.proof_at)) : ""),
+    closeInfo(o),
   ].join("");
   const proof =
     o.proof_photo || reason || o.proof_comment

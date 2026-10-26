@@ -1,7 +1,8 @@
 import { api, apiUpload, token } from "./api.js";
 import { $, $$, askConfirm, escapeHtml, formData } from "./ui.js?v=91";
 import { proofThumb } from "./proof-photo.js?v=91";
-import { openOrderHistory } from "./order-history.js?v=91";
+import { openOrderHistory } from "./order-history.js?v=92";
+import { closeCoords, closePhrase } from "./close-place.js?v=1";
 
 let orders = [];
 let filter = "incoming";
@@ -455,7 +456,8 @@ function orderCardHtml(o) {
     ? `Agent ${escapeHtml(o.agent_code)}${o.sales_rep ? " - " + escapeHtml(o.sales_rep) : ""}`
     : escapeHtml(o.sales_rep || "Agent ko‘rsatilmagan");
   const badge = escapeHtml(o.route_code || o.status || "—");
-  return `<div class="order-card${checked ? " selected" : ""}" data-id="${o.id}" data-lat="${o.dropoff_lat}" data-lng="${o.dropoff_lng}" data-name="${escapeHtml(o.client_name || "")}" data-addr="${escapeHtml(o.dropoff_address || "")}">
+  const closed = closeCoords(o);
+  return `<div class="order-card${checked ? " selected" : ""}" data-id="${o.id}" data-lat="${o.dropoff_lat}" data-lng="${o.dropoff_lng}" data-close-lat="${closed ? closed[0] : ""}" data-close-lng="${closed ? closed[1] : ""}" data-name="${escapeHtml(o.client_name || "")}" data-addr="${escapeHtml(o.dropoff_address || "")}">
         <label class="chk card-chk"><input type="checkbox" data-check="${o.id}" ${checked ? "checked" : ""} aria-label="Tanlash" /></label>
         <div class="order-body">
           <div class="order-card-top">
@@ -468,6 +470,7 @@ function orderCardHtml(o) {
           <button type="button" class="oc-name oc-client" data-history="${o.id}" title="Zayavka tarixini ko‘rish">${escapeHtml(o.client_name || "—")}</button>
           <div class="order-agent">${agentLine}</div>
           ${proofHtml(o)}
+          ${closeWhereHtml(o)}
         </div>
       </div>`;
 }
@@ -479,6 +482,12 @@ const PROOF_LABELS = {
   returned: "Qaytarildi",
   delivered: "Yetkazildi",
 };
+
+function closeWhereHtml(o) {
+  const phrase = closePhrase(o);
+  if (!phrase) return "";
+  return `<button type="button" class="close-where" data-close-where="1">${escapeHtml(phrase)}</button>`;
+}
 
 function proofHtml(o) {
   if (!o.proof_photo && !o.proof_reason) return "";
@@ -1558,12 +1567,16 @@ export function bindWorkspace() {
     }
     const card = e.target.closest(".order-card");
     if (!card) return;
+    const where = e.target.closest("[data-close-where]");
     window.dispatchEvent(
       new CustomEvent("nexus:order-select", {
         detail: {
           id: card.dataset.id,
           lat: Number(card.dataset.lat),
           lng: Number(card.dataset.lng),
+          closeLat: Number(card.dataset.closeLat) || 0,
+          closeLng: Number(card.dataset.closeLng) || 0,
+          focusClose: !!where,
           name: card.dataset.name || "",
           addr: card.dataset.addr || "",
         },
