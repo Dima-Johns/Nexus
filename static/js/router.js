@@ -1,4 +1,4 @@
-import { api, can, me, setMe, setToken, token } from "./api.js";
+import { api, can, isSuper, me, setMe, setToken, token } from "./api.js";
 import { $, $$ } from "./ui.js?v=91";
 import { refreshWorkspace, resetWorkspace, syncWorkspace } from "./workspace.js?v=102";
 import { renderProfile } from "./profile.js?v=100";
@@ -59,8 +59,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=109`),
-    import(`/static/js/pages/${name}.js?v=109`),
+    fetch(`/static/pages/${name}.html?v=110`),
+    import(`/static/js/pages/${name}.js?v=110`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;
@@ -135,7 +135,10 @@ async function showPane(name, seq) {
 
 function applyPerms() {
   $$("[data-perm]").forEach((el) => {
-    const ok = el.dataset.perm.split(",").some((k) => can(k.trim()));
+    const ok = el.dataset.perm.split(",").some((k) => {
+      const key = k.trim();
+      return key === "superadmin" ? isSuper() : can(key);
+    });
     el.classList.toggle("hidden", !ok);
   });
 }

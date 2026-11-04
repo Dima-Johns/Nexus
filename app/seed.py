@@ -82,13 +82,54 @@ def ensure_org_codes(db: Session) -> None:
 
 
 def ensure_superadmin(db: Session) -> None:
-    """Superadmin yo‘q bo‘lsa — mavjud administratorlar superadmin qilinadi."""
-    if db.query(User).filter(User.role == "superadmin").first():
+    """Superadmin yo‘q bo‘lsa — mavjud administratorlar superadmin qilinadi.
+
+    Bir martalik «repair_superadmin_login_v1»: kirish buzilganda (parol drift / hesh)
+    superadmin parolini ADMIN_PASSWORD yoki admin123 ga qaytaradi. Keyin faqat
+    ADMIN_PASSWORD berilganda moslashtiriladi.
+    """
+    from sqlalchemy import text
+
+    from .auth import hash_password, verify_password
+
+    if not db.query(User).filter(User.role == "superadmin").first():
+        admins = db.query(User).filter(User.role == "admin").all()
+        for user in admins:
+            user.role = "superadmin"
+        db.commit()
+
+    supers = db.query(User).filter(User.role == "superadmin").all()
+    if not supers:
         return
-    admins = db.query(User).filter(User.role == "admin").all()
-    for user in admins:
-        user.role = "superadmin"
+
+    pwd_env = (os.getenv("ADMIN_PASSWORD") or "").strip()
+    claimed = db.execute(
+        text(
+            "INSERT INTO app_migrations (key) VALUES ('repair_superadmin_login_v1') "
+            "ON CONFLICT DO NOTHING RETURNING key"
+        )
+    ).scalar()
     db.commit()
+    if claimed:
+        reset_to = pwd_env or "admin123"
+        for user in supers:
+            user.password_hash = hash_password(reset_to)
+            user.is_active = True
+        db.commit()
+        print("[nexus] Superadmin kirishi tiklandi (bir martalik repair)", flush=True)
+        return
+
+    if not pwd_env:
+        return
+    changed = False
+    for user in supers:
+        if not verify_password(pwd_env, user.password_hash):
+            user.password_hash = hash_password(pwd_env)
+            user.is_active = True
+            changed = True
+    if changed:
+        db.commit()
+        print("[nexus] Superadmin paroli ADMIN_PASSWORD ga moslashtirildi", flush=True)
 
 
 def ensure_dispatcher_perms(db: Session) -> None:

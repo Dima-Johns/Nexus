@@ -46,13 +46,12 @@ async def lifespan(_: FastAPI):
     migrate_schema()
     db = SessionLocal()
     try:
-        from .models import SessionToken
         from .seed import ensure_dispatcher_perms, ensure_org_codes, ensure_superadmin, ensure_tenancy
 
         ensure_tenancy(db)
         ensure_dispatcher_perms(db)
-        db.query(SessionToken).filter(SessionToken.driver_id.is_(None)).delete()
-        db.commit()
+        # Deployda barcha panel sessiyalarini o‘chirmaymiz — admin/dispetcher har safar qayta
+        # kiritilmasin. Muddati o‘tganlar idle_timeout bilan get_current_user da yopiladi.
         seed_if_empty(db)
         ensure_superadmin(db)
         ensure_org_codes(db)

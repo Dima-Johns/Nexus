@@ -1674,14 +1674,17 @@ export async function init(root) {
 
   $("#drv-search", root)?.addEventListener("input", () => renderDrivers(root));
   const drvForm = $("#admin-driver-form", root);
-  $("#drv-add-toggle", root).onclick = () => {
-    drvForm.classList.toggle("hidden");
-    if (!drvForm.classList.contains("hidden")) drvForm.querySelector("[name=name]")?.focus();
-  };
-  $("#drv-add-cancel", root).onclick = () => {
-    drvForm.reset();
-    drvForm.classList.add("hidden");
-  };
+  const drvAdd = $("#drv-add-toggle", root);
+  if (drvAdd && drvForm) {
+    drvAdd.onclick = () => {
+      drvForm.classList.toggle("hidden");
+      if (!drvForm.classList.contains("hidden")) drvForm.querySelector("[name=name]")?.focus();
+    };
+  }
+  $("#drv-add-cancel", root)?.addEventListener("click", () => {
+    drvForm?.reset();
+    drvForm?.classList.add("hidden");
+  });
 
   const entitySel = $("#tpl-entity", root);
   if (entitySel) {
@@ -1714,7 +1717,8 @@ export async function init(root) {
     };
   }
 
-  $("#drv-excel", root).onclick = async () => {
+  const drvExcel = $("#drv-excel", root);
+  if (drvExcel) drvExcel.onclick = async () => {
     try {
       const id = await driverTplId();
       if (id) await apiDownload(`/templates/${id}/excel`, "Haydovchilar_shablon.xlsx");
@@ -1725,14 +1729,17 @@ export async function init(root) {
     }
   };
 
-  $("#drv-import-btn", root).onclick = () => {
-    $("#drv-import-file", root).value = "";
-    $("#drv-import-file", root).click();
-  };
-  $("#drv-import-file", root).onchange = async () => {
-    const file = $("#drv-import-file", root).files[0];
+  $("#drv-import-btn", root)?.addEventListener("click", () => {
+    const input = $("#drv-import-file", root);
+    if (!input) return;
+    input.value = "";
+    input.click();
+  });
+  $("#drv-import-file", root)?.addEventListener("change", async () => {
+    const file = $("#drv-import-file", root)?.files?.[0];
     if (!file) return;
     const err = $("#admin-drv-err", root);
+    if (!err) return;
     err.classList.add("hidden");
     try {
       const data = await apiUpload("/drivers/import", file);
@@ -1746,14 +1753,15 @@ export async function init(root) {
       err.style.color = "";
       err.textContent = ex.message;
     } finally {
-      $("#drv-import-file", root).value = "";
+      const input = $("#drv-import-file", root);
+      if (input) input.value = "";
     }
-  };
+  });
 
-  drvForm.onsubmit = async (e) => {
+  if (drvForm) drvForm.onsubmit = async (e) => {
     e.preventDefault();
     const err = $("#admin-drv-err", root);
-    err.classList.add("hidden");
+    if (err) err.classList.add("hidden");
     const d = formData(e.target);
     d.agent_id = d.agent_id ? Number(d.agent_id) : null;
     try {

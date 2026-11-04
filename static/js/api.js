@@ -13,10 +13,18 @@ export function setMe(user) {
   me = user;
 }
 
-// Admin ruxsatlari serverda hisoblanadi (orgs.manage faqat superadmin bergandan keyin keladi)
+// Serverdagi permissions_of bilan bir xil: admin roli SUPER_ONLY dan tashqari hammaga ega
+const SUPER_ONLY = new Set(["orgs.manage", "proofs.view"]);
+
 export function can(key) {
   if (!me) return false;
   if (me.role === "superadmin") return true;
+  if (me.role === "admin") {
+    if (SUPER_ONLY.has(key)) {
+      return Array.isArray(me.permissions) && me.permissions.includes(key);
+    }
+    return true;
+  }
   return Array.isArray(me.permissions) && me.permissions.includes(key);
 }
 

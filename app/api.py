@@ -586,23 +586,33 @@ def _template_out(t: ImportTemplate) -> TemplateOut:
     )
 
 
+def _login_superadmin(db: Session, username: str, password: str) -> User | None:
+    """Login katta-kichik harfga bog‘liq emas; bir nechta mos keluvchidan parol tekshiriladi."""
+    uname = (username or "").strip()
+    if not uname:
+        return None
+    candidates = (
+        db.query(User)
+        .options(joinedload(User.org))
+        .filter(User.role == "superadmin", func.lower(User.username) == uname.lower(), User.is_active.is_(True))
+        .all()
+    )
+    return next((u for u in candidates if verify_password(password, u.password_hash)), None)
+
+
 @router.post("/auth/login")
 def login(payload: LoginIn, db: Session = Depends(get_db)):
     code = (payload.org_code or "").strip()
+    username = (payload.username or "").strip()
+    password = payload.password
     if not code:
-        candidates = (
-            db.query(User)
-            .options(joinedload(User.org))
-            .filter(User.role == "superadmin", User.username == payload.username.strip(), User.is_active.is_(True))
-            .all()
-        )
-        user = next((u for u in candidates if verify_password(payload.password, u.password_hash)), None)
+        user = _login_superadmin(db, username, password)
         if not user:
             raise HTTPException(
                 status_code=401,
                 detail="Login yoki parol noto‘g‘ri. Superadmin bo‘lmasangiz, tashkilot kodini kiriting",
             )
-        upgrade_password(user, payload.password)
+        upgrade_password(user, password)
         token = create_token(db, user)
         return {"token": token, "user": user_payload(user)}
     if not is_org_code(code):
@@ -613,16 +623,22 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
         user = (
             db.query(User)
             .options(joinedload(User.org))
-            .filter(User.org_id == org.id, User.username == payload.username.strip())
+            .filter(User.org_id == org.id, func.lower(User.username) == username.lower())
             .first()
         )
-    if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Tashkilot kodi, login yoki parol noto‘g‘ri")
-    if not org.is_active and user.role != "superadmin":
-        raise HTTPException(status_code=403, detail="Tashkilot faol emas. Administrator bilan bog‘laning")
-    upgrade_password(user, payload.password)
-    token = create_token(db, user)
-    return {"token": token, "user": user_payload(user)}
+    if user and user.is_active and verify_password(password, user.password_hash):
+        if not org.is_active and user.role != "superadmin":
+            raise HTTPException(status_code=403, detail="Tashkilot faol emas. Administrator bilan bog‘laning")
+        upgrade_password(user, password)
+        token = create_token(db, user)
+        return {"token": token, "user": user_payload(user)}
+    # Eslab qolingan tashkilot kodi superadmin kirishini to‘smasin
+    user = _login_superadmin(db, username, password)
+    if user:
+        upgrade_password(user, password)
+        token = create_token(db, user)
+        return {"token": token, "user": user_payload(user)}
+    raise HTTPException(status_code=401, detail="Tashkilot kodi, login yoki parol noto‘g‘ri")
 
 
 @router.get("/auth/me", response_model=UserOut)

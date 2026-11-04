@@ -34,7 +34,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Login tashkilot ichida unikal (ux_users_org_username, migrate.py)
     username: Mapped[str] = mapped_column(String(80), index=True)
-    password_hash: Mapped[str] = mapped_column(String(128))
+    password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(160))
     role: Mapped[str] = mapped_column(String(32), default="dispatcher")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -147,7 +147,7 @@ class Driver(Base):
     agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     username: Mapped[str] = mapped_column(String(80), default="", index=True)
-    password_hash: Mapped[str] = mapped_column(String(128), default="")
+    password_hash: Mapped[str] = mapped_column(String(255), default="")
     qr_token: Mapped[str] = mapped_column(String(64), default="", index=True)
     # Bo‘sh = barcha ilova ruxsatlari (eski haydovchilar). JSON ro‘yxat = tanlangan ruxsatlar.
     permissions_json: Mapped[str] = mapped_column(Text, default="")
