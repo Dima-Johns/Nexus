@@ -3,15 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#0c101c" />
+  <meta name="theme-color" content="#eef1f6" id="theme-color-meta" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Nexus Haydovchi</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("nx_theme");
+        document.documentElement.dataset.theme = t === "dark" || t === "light" ? t : "light";
+      } catch (e) {
+        document.documentElement.dataset.theme = "light";
+      }
+    })();
+  </script>
   <link rel="manifest" href="/static/driver-manifest.json" />
   <link rel="icon" href="/static/brand/nexus-logo.webp" type="image/webp" />
   <link rel="apple-touch-icon" href="/static/brand/nexus-logo.webp" />
   <link rel="preload" href="/static/brand/nexus-logo.webp" as="image" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=27" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=28" />
   <link rel="stylesheet" href="/static/css/datepicker.css?v=2" />
 </head>
 <body>
@@ -228,6 +238,13 @@
         </div>
       </div>
       <div class="profile-rows" id="profile-rows"></div>
+      <button type="button" class="profile-theme" id="btn-theme" aria-label="Ko‘rinish">
+        <span>Ko‘rinish</span>
+        <span class="profile-theme-val">
+          <svg id="theme-icon" viewBox="0 0 24 24" aria-hidden="true"></svg>
+          <b id="theme-label">Kun rejimi</b>
+        </span>
+      </button>
       <button class="btn danger full" id="btn-out" type="button">Chiqish</button>
       <p class="muted profile-ver">Nexus Logistika · Haydovchi ilovasi</p>
     </div>
@@ -272,6 +289,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/static/js/datepicker.js?v=2"></script>
-  <script src="/static/js/driver-app.js?v=32"></script>
+  <script src="/static/js/driver-app.js?v=33"></script>
 </body>
 </html>

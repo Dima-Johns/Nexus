@@ -1,9 +1,44 @@
 const API = "/api";
 const L = window.L;
 const TOKEN_KEY = "nx_drv_token";
+const THEME_KEY = "nx_theme";
+const SUN_SVG =
+  '<circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />';
+const MOON_SVG = '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />';
 
 let token = localStorage.getItem(TOKEN_KEY) || "";
 let driver = null;
+
+function currentTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  return saved === "dark" || saved === "light" ? saved : "light";
+}
+
+function applyTheme(theme) {
+  const next = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem(THEME_KEY, next);
+  const meta = document.getElementById("theme-color-meta");
+  if (meta) meta.content = next === "dark" ? "#0c101c" : "#eef1f6";
+  syncThemeUi();
+}
+
+function syncThemeUi() {
+  const light = currentTheme() === "light";
+  const icon = $("theme-icon");
+  const label = $("theme-label");
+  const btn = $("btn-theme");
+  if (icon) icon.innerHTML = light ? MOON_SVG : SUN_SVG;
+  if (label) label.textContent = light ? "Tun rejimi" : "Kun rejimi";
+  if (btn) {
+    btn.title = label?.textContent || "";
+    btn.setAttribute("aria-label", btn.title);
+  }
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme() === "dark" ? "light" : "dark");
+}
 
 function canDrv(key) {
   const list = driver?.permissions;
@@ -341,6 +376,7 @@ let outArmed = null;
 
 function openProfile() {
   renderProfile();
+  syncThemeUi();
   setNet();
   resetLogoutBtn();
   $("profile-sheet")?.classList.remove("hidden");
@@ -2573,6 +2609,10 @@ function bind() {
   $("btn-out").addEventListener("click", onLogoutClick);
   $("btn-profile")?.addEventListener("click", openProfile);
   $("profile-close")?.addEventListener("click", closeProfile);
+  $("btn-theme")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleTheme();
+  });
   $("profile-sheet")?.addEventListener("click", (e) => {
     if (e.target === $("profile-sheet")) closeProfile();
   });
@@ -2751,6 +2791,7 @@ function bind() {
 }
 
 async function boot() {
+  applyTheme(currentTheme());
   bind();
   // Service worker sahifani keshlaydi: Android ilova ham internetsiz ochilib, zayavkalar bilan ishlaydi
   try {

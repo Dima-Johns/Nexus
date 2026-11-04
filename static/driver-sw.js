@@ -1,10 +1,10 @@
-const CACHE = "nexus-driver-v33";
+const CACHE = "nexus-driver-v34";
 const SHELL = [
   "/driver/",
-  "/static/css/driver.css?v=27",
+  "/static/css/driver.css?v=28",
   "/static/css/datepicker.css?v=2",
   "/static/js/datepicker.js?v=2",
-  "/static/js/driver-app.js?v=32",
+  "/static/js/driver-app.js?v=33",
   "/static/driver-manifest.json",
   "/static/brand/nexus-logo.webp",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
