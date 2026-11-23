@@ -291,9 +291,22 @@ function withGpsLock(fn) {
   return run;
 }
 
+function detailMessage(detail, fallback) {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    const first = detail[0];
+    if (typeof first === "string") return first;
+    if (first && typeof first.msg === "string") return first.msg;
+  }
+  if (detail && typeof detail === "object" && typeof detail.msg === "string") return detail.msg;
+  return fallback;
+}
+
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  // Login/QR so‘rovlariga eski Bearer qo‘shilmasin — 401 da sessiya chalkashmasin
+  const authCall = path.startsWith("/auth/");
+  if (token && !authCall) headers.Authorization = `Bearer ${token}`;
   let body = opts.body;
   if (body && typeof body === "object" && !(body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
@@ -305,23 +318,28 @@ async function api(path, opts = {}) {
   let res;
   try {
     res = await fetch(API + path, { ...rest, headers, body, signal: ctrl?.signal });
+  } catch (netErr) {
+    clearTimeout(timer);
+    const err = new Error(navigator.onLine ? "Serverga ulanib bo‘lmadi" : "Internet yo‘q");
+    err.status = 0;
+    err.cause = netErr;
+    throw err;
   } finally {
     clearTimeout(timer);
   }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) {
-    const lost = !!headers.Authorization && headers.Authorization === `Bearer ${token}`;
+    const lost = !authCall && !!headers.Authorization && headers.Authorization === `Bearer ${token}`;
     token = "";
     localStorage.removeItem(TOKEN_KEY);
     kvSet("token", "").catch(() => {});
-    const err = new Error(typeof data.detail === "string" ? data.detail : "Sessiya yaroqsiz");
+    const err = new Error(detailMessage(data.detail, "Sessiya yaroqsiz"));
     err.status = 401;
     if (lost) onSessionLost(err.message);
     throw err;
   }
   if (!res.ok) {
-    const d = data.detail;
-    const err = new Error(typeof d === "string" ? d : "Xatolik");
+    const err = new Error(detailMessage(data.detail, "Xatolik"));
     err.status = res.status;
     throw err;
   }
@@ -2384,16 +2402,21 @@ async function enterApp(payload) {
   localStorage.setItem(TOKEN_KEY, token);
   saveSession();
   show("view-app");
-  renderProfile();
-  renderNoticeBadge();
-  drawMap();
-  startGps();
-  startHeartbeat();
-  nativeTracking(true);
+  // Login allaqachon muvaffaqiyatli — UI/GPS xatosi qayta login oynasiga tashlamasin
+  try {
+    renderProfile();
+    renderNoticeBadge();
+    drawMap();
+    startGps();
+    startHeartbeat();
+    nativeTracking(true);
+  } catch {
+    /* ignore */
+  }
   try {
     await pullRoute();
   } catch (err) {
-    const cached = await kvGet("route");
+    const cached = await kvGet("route").catch(() => null);
     if (cached) applyRoute(cached);
     else setSync(err.message || "Yuklanmadi", true);
   }
@@ -2402,14 +2425,30 @@ async function enterApp(payload) {
 async function login(ev) {
   ev.preventDefault();
   $("login-err").textContent = "";
+  const form = $("login-form");
+  const btn = form?.querySelector('button[type="submit"]');
+  if (btn) btn.disabled = true;
   try {
+    // Android WebView autofill ba’zan input.value ni bo‘sh qoldiradi — FormData ishonchliroq
+    const fd = form ? new FormData(form) : null;
+    const username = String(fd?.get("username") || $("login-user")?.value || "").trim();
+    const password = String(fd?.get("password") || $("login-pass")?.value || "");
+    if (!username || !password) {
+      $("login-err").textContent = "Login va parolni kiriting";
+      return;
+    }
+    // Autofill qiymatini maydonga yozib qo‘yamiz (keyingi urinishlar uchun)
+    if ($("login-user") && !$("login-user").value) $("login-user").value = username;
+    if ($("login-pass") && !$("login-pass").value) $("login-pass").value = password;
     const data = await api("/auth/driver-login", {
       method: "POST",
-      body: { username: $("login-user").value.trim(), password: $("login-pass").value },
+      body: { username, password },
     });
     await enterApp(data);
   } catch (err) {
     $("login-err").textContent = err.message || "Kirish xato";
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -2806,10 +2845,12 @@ async function boot() {
   } catch {
     /* ignore */
   }
-  const saved = localStorage.getItem(TOKEN_KEY) || (await kvGet("token").catch(() => ""));
-  const cachedDriver = await kvGet("driver").catch(() => null);
-  const cachedRoute = await kvGet("route").catch(() => null);
-  await outboxLoad();
+  // IndexedDB ba’zi Android WebView larda osilib qolishi mumkin — login ekrani ochilmasin
+  const idb = (p, ms = 2500) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
+  const saved = localStorage.getItem(TOKEN_KEY) || (await idb(kvGet("token").catch(() => ""))) || "";
+  const cachedDriver = await idb(kvGet("driver").catch(() => null));
+  const cachedRoute = await idb(kvGet("route").catch(() => null));
+  await idb(outboxLoad(), 2500);
   if (saved) {
     token = saved;
     driver = cachedDriver;

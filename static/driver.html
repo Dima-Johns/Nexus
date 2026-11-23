@@ -21,7 +21,7 @@
   <link rel="apple-touch-icon" href="/static/brand/nexus-logo.webp" />
   <link rel="preload" href="/static/brand/nexus-logo.webp" as="image" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/css/driver.css?v=28" />
+  <link rel="stylesheet" href="/static/css/driver.css?v=29" />
   <link rel="stylesheet" href="/static/css/datepicker.css?v=2" />
 </head>
 <body>
@@ -51,9 +51,9 @@
     <div class="login-card">
       <h1>Xush kelibsiz</h1>
       <p class="sub">Login/parol yoki QR kod bilan kiring. Marshrut internet bo‘lganida yuklanadi, keyin offline ham ochiladi.</p>
-      <form id="login-form">
-        <input id="login-user" name="username" autocomplete="username" placeholder="Login" maxlength="80" required />
-        <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Parol" maxlength="128" required />
+      <form id="login-form" novalidate>
+        <input id="login-user" name="username" autocomplete="username" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Login" maxlength="80" />
+        <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Parol" maxlength="128" />
         <p class="err" id="login-err"></p>
         <button class="btn primary full" type="submit">Kirish</button>
         <button class="btn full" id="btn-qr" type="button">QR kodni skanerlash</button>
@@ -289,6 +289,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/static/js/datepicker.js?v=2"></script>
-  <script src="/static/js/driver-app.js?v=33"></script>
+  <script src="/static/js/driver-app.js?v=34"></script>
 </body>
 </html>

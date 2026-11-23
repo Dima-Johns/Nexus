@@ -904,7 +904,7 @@ input, textarea, [contenteditable="true"] {
   transition: opacity .6s ease, visibility .6s ease, transform .6s ease;
 }
 .intro .nx-orb { opacity: .18; }
-.intro.out { opacity: 0; visibility: hidden; transform: scale(1.04); }
+.intro.out { opacity: 0; visibility: hidden; pointer-events: none; transform: scale(1.04); }
 .intro-core { position: relative; display: grid; justify-items: center; gap: 16px; }
 .intro .nx-logo { margin-bottom: 14px; }
 .intro-line {

@@ -286,6 +286,8 @@ class MainActivity : AppCompatActivity() {
             if (token.isBlank()) return
             prefs().edit().putString("drv_token", token).putBoolean(TrackingService.PREF_ON, true).apply()
             runOnUiThread {
+                // Login muvaffaqiyatli — endi GPS so‘raladi (login oynasini to‘smaslik uchun oldin chaqirilmaydi)
+                ensureGps()
                 startTrackingService()
                 askNotificationPermission()
             }
@@ -295,6 +297,7 @@ class MainActivity : AppCompatActivity() {
         fun stopTracking() {
             prefs().edit().remove("drv_token").putBoolean(TrackingService.PREF_ON, false).apply()
             runOnUiThread {
+                gpsDialog?.dismiss()
                 stopService(Intent(this@MainActivity, TrackingService::class.java))
             }
         }
@@ -379,17 +382,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun probe(url: String): Boolean {
-        return try {
-            val c = URL(url).openConnection() as HttpURLConnection
-            c.connectTimeout = if (isLanUrl(url)) 2500 else 8000
-            c.readTimeout = if (isLanUrl(url)) 2500 else 8000
-            c.requestMethod = "GET"
-            c.instanceFollowRedirects = true
-            val code = c.responseCode
-            c.disconnect()
-            code in 200..399
-        } catch (_: Exception) {
-            false
+        // LAN tezkor tekshiruv; internet serveri uchun sahifa haqiqatan Nexus ekanini tasdiqlaymiz —
+        // aks holda boshqa 200-javob bergan manzilga ulanib, login «parol noto‘g‘ri» bo‘lib qoladi
+        return if (isLanUrl(url)) {
+            try {
+                val c = URL(url).openConnection() as HttpURLConnection
+                c.connectTimeout = 2500
+                c.readTimeout = 2500
+                c.requestMethod = "GET"
+                c.instanceFollowRedirects = true
+                val code = c.responseCode
+                c.disconnect()
+                code in 200..399
+            } catch (_: Exception) {
+                false
+            }
+        } else {
+            isNexus(url, connectMs = 8000, readMs = 8000)
         }
     }
 
@@ -405,11 +414,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun isNexus(url: String): Boolean {
+    private fun isNexus(url: String, connectMs: Int = 1500, readMs: Int = 2500): Boolean {
         return try {
             val c = URL(url).openConnection() as HttpURLConnection
-            c.connectTimeout = 1500
-            c.readTimeout = 2500
+            c.connectTimeout = connectMs
+            c.readTimeout = readMs
+            c.instanceFollowRedirects = true
             val ok = c.responseCode in 200..299
             val body = if (ok) c.inputStream.bufferedReader().use { it.readText().take(4000) } else ""
             c.disconnect()
@@ -840,7 +850,8 @@ class MainActivity : AppCompatActivity() {
             IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        ensureGps()
+        // Login/parol kiritishdan oldin GPS dialogi WebView ni to‘sib qo‘ymasligi kerak
+        if (!prefs().getString("drv_token", "").isNullOrBlank()) ensureGps()
     }
 
     override fun onPause() {
