@@ -24,6 +24,10 @@ class Organization(Base):
     address: Mapped[str] = mapped_column(String(300), default="")
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Begona mahsulot yopilganda rasm+matn shu bot orqali guruhga yuboriladi
+    telegram_bot_token: Mapped[str] = mapped_column(String(120), default="")
+    telegram_chat_id: Mapped[str] = mapped_column(String(64), default="")
+    telegram_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     users: Mapped[list["User"]] = relationship(back_populates="org")
 

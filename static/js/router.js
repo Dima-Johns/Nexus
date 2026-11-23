@@ -59,8 +59,8 @@ async function ensureAuth() {
 async function loadPage(name) {
   if (pageCache[name]) return pageCache[name];
   const pending = Promise.all([
-    fetch(`/static/pages/${name}.html?v=110`),
-    import(`/static/js/pages/${name}.js?v=110`),
+    fetch(`/static/pages/${name}.html?v=111`),
+    import(`/static/js/pages/${name}.js?v=111`),
   ]).then(async ([htmlRes, mod]) => {
       const packed = { html: await htmlRes.text(), mod };
       pageCache[name] = packed;

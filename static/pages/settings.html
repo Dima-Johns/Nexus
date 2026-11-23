@@ -34,3 +34,26 @@
     <button class="btn primary" type="submit">Saqlash</button>
   </form>
 </div>
+<div class="glass panel hidden" id="telegram-panel">
+  <div class="panel-head">
+    <h3>Telegram bot</h3>
+  </div>
+  <p class="muted">Haydovchi zayavkani «Begona mahsulot bor» bilan yopganda rasm va ma’lumotlar bot orqali ulangan guruhga yuboriladi.</p>
+  <ol class="muted adm-sub" style="margin:0.5rem 0 1rem;padding-left:1.2rem">
+    <li>@BotFather dan bot oching va tokenni oling</li>
+    <li>Botni guruhga qo‘shing va admin qiling</li>
+    <li>Guruhda biror xabar yozing; chat_id ni @userinfobot yoki shu yerda saqlang (guruhlar uchun odatda −100…)</li>
+  </ol>
+  <p class="error hidden" id="tg-err"></p>
+  <p class="muted hidden" id="tg-ok"></p>
+  <form id="telegram-form" class="form-grid" autocomplete="off">
+    <label class="map-row"><span>Bot token</span><input name="bot_token" id="tg-token" placeholder="123456:ABC…" autocomplete="off" /></label>
+    <label class="map-row"><span>Guruh chat_id</span><input name="chat_id" id="tg-chat" placeholder="-100…" autocomplete="off" /></label>
+    <label class="chk"><input type="checkbox" name="enabled" id="tg-enabled" /> Yoqilgan — begona mahsulot guruhga yuborilsin</label>
+    <p class="muted" id="tg-hint"></p>
+    <div class="row-actions">
+      <button class="btn primary" type="submit">Saqlash</button>
+      <button class="btn" type="button" id="tg-test">Sinov xabar</button>
+    </div>
+  </form>
+</div>

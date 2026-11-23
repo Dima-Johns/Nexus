@@ -1125,6 +1125,9 @@ function orgCardHtml(org) {
       <span class="adm-pill">Admin <b>${org.admin_count}</b></span>
       <span class="adm-pill">Dispetcher <b>${org.dispatcher_count}</b></span>
       <span class="adm-pill">Haydovchi <b>${org.driver_count}</b></span>
+      <span class="adm-pill${org.telegram_linked && org.telegram_enabled ? " on" : ""}">Telegram <b>${
+        org.telegram_linked && org.telegram_enabled ? "yoqilgan" : org.telegram_linked ? "o‘chirilgan" : "yo‘q"
+      }</b></span>
       <span class="adm-pill">Ochilgan <b>${fmtDate(org.created_at)}</b></span>
     </div>
     <div class="row-actions org-actions">

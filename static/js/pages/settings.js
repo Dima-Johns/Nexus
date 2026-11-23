@@ -1,7 +1,7 @@
 import { api, me, setMe } from "../api.js";
 import { $, formData } from "../ui.js?v=91";
 import { loadRemembered, saveRemembered } from "../theme.js?v=91";
-import { renderProfile } from "../profile.js?v=91";
+import { renderProfile } from "../profile.js?v=100";
 
 function loadIdle(root) {
   const sel = $("#idle-mins", root);
@@ -28,6 +28,95 @@ function fillProfile(root) {
   const name = $("#profile-name", root);
   if (user) user.value = me.username || "";
   if (name) name.value = me.full_name || "";
+}
+
+function isAdminRole() {
+  return me?.role === "admin" || me?.role === "superadmin";
+}
+
+async function loadTelegram(root) {
+  const panel = $("#telegram-panel", root);
+  if (!panel) return;
+  const show = isAdminRole();
+  panel.classList.toggle("hidden", !show);
+  if (!show) return;
+  showError(root, "#tg-err", "");
+  const ok = $("#tg-ok", root);
+  if (ok) {
+    ok.classList.add("hidden");
+    ok.textContent = "";
+  }
+  try {
+    const data = await api("/org/telegram");
+    const token = $("#tg-token", root);
+    const chat = $("#tg-chat", root);
+    const enabled = $("#tg-enabled", root);
+    const hint = $("#tg-hint", root);
+    if (token) {
+      token.value = "";
+      token.placeholder = data.bot_token_set ? `Saqlangan ${data.bot_token_hint || "****"}` : "123456:ABC…";
+    }
+    if (chat) chat.value = data.chat_id || "";
+    if (enabled) enabled.checked = !!data.enabled;
+    if (hint) {
+      const parts = [];
+      if (data.bot_username) parts.push(`Bot: @${data.bot_username}`);
+      if (data.enabled && data.bot_token_set && data.chat_id) parts.push("Ulanish yoqilgan");
+      else if (data.bot_token_set && data.chat_id) parts.push("Saqlangan, lekin o‘chirilgan");
+      else parts.push("Hali to‘liq ulanmagan");
+      hint.textContent = parts.join(" · ");
+    }
+  } catch (ex) {
+    showError(root, "#tg-err", ex.message);
+  }
+}
+
+function bindTelegram(root) {
+  const form = $("#telegram-form", root);
+  if (!form || !isAdminRole()) return;
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    showError(root, "#tg-err", "");
+    const ok = $("#tg-ok", root);
+    if (ok) {
+      ok.classList.add("hidden");
+      ok.textContent = "";
+    }
+    const d = formData(form);
+    const body = {
+      enabled: !!$("#tg-enabled", root)?.checked,
+      chat_id: String(d.chat_id || "").trim(),
+    };
+    const token = String(d.bot_token || "").trim();
+    if (token) body.bot_token = token;
+    try {
+      await api("/org/telegram", { method: "PUT", body });
+      if (ok) {
+        ok.classList.remove("hidden");
+        ok.textContent = "Telegram sozlamalari saqlandi";
+      }
+      await loadTelegram(root);
+    } catch (ex) {
+      showError(root, "#tg-err", ex.message);
+    }
+  };
+  $("#tg-test", root)?.addEventListener("click", async () => {
+    showError(root, "#tg-err", "");
+    const ok = $("#tg-ok", root);
+    if (ok) {
+      ok.classList.add("hidden");
+      ok.textContent = "";
+    }
+    try {
+      await api("/org/telegram/test", { method: "POST", body: {} });
+      if (ok) {
+        ok.classList.remove("hidden");
+        ok.textContent = "Sinov xabar guruhga yuborildi";
+      }
+    } catch (ex) {
+      showError(root, "#tg-err", ex.message);
+    }
+  });
 }
 
 let onMeUpdated = null;
@@ -90,6 +179,8 @@ export async function init(root) {
       showError(root, "#idle-err", ex.message);
     }
   };
+  bindTelegram(root);
+  await loadTelegram(root).catch(() => {});
 }
 
 export function destroy() {

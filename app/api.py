@@ -147,6 +147,8 @@ from .schemas import (
     OrgUpdate,
     OrgUserIn,
     OrgUserUpdate,
+    TelegramSettingsIn,
+    TelegramSettingsOut,
     PlanIn,
     RouteRenameIn,
     TemplateIn,
@@ -1351,7 +1353,60 @@ def _finish_proof(
     if left == 0:
         driver.status = "idle"
     db.commit()
+    if result == "delivered" and reason == "foreign_goods" and not repeat:
+        _notify_foreign_goods(db, row, driver, data, mime)
     return {"ok": True, "order": _order_out(row), "driver": _driver_out(driver)}
+
+
+def _notify_foreign_goods(db: Session, row: Order, driver: Driver, photo: bytes, mime: str | None) -> None:
+    """Begona mahsulot — Telegram guruhiga rasm + zayavka ma’lumotlari."""
+    from .telegram import format_foreign_goods_caption, notify_async, org_telegram_ready
+
+    org = db.query(Organization).filter(Organization.id == row.org_id).first() if row.org_id else None
+    if not org_telegram_ready(org):
+        return
+    agent_name = (row.sales_rep or "").strip()
+    agent_code = normalize_agent_code(row.agent_code or "")
+    agent_phone = ""
+    if agent_code and row.org_id:
+        agent = (
+            db.query(Agent)
+            .filter(Agent.org_id == row.org_id, Agent.code == agent_code)
+            .first()
+        )
+        if agent:
+            agent_name = agent_name or (agent.name or "")
+            agent_phone = format_uz_phone(agent.phone or "") or (agent.phone or "")
+    if not agent_phone and getattr(driver, "agent_id", None):
+        linked = db.query(Agent).filter(Agent.id == driver.agent_id).first()
+        if linked:
+            agent_name = agent_name or (linked.name or "")
+            agent_code = agent_code or normalize_agent_code(linked.code or "")
+            agent_phone = format_uz_phone(linked.phone or "") or (linked.phone or "")
+    client_name = ""
+    if row.client_id:
+        client = db.query(Client).filter(Client.id == row.client_id).first()
+        if client:
+            client_name = client.name or ""
+    caption = format_foreign_goods_caption(
+        order_code=row.code or str(row.id),
+        amount=row.amount,
+        lat=row.proof_lat if row.proof_lat is not None else row.dropoff_lat,
+        lng=row.proof_lng if row.proof_lng is not None else row.dropoff_lng,
+        agent_name=agent_name,
+        agent_code=agent_code,
+        agent_phone=agent_phone,
+        driver_name=driver.name or "",
+        client_name=client_name,
+        address=(row.dropoff_address or "").strip(),
+    )
+    notify_async(
+        org.telegram_bot_token.strip(),
+        org.telegram_chat_id.strip(),
+        photo=photo,
+        mime=mime,
+        caption=caption,
+    )
 
 
 # superadmin API orqali berilmaydi — faqat ishga tushishda mavjud administratordan o‘tkaziladi
@@ -1534,6 +1589,8 @@ def _org_out(db: Session, org: Organization, actor: User) -> OrgOut:
     roles = dict(
         db.query(User.role, func.count(User.id)).filter(User.org_id == org.id).group_by(User.role).all()
     )
+    token = (org.telegram_bot_token or "").strip()
+    chat = (org.telegram_chat_id or "").strip()
     return OrgOut(
         id=org.id,
         name=org.name,
@@ -1547,6 +1604,8 @@ def _org_out(db: Session, org: Organization, actor: User) -> OrgOut:
         dispatcher_count=roles.get("dispatcher", 0),
         driver_count=db.query(Driver).filter(Driver.org_id == org.id).count(),
         is_own=org.id == actor.org_id,
+        telegram_enabled=bool(org.telegram_enabled),
+        telegram_linked=bool(token and chat),
         created_at=org.created_at.isoformat() if org.created_at else None,
     )
 
@@ -1625,6 +1684,87 @@ def regenerate_org_code(item_id: int, db: Session = Depends(get_db), actor: User
     org.code = new_org_code(db)
     db.commit()
     return _org_out(db, org, actor)
+
+
+def _telegram_settings_out(org: Organization) -> TelegramSettingsOut:
+    token = (org.telegram_bot_token or "").strip()
+    hint = ""
+    if token:
+        hint = ("…" + token[-4:]) if len(token) > 4 else "****"
+    username = ""
+    if token:
+        try:
+            from .telegram import bot_username
+
+            username = bot_username(token)
+        except Exception:
+            username = ""
+    return TelegramSettingsOut(
+        enabled=bool(org.telegram_enabled),
+        bot_token_set=bool(token),
+        bot_token_hint=hint,
+        chat_id=(org.telegram_chat_id or "").strip(),
+        bot_username=username,
+    )
+
+
+def _actor_org(db: Session, actor: User) -> Organization:
+    oid = org_id_of(actor)
+    org = db.query(Organization).filter(Organization.id == oid).first()
+    if not org:
+        raise HTTPException(404, "Tashkilot topilmadi")
+    return org
+
+
+@router.get("/org/telegram", response_model=TelegramSettingsOut)
+def get_org_telegram(db: Session = Depends(get_db), actor: User = Depends(require_admin)):
+    """Joriy tashkilotning Telegram bot sozlamasi (faqat admin)."""
+    return _telegram_settings_out(_actor_org(db, actor))
+
+
+@router.put("/org/telegram", response_model=TelegramSettingsOut)
+def update_org_telegram(
+    payload: TelegramSettingsIn, db: Session = Depends(get_db), actor: User = Depends(require_admin)
+):
+    org = _actor_org(db, actor)
+    if payload.bot_token is not None:
+        token = payload.bot_token.strip()
+        if token:
+            from .telegram import bot_username
+
+            try:
+                bot_username(token)
+            except Exception as exc:
+                raise HTTPException(400, f"Bot token noto‘g‘ri: {exc}") from exc
+            org.telegram_bot_token = token[:120]
+        # Bo‘sh yuborilsa — eski token saqlanadi (faqat chat/enabled o‘zgartirish uchun)
+    if payload.chat_id is not None:
+        org.telegram_chat_id = payload.chat_id.strip()[:64]
+    if payload.enabled is not None:
+        org.telegram_enabled = bool(payload.enabled)
+    if org.telegram_enabled and (not (org.telegram_bot_token or "").strip() or not (org.telegram_chat_id or "").strip()):
+        raise HTTPException(400, "Bot token va guruh chat_id ni kiriting, keyin yoqing")
+    db.commit()
+    return _telegram_settings_out(org)
+
+
+@router.post("/org/telegram/test")
+def test_org_telegram(db: Session = Depends(get_db), actor: User = Depends(require_admin)):
+    """Guruhga sinov xabar yuboradi — bot guruhga qo‘shilganini tekshirish uchun."""
+    from .telegram import org_telegram_ready, send_text
+
+    org = _actor_org(db, actor)
+    if not org_telegram_ready(org):
+        raise HTTPException(400, "Avval bot token, chat_id kiriting va yoqing")
+    try:
+        send_text(
+            org.telegram_bot_token.strip(),
+            org.telegram_chat_id.strip(),
+            f"Nexus Logistika: «{org.name}» Telegram ulanishi ishlayapti.",
+        )
+    except Exception as exc:
+        raise HTTPException(400, f"Yuborilmadi: {exc}") from exc
+    return {"ok": True}
 
 
 @router.get("/orgs/{item_id}/users", response_model=list[UserOut])

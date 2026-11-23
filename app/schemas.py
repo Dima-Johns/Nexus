@@ -138,10 +138,26 @@ class OrgOut(Schema):
     dispatcher_count: int = 0
     driver_count: int = 0
     is_own: bool = False
+    telegram_enabled: bool = False
+    telegram_linked: bool = False
     created_at: str | None = None
 
     class Config:
         from_attributes = True
+
+
+class TelegramSettingsOut(Schema):
+    enabled: bool = False
+    bot_token_set: bool = False
+    bot_token_hint: str = ""
+    chat_id: str = ""
+    bot_username: str = ""
+
+
+class TelegramSettingsIn(Schema):
+    enabled: bool | None = None
+    bot_token: Annotated[str, Field(max_length=120)] | None = None
+    chat_id: Annotated[str, Field(max_length=64)] | None = None
 
 
 class PermissionsCatalogOut(Schema):
