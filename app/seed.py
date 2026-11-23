@@ -102,23 +102,37 @@ def ensure_superadmin(db: Session) -> None:
     if not supers:
         return
 
-    # v3: ADMIN_PASSWORD env boshqa qiymatga o‘rnatilgan bo‘lsa ham, kirish uchun
-    # aniq admin123 ga qaytaramiz. Har restartda env bilan qayta yozilmasin.
+    pwd_env = (os.getenv("ADMIN_PASSWORD") or "").strip()
+    # v2: productionda admin123 bilan kira olmaslik qayta chiqqani uchun yana bir marta tiklash
     claimed = db.execute(
         text(
-            "INSERT INTO app_migrations (key) VALUES ('repair_superadmin_login_v3') "
+            "INSERT INTO app_migrations (key) VALUES ('repair_superadmin_login_v2') "
             "ON CONFLICT DO NOTHING RETURNING key"
         )
     ).scalar()
     db.commit()
     if claimed:
+        reset_to = pwd_env or "admin123"
         for user in supers:
-            user.password_hash = hash_password("admin123")
+            user.password_hash = hash_password(reset_to)
             user.is_active = True
             if not (user.username or "").strip():
                 user.username = "admin"
         db.commit()
-        print("[nexus] Superadmin kirishi tiklandi: admin / admin123 (v3)", flush=True)
+        print("[nexus] Superadmin kirishi tiklandi (repair_superadmin_login_v2)", flush=True)
+        return
+
+    if not pwd_env:
+        return
+    changed = False
+    for user in supers:
+        if not verify_password(pwd_env, user.password_hash):
+            user.password_hash = hash_password(pwd_env)
+            user.is_active = True
+            changed = True
+    if changed:
+        db.commit()
+        print("[nexus] Superadmin paroli ADMIN_PASSWORD ga moslashtirildi", flush=True)
 
 
 def ensure_dispatcher_perms(db: Session) -> None:
