@@ -103,9 +103,10 @@ def ensure_superadmin(db: Session) -> None:
         return
 
     pwd_env = (os.getenv("ADMIN_PASSWORD") or "").strip()
+    # v2: productionda admin123 bilan kira olmaslik qayta chiqqani uchun yana bir marta tiklash
     claimed = db.execute(
         text(
-            "INSERT INTO app_migrations (key) VALUES ('repair_superadmin_login_v1') "
+            "INSERT INTO app_migrations (key) VALUES ('repair_superadmin_login_v2') "
             "ON CONFLICT DO NOTHING RETURNING key"
         )
     ).scalar()
@@ -115,8 +116,10 @@ def ensure_superadmin(db: Session) -> None:
         for user in supers:
             user.password_hash = hash_password(reset_to)
             user.is_active = True
+            if not (user.username or "").strip():
+                user.username = "admin"
         db.commit()
-        print("[nexus] Superadmin kirishi tiklandi (bir martalik repair)", flush=True)
+        print("[nexus] Superadmin kirishi tiklandi (repair_superadmin_login_v2)", flush=True)
         return
 
     if not pwd_env:
@@ -139,7 +142,15 @@ def ensure_dispatcher_perms(db: Session) -> None:
         if not keys:
             keys = list(DEFAULT_DISPATCHER_PERMS)
             changed = True
-        for extra in ("agents.view", "agents.code.set", "tracking.live", "warehouses.view", "warehouses.manage", "orders.routes"):
+        for extra in (
+            "agents.view",
+            "agents.code.set",
+            "tracking.live",
+            "warehouses.view",
+            "warehouses.manage",
+            "orders.routes",
+            "drivers.view",
+        ):
             if extra not in keys:
                 keys.append(extra)
                 changed = True
